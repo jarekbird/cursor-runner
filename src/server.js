@@ -140,16 +140,43 @@ export class Server {
         // Parse command (split by spaces, handle quoted arguments)
         const commandArgs = this.parseCommand(command);
 
+        // Append instructions to the command
+        // If the command has a prompt/instruction argument, append to it
+        const instructions = '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+        
+        // Find prompt/instruction arguments and append instructions
+        const modifiedArgs = [...commandArgs];
+        let foundPromptFlag = false;
+        
+        for (let i = 0; i < modifiedArgs.length; i++) {
+          // Common prompt flags: --prompt, -p, --instruction, --message, etc.
+          if ((modifiedArgs[i] === '--prompt' || 
+               modifiedArgs[i] === '-p' || 
+               modifiedArgs[i] === '--instruction' ||
+               modifiedArgs[i] === '--message') && 
+              i + 1 < modifiedArgs.length) {
+            // Append instructions to the next argument (the prompt text)
+            modifiedArgs[i + 1] = modifiedArgs[i + 1] + instructions;
+            foundPromptFlag = true;
+            break;
+          }
+        }
+        
+        // If no prompt flag found, append instructions to the last argument
+        if (!foundPromptFlag && modifiedArgs.length > 0) {
+          modifiedArgs[modifiedArgs.length - 1] = modifiedArgs[modifiedArgs.length - 1] + instructions;
+        }
+
         // Execute cursor command in the repository directory
         logger.info('Executing cursor command', {
           requestId,
           repository,
           branchName,
-          command: commandArgs,
+          command: modifiedArgs,
           cwd: fullRepositoryPath,
         });
 
-        const result = await this.cursorCLI.executeCommand(commandArgs, {
+        const result = await this.cursorCLI.executeCommand(modifiedArgs, {
           cwd: fullRepositoryPath,
         });
 
@@ -168,7 +195,7 @@ export class Server {
           requestId,
           repository,
           branchName,
-          command: commandArgs,
+          command: modifiedArgs,
           output: result.stdout || '',
           error: result.stderr || null,
           exitCode: result.exitCode || 0,
