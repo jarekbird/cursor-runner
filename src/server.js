@@ -1,7 +1,10 @@
 import express from 'express';
+import path from 'path';
+import { existsSync } from 'fs';
 import { logger } from './logger.js';
 import { GitService } from './git-service.js';
 import { TerminalService } from './terminal-service.js';
+import { CursorCLI } from './cursor-cli.js';
 
 /**
  * HTTP Server for cursor-runner API
@@ -14,6 +17,7 @@ export class Server {
     this.port = parseInt(process.env.PORT || '3001', 10);
     this.gitService = new GitService();
     this.terminalService = new TerminalService();
+    this.cursorCLI = new CursorCLI();
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -46,6 +50,9 @@ export class Server {
       res.json({ status: 'ok', service: 'cursor-runner' });
     });
 
+    // Cursor execution routes
+    this.setupCursorRoutes();
+
     // Git routes
     this.setupGitRoutes();
 
@@ -53,6 +60,185 @@ export class Server {
     this.app.use((err, req, res, next) => {
       this.handleError(err, req, res);
     });
+  }
+
+  /**
+   * Setup cursor execution routes
+   */
+  setupCursorRoutes() {
+    const router = express.Router();
+
+    /**
+     * POST /cursor/execute
+     * Execute cursor-cli command in a repository
+     * Body: { repository: string, branchName: string, command: string }
+     */
+    router.post('/execute', async (req, res, next) => {
+      const startTime = Date.now();
+      let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      try {
+        logger.info('Cursor execution request received', {
+          requestId,
+          body: req.body,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        // Validate required parameters
+        const { repository, branchName, command } = req.body;
+
+        if (!repository) {
+          return res.status(400).json({
+            success: false,
+            error: 'repository is required',
+            requestId,
+          });
+        }
+
+        if (!branchName) {
+          return res.status(400).json({
+            success: false,
+            error: 'branchName is required',
+            requestId,
+          });
+        }
+
+        if (!command) {
+          return res.status(400).json({
+            success: false,
+            error: 'command is required',
+            requestId,
+          });
+        }
+
+        // Check if repository exists locally
+        const repositoryPath = this.gitService.repositoriesPath;
+        const fullRepositoryPath = path.join(repositoryPath, repository);
+
+        if (!existsSync(fullRepositoryPath)) {
+          return res.status(404).json({
+            success: false,
+            error: `Repository not found locally: ${repository}. Please clone it first using POST /git/clone`,
+            requestId,
+          });
+        }
+
+        // Checkout the branch
+        logger.info('Checking out branch', { repository, branchName });
+        try {
+          await this.gitService.checkoutBranch(repository, branchName);
+        } catch (error) {
+          logger.error('Failed to checkout branch', { repository, branchName, error: error.message });
+          return res.status(500).json({
+            success: false,
+            error: `Failed to checkout branch: ${error.message}`,
+            requestId,
+          });
+        }
+
+        // Parse command (split by spaces, handle quoted arguments)
+        const commandArgs = this.parseCommand(command);
+
+        // Execute cursor command in the repository directory
+        logger.info('Executing cursor command', {
+          requestId,
+          repository,
+          branchName,
+          command: commandArgs,
+          cwd: fullRepositoryPath,
+        });
+
+        const result = await this.cursorCLI.executeCommand(commandArgs, {
+          cwd: fullRepositoryPath,
+        });
+
+        // Format response
+        const duration = Date.now() - startTime;
+        logger.info('Cursor execution completed', {
+          requestId,
+          repository,
+          branchName,
+          success: result.success,
+          duration: `${duration}ms`,
+        });
+
+        res.json({
+          success: result.success !== false,
+          requestId,
+          repository,
+          branchName,
+          command: commandArgs,
+          output: result.stdout || '',
+          error: result.stderr || null,
+          exitCode: result.exitCode || 0,
+          duration: `${duration}ms`,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        // Log error with full context
+        const duration = Date.now() - startTime;
+        logger.error('Cursor execution request failed', {
+          requestId: requestId || 'unknown',
+          error: error.message,
+          stack: error.stack,
+          duration: `${duration}ms`,
+          body: req.body,
+        });
+
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          requestId: requestId || 'unknown',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // Mount cursor routes
+    this.app.use('/cursor', router);
+  }
+
+  /**
+   * Parse command string into arguments array
+   * Handles quoted arguments and spaces
+   * @param {string} command - Command string
+   * @returns {Array<string>} Command arguments
+   */
+  parseCommand(command) {
+    const args = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = null;
+
+    for (let i = 0; i < command.length; i++) {
+      const char = command[i];
+
+      if ((char === '"' || char === "'") && (i === 0 || command[i - 1] !== '\\')) {
+        if (!inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+        } else if (char === quoteChar) {
+          inQuotes = false;
+          quoteChar = null;
+        } else {
+          current += char;
+        }
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+
+    if (current) {
+      args.push(current);
+    }
+
+    return args;
   }
 
   /**

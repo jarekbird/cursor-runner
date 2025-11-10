@@ -51,6 +51,7 @@ class CursorRunner {
         port: this.server.port,
         endpoints: [
           'GET /health',
+          'POST /cursor/execute',
           'POST /git/clone',
           'GET /git/repositories',
           'POST /git/checkout',

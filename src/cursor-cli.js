@@ -103,11 +103,12 @@ export class CursorCLI {
 
         if (code === 0) {
           logger.debug('cursor-cli command completed successfully', { args });
-          resolve(result);
         } else {
           logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
-          reject(new Error(`Command failed with exit code ${code}: ${stderr}`));
         }
+        
+        // Always resolve with result, even on failure, so caller can access stdout/stderr
+        resolve(result);
       });
 
       // Handle process errors
