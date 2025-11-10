@@ -1,0 +1,635 @@
+# cursor-runner Cursor Rules
+
+## Project Overview
+
+cursor-runner is a Node.js application that executes cursor-cli commands and manages code generation workflows. It serves as the code execution layer for the Virtual Assistant system, integrating with jarek-va (Ruby on Rails orchestration layer) to implement code changes using TDD (Test-Driven Development) principles.
+
+### Responsibilities
+- Execute cursor-cli commands to generate code
+- Run tests in target applications (e.g., jarek-va Rails app)
+- Manage TDD cycles (Red → Green → Refactor)
+- Handle code generation and validation workflows
+- Communicate with jarek-va via HTTP API
+
+## Architecture
+
+### Application Flow
+```
+jarek-va (Rails) → cursor-runner (Node.js) → cursor-cli → Target Application
+```
+
+1. **jarek-va** receives code writing tool requests from ElevenLabs Agent
+2. **jarek-va** sends HTTP request to **cursor-runner**
+3. **cursor-runner** executes cursor-cli commands
+4. **cursor-runner** runs tests in target application
+5. **cursor-runner** returns results to **jarek-va**
+
+### Project Structure
+```
+cursor-runner/
+├── src/
+│   ├── index.js          # Main entry point, CursorRunner class
+│   ├── cursor-cli.js     # cursor-cli wrapper and execution
+│   ├── target-app.js     # Target application test runner
+│   └── logger.js        # Winston logging configuration
+├── tests/
+│   ├── cursor-cli.test.js
+│   ├── target-app.test.js
+│   └── helpers/
+│       └── test-helpers.js
+├── logs/                 # Log files
+├── package.json
+├── jest.config.js
+├── .eslintrc.json
+├── .prettierrc.json
+└── .env                  # Environment variables
+```
+
+## Code Style & Conventions
+
+### JavaScript/Node.js Style
+- Use **ES Modules** (`import`/`export`) - this is an ES module project (`"type": "module"`)
+- Use modern JavaScript (ES2022+)
+- Follow [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript)
+- Use ESLint for linting: `npm run lint`
+- Use Prettier for formatting: `npm run format`
+- Prefer `const` over `let`, avoid `var`
+- Use async/await over promises when possible
+- Use arrow functions for callbacks
+- Use descriptive, meaningful names
+
+### Naming Conventions
+- **Classes**: PascalCase (e.g., `CursorRunner`, `CursorCLI`)
+- **Functions/Methods**: camelCase (e.g., `executeCommand`, `generateTests`)
+- **Files**: kebab-case or camelCase matching export (e.g., `cursor-cli.js`, `target-app.js`)
+- **Constants**: SCREAMING_SNAKE_CASE (e.g., `MAX_OUTPUT_SIZE`)
+- **Variables**: camelCase (e.g., `targetPath`, `result`)
+
+### File Organization
+- One class per file
+- Export classes/functions at the end of file
+- Use named exports, not default exports
+- Keep files focused and single-purpose
+- Group related functionality in modules
+
+## ES Modules
+
+### Import/Export Patterns
+```javascript
+// Import
+import { CursorCLI } from './cursor-cli.js';
+import { logger } from './logger.js';
+import path from 'path';
+import { spawn } from 'child_process';
+
+// Export
+export class CursorRunner {
+  // ...
+}
+
+export { CursorRunner };
+```
+
+### File Extensions
+- Always include `.js` extension in imports (required for ES modules)
+- Use relative paths: `'./cursor-cli.js'` not `'./cursor-cli'`
+
+### Module Resolution
+- Use `import.meta.url` for `__dirname`/`__filename` equivalents:
+```javascript
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+```
+
+## cursor-cli Integration
+
+### Command Execution Pattern
+```javascript
+import { CursorCLI } from './src/cursor-cli.js';
+
+const cursor = new CursorCLI();
+
+// Validate cursor-cli is available
+await cursor.validate();
+
+// Execute command
+const result = await cursor.executeCommand(['generate', '--prompt', 'Create service']);
+```
+
+### Security Validation
+Always validate commands before execution:
+- Check against whitelist (`ALLOWED_COMMANDS`)
+- Check against blacklist (`BLOCKED_COMMANDS`)
+- Validate paths and parameters
+- Set timeouts for all commands
+- Limit output size to prevent memory exhaustion
+
+### Error Handling
+```javascript
+try {
+  const result = await cursor.executeCommand(args);
+  // Handle success
+} catch (error) {
+  logger.error('Command failed', { error: error.message, args });
+  // Handle error gracefully
+  throw error; // Re-throw if needed
+}
+```
+
+## TDD Workflow Implementation
+
+### Red Phase (Generate Tests)
+```javascript
+const testResult = await cursor.generateTests(requirements, targetPath);
+// Returns: { success: true, phase: 'red', output: '...', files: [...] }
+```
+
+### Green Phase (Generate Implementation)
+```javascript
+const implResult = await cursor.generateImplementation(requirements, targetPath);
+// Returns: { success: true, phase: 'green', output: '...', files: [...] }
+```
+
+### Refactor Phase
+```javascript
+const refactorResult = await cursor.refactorCode(requirements, targetPath);
+// Returns: { success: true, phase: 'refactor', output: '...', files: [...] }
+```
+
+### Validate Phase (Run Tests)
+```javascript
+const testResult = await targetAppRunner.runTests(targetPath);
+// Returns: { success: true, passed: { total: 10, passed: 8, failed: 2 } }
+```
+
+## Child Process Execution
+
+### Using spawn (Preferred)
+```javascript
+import { spawn } from 'child_process';
+
+const child = spawn(command, args, {
+  cwd: workingDirectory,
+  stdio: ['pipe', 'pipe', 'pipe'],
+  shell: false, // Never use shell: true for security
+});
+
+// Collect output
+let stdout = '';
+let stderr = '';
+
+child.stdout.on('data', (data) => {
+  stdout += data.toString();
+});
+
+child.stderr.on('data', (data) => {
+  stderr += data.toString();
+});
+
+// Handle completion
+child.on('close', (code) => {
+  // Process result
+});
+```
+
+### Security Best Practices
+- **Never use `shell: true`** - prevents command injection
+- **Always set timeouts** - prevent hanging processes
+- **Limit output size** - prevent memory exhaustion
+- **Validate all inputs** - check paths, commands, parameters
+- **Use absolute paths** when possible
+- **Set working directory explicitly** (`cwd` option)
+
+## Logging
+
+### Using Winston Logger
+```javascript
+import { logger } from './logger.js';
+
+// Log levels
+logger.error('Error message', { context: 'additional data' });
+logger.warn('Warning message', { context: 'additional data' });
+logger.info('Information message', { context: 'additional data' });
+logger.debug('Debug message', { context: 'additional data' });
+```
+
+### Logging Best Practices
+- Include context in log messages (use object as second parameter)
+- Use appropriate log levels
+- Log errors with stack traces
+- Include request IDs for tracing
+- Don't log sensitive information (API keys, passwords)
+
+### Example
+```javascript
+logger.info('Executing code generation', {
+  requestId: request.id,
+  phase: request.phase,
+  targetPath: request.targetPath,
+});
+```
+
+## Error Handling
+
+### Try-Catch Patterns
+```javascript
+try {
+  const result = await riskyOperation();
+  return { success: true, data: result };
+} catch (error) {
+  logger.error('Operation failed', {
+    error: error.message,
+    stack: error.stack,
+    context: additionalContext,
+  });
+  
+  return {
+    success: false,
+    error: error.message,
+    // Don't expose internal errors to external callers
+  };
+}
+```
+
+### Promise Error Handling
+```javascript
+// Always handle promise rejections
+promise
+  .then(result => {
+    // Handle success
+  })
+  .catch(error => {
+    logger.error('Promise rejected', { error: error.message });
+    // Handle error
+  });
+```
+
+### Async/Await Error Handling
+```javascript
+async function executeWorkflow(request) {
+  try {
+    const result = await step1();
+    const result2 = await step2(result);
+    return { success: true, data: result2 };
+  } catch (error) {
+    logger.error('Workflow failed', { error: error.message });
+    throw error; // Re-throw if caller should handle
+  }
+}
+```
+
+## Testing with Jest
+
+### Test Structure
+```javascript
+import { CursorCLI } from '../src/cursor-cli.js';
+
+describe('CursorCLI', () => {
+  let cursorCLI;
+
+  beforeEach(() => {
+    cursorCLI = new CursorCLI();
+  });
+
+  describe('executeCommand', () => {
+    it('should execute valid commands', async () => {
+      // Arrange
+      const args = ['--version'];
+      
+      // Act
+      const result = await cursorCLI.executeCommand(args);
+      
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.stdout).toBeDefined();
+    });
+
+    it('should reject blocked commands', () => {
+      expect(() => {
+        cursorCLI.validateCommandSecurity(['rm', '-rf', '/']);
+      }).toThrow('Blocked command detected');
+    });
+  });
+});
+```
+
+### Test Best Practices
+- Use descriptive test names
+- Follow AAA pattern (Arrange, Act, Assert)
+- Test both success and error cases
+- Mock external dependencies
+- Use `beforeEach`/`afterEach` for setup/teardown
+- Keep tests independent and isolated
+
+### Running Tests
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # With coverage
+```
+
+## Environment Variables
+
+### Configuration
+Always use environment variables for configuration:
+```javascript
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
+const timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10);
+```
+
+### Required Environment Variables
+- `CURSOR_CLI_PATH`: Path to cursor-cli executable
+- `TARGET_APP_PATH`: Path to target application
+- `CURSOR_CLI_TIMEOUT`: Command timeout in milliseconds
+- `LOG_LEVEL`: Logging level (info, debug, error, warn)
+- `LOG_FILE`: Log file path
+
+### Optional Environment Variables
+- `JAREK_VA_URL`: jarek-va API URL (for future HTTP server)
+- `JAREK_VA_API_KEY`: API key for jarek-va
+- `ALLOWED_COMMANDS`: Comma-separated list of allowed commands
+- `BLOCKED_COMMANDS`: Comma-separated list of blocked commands
+
+## Communication with jarek-va
+
+### Request Format
+jarek-va sends HTTP requests (future implementation):
+```json
+{
+  "id": "request-123",
+  "phase": "red",
+  "requirements": {
+    "description": "Create user service",
+    "type": "service",
+    "test_framework": "rspec"
+  },
+  "targetPath": "../jarek-va"
+}
+```
+
+### Response Format
+Return standardized responses:
+```json
+{
+  "success": true,
+  "phase": "red",
+  "output": "Generated test files...",
+  "files": [
+    "spec/services/user_service_spec.rb"
+  ]
+}
+```
+
+### Error Response
+```json
+{
+  "success": false,
+  "phase": "red",
+  "error": "Command timeout after 300000ms"
+}
+```
+
+## Target Application Integration
+
+### Running Tests
+```javascript
+import { TargetAppRunner } from './src/target-app.js';
+
+const runner = new TargetAppRunner();
+const result = await runner.runTests(targetPath);
+
+// Result format:
+// {
+//   success: true,
+//   exitCode: 0,
+//   output: '...',
+//   passed: { total: 10, passed: 8, failed: 2 }
+// }
+```
+
+### Supported App Types
+- **rails**: Uses `bundle exec rspec`
+- **node**: Uses `npm test`
+- Extend `TargetAppRunner` for additional types
+
+### Test Result Extraction
+Parse test framework output to extract:
+- Total tests
+- Passed tests
+- Failed tests
+- Test duration
+
+## Security Best Practices
+
+### Command Validation
+```javascript
+validateCommandSecurity(args) {
+  const commandString = args.join(' ').toLowerCase();
+  
+  // Check blacklist
+  for (const blocked of this.blockedCommands) {
+    if (commandString.includes(blocked.toLowerCase())) {
+      throw new Error(`Blocked command detected: ${blocked}`);
+    }
+  }
+  
+  // Additional validation...
+}
+```
+
+### Path Validation
+```javascript
+import { existsSync } from 'fs';
+import path from 'path';
+
+if (!existsSync(targetPath)) {
+  throw new Error(`Path does not exist: ${targetPath}`);
+}
+
+// Resolve to absolute path
+const absolutePath = path.resolve(targetPath);
+```
+
+### Timeout Protection
+```javascript
+const timeoutId = setTimeout(() => {
+  child.kill('SIGTERM');
+  reject(new Error(`Command timeout after ${timeout}ms`));
+}, timeout);
+
+// Clear timeout on completion
+child.on('close', () => {
+  clearTimeout(timeoutId);
+});
+```
+
+### Output Size Limits
+```javascript
+let outputSize = 0;
+const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+
+child.stdout.on('data', (data) => {
+  outputSize += Buffer.byteLength(data);
+  
+  if (outputSize > MAX_SIZE) {
+    child.kill('SIGTERM');
+    reject(new Error('Output size exceeded limit'));
+  }
+});
+```
+
+## Common Patterns
+
+### Async Function Pattern
+```javascript
+async function executeWorkflow(request) {
+  try {
+    // Validate input
+    if (!request.phase) {
+      throw new Error('Missing phase');
+    }
+    
+    // Execute workflow
+    const result = await performOperation(request);
+    
+    // Log success
+    logger.info('Workflow completed', { requestId: request.id });
+    
+    return result;
+  } catch (error) {
+    logger.error('Workflow failed', { error: error.message });
+    throw error;
+  }
+}
+```
+
+### Class Pattern
+```javascript
+export class MyService {
+  constructor(options = {}) {
+    this.timeout = options.timeout || 300000;
+    this.logger = options.logger || logger;
+  }
+  
+  async execute() {
+    // Implementation
+  }
+  
+  validate() {
+    // Validation logic
+  }
+}
+```
+
+### Promise Wrapper Pattern
+```javascript
+function executeCommand(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, options);
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr, exitCode: code });
+      } else {
+        reject(new Error(`Command failed: ${stderr}`));
+      }
+    });
+    
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+```
+
+## Code Quality
+
+### Linting
+```bash
+npm run lint        # Check for issues
+npm run lint:fix    # Auto-fix issues
+```
+
+### Formatting
+```bash
+npm run format        # Format code
+npm run format:check  # Check formatting
+```
+
+### Before Committing
+1. Run tests: `npm test`
+2. Run linter: `npm run lint`
+3. Check formatting: `npm run format:check`
+4. Fix any issues
+
+## Development Workflow
+
+### Adding a New Feature
+1. Write tests first (TDD Red phase)
+2. Implement feature (TDD Green phase)
+3. Refactor if needed (TDD Refactor phase)
+4. Ensure all tests pass
+5. Run linter and formatter
+6. Update documentation if needed
+
+### Debugging
+- Use `console.log` sparingly (prefer logger)
+- Use Node.js debugger: `node --inspect src/index.js`
+- Check logs in `logs/` directory
+- Use environment variable `LOG_LEVEL=debug` for verbose logging
+
+### Troubleshooting
+- **cursor-cli not found**: Check `CURSOR_CLI_PATH` in `.env`
+- **Command timeouts**: Increase `CURSOR_CLI_TIMEOUT`
+- **Test failures**: Check target application setup
+- **Import errors**: Ensure `.js` extension in imports
+
+## Integration Notes
+
+### With jarek-va
+- jarek-va sends code generation requests
+- cursor-runner executes cursor-cli commands
+- cursor-runner returns results to jarek-va
+- Results formatted for ElevenLabs Agent
+
+### With cursor-cli
+- Validate cursor-cli is available before use
+- Execute commands with proper security checks
+- Handle timeouts and errors gracefully
+- Parse output for file changes
+
+### With Target Applications
+- Support multiple app types (Rails, Node.js)
+- Run appropriate test commands
+- Extract test results
+- Handle test failures gracefully
+
+## Notes
+
+- This is an ES module project - always use `import`/`export`
+- Always include `.js` extension in imports
+- Use async/await for asynchronous operations
+- Implement comprehensive error handling
+- Log all important operations
+- Follow security best practices
+- Write tests for all functionality
+- Keep code focused and modular
+
