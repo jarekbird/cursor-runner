@@ -8,12 +8,17 @@
  */
 
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 import { logger } from './logger.js';
 import { CursorCLI } from './cursor-cli.js';
 import { TargetAppRunner } from './target-app.js';
+import { Server } from './server.js';
 
 // Load environment variables
 dotenv.config();
+
+// Get __filename for ES modules
+const __filename = fileURLToPath(import.meta.url);
 
 /**
  * Main application class
@@ -22,6 +27,7 @@ class CursorRunner {
   constructor() {
     this.cursorCLI = new CursorCLI();
     this.targetAppRunner = new TargetAppRunner();
+    this.server = new Server();
     this.logger = logger;
   }
 
@@ -38,10 +44,26 @@ class CursorRunner {
       // Test cursor-cli availability
       await this.cursorCLI.validate();
       
+      // Start HTTP server
+      await this.server.start();
+      
       this.logger.info('cursor-runner initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize cursor-runner', { error: error.message });
       throw error;
+    }
+  }
+
+  /**
+   * Shutdown the application gracefully
+   */
+  async shutdown() {
+    try {
+      this.logger.info('Shutting down cursor-runner...');
+      await this.server.stop();
+      this.logger.info('cursor-runner shut down successfully');
+    } catch (error) {
+      this.logger.error('Error during shutdown', { error: error.message });
     }
   }
 
@@ -116,8 +138,20 @@ class CursorRunner {
 export { CursorRunner };
 
 // Run as CLI if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${__filename}`) {
   const runner = new CursorRunner();
+  
+  // Handle graceful shutdown
+  process.on('SIGTERM', async () => {
+    await runner.shutdown();
+    process.exit(0);
+  });
+  
+  process.on('SIGINT', async () => {
+    await runner.shutdown();
+    process.exit(0);
+  });
+  
   runner.initialize().catch(error => {
     console.error('Failed to start cursor-runner:', error);
     process.exit(1);

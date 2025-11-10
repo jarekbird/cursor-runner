@@ -38,3 +38,6 @@ build/
 tmp/
 temp/
 
+# Repositories folder
+repositories/
+

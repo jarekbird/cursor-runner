@@ -46,6 +46,9 @@ cp .env.example .env
 Edit `.env` file with your settings:
 
 ```env
+# HTTP Server Configuration
+PORT=3001
+
 # Cursor CLI Configuration
 CURSOR_CLI_PATH=cursor
 CURSOR_CLI_TIMEOUT=300000
@@ -54,12 +57,91 @@ CURSOR_CLI_TIMEOUT=300000
 TARGET_APP_PATH=../jarek-va
 TARGET_APP_TYPE=rails
 
+# Git Service Configuration
+REPOSITORIES_PATH=./repositories
+GIT_COMMAND_TIMEOUT=60000
+
+# Terminal Service Configuration
+TERMINAL_COMMAND_TIMEOUT=300000
+TERMINAL_MAX_OUTPUT_SIZE=10485760
+ALLOWED_TERMINAL_COMMANDS=git,cursor,npm,node,bundle,rails,rspec
+BLOCKED_TERMINAL_COMMANDS=rm,del,format,dd,sudo,su
+ENFORCE_COMMAND_WHITELIST=false
+
 # jarek-va Communication
 JAREK_VA_URL=http://localhost:3000
 JAREK_VA_API_KEY=your-api-key-here
 ```
 
 ## Usage
+
+### Start HTTP Server
+
+```bash
+npm start
+```
+
+The server will start on port 3001 (configurable via `PORT` environment variable).
+
+### API Endpoints
+
+#### Health Check
+```
+GET /health
+```
+Returns server health status.
+
+#### Git Operations
+
+**Clone Repository**
+```
+POST /git/clone
+Content-Type: application/json
+
+{
+  "repositoryUrl": "https://github.com/user/repo.git",
+  "repositoryName": "optional-name"
+}
+```
+
+**List Repositories**
+```
+GET /git/repositories
+```
+Returns list of locally cloned repositories in `/repositories` folder.
+
+**Checkout Branch**
+```
+POST /git/checkout
+Content-Type: application/json
+
+{
+  "repository": "repo-name",
+  "branch": "branch-name"
+}
+```
+
+**Push Branch**
+```
+POST /git/push
+Content-Type: application/json
+
+{
+  "repository": "repo-name",
+  "branch": "branch-name"
+}
+```
+
+**Pull Branch**
+```
+POST /git/pull
+Content-Type: application/json
+
+{
+  "repository": "repo-name",
+  "branch": "branch-name"
+}
+```
 
 ### As a Module
 
@@ -75,12 +157,6 @@ const result = await runner.executeCodeGeneration({
   requirements: { description: 'Create user service' },
   targetPath: '../jarek-va',
 });
-```
-
-### As CLI
-
-```bash
-npm start
 ```
 
 ## Development
