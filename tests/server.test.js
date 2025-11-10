@@ -6,14 +6,13 @@ describe('Server', () => {
   let server;
   let app;
   let mockGitService;
+  let mockCursorCLI;
+  let mockTerminalService;
+  let mockFilesystem;
 
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
-    
-    // Create server instance
-    server = new Server();
-    app = server.app;
     
     // Create mock git service
     mockGitService = {
@@ -22,10 +21,41 @@ describe('Server', () => {
       checkoutBranch: jest.fn(),
       pushBranch: jest.fn(),
       pullBranch: jest.fn(),
+      repositoriesPath: '/test/repositories',
     };
     
-    // Replace gitService with our mock
+    // Create mock cursor CLI
+    mockCursorCLI = {
+      executeCommand: jest.fn(),
+      validate: jest.fn(),
+    };
+    
+    // Create mock terminal service
+    mockTerminalService = {
+      executeCommand: jest.fn(),
+    };
+    
+    // Create mock filesystem service
+    mockFilesystem = {
+      exists: jest.fn().mockReturnValue(true), // Default: repository exists
+    };
+    
+    // Create server instance
+    server = new Server();
+    app = server.app;
+    
+    // Replace services with our mocks
     server.gitService = mockGitService;
+    server.cursorCLI = mockCursorCLI;
+    server.terminalService = mockTerminalService;
+    server.filesystem = mockFilesystem;
+    // Update cursorExecution with all mocked services
+    server.cursorExecution.gitService = mockGitService;
+    server.cursorExecution.cursorCLI = mockCursorCLI;
+    server.cursorExecution.terminalService = mockTerminalService;
+    server.cursorExecution.filesystem = mockFilesystem;
+    // Update reviewAgent with mocked cursorCLI
+    server.reviewAgent.cursorCLI = mockCursorCLI;
   });
 
   afterEach(async () => {
@@ -295,6 +325,549 @@ describe('Server', () => {
 
         expect(response.status).toBe(500);
         expect(response.body.error).toBeDefined();
+      });
+    });
+  });
+
+  describe('Cursor Execution Endpoints', () => {
+    describe('POST /cursor/execute', () => {
+      it('should execute cursor command successfully', async () => {
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "Create user service"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.repository).toBe('test-repo');
+        expect(response.body.branchName).toBe('main');
+        expect(response.body.output).toBe('Generated code successfully');
+        expect(mockGitService.checkoutBranch).toHaveBeenCalledWith('test-repo', 'main');
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+      });
+
+      it('should return 400 if repository is missing', async () => {
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('repository is required');
+      });
+
+      it('should return 400 if branchName is missing', async () => {
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('branchName is required');
+      });
+
+      it('should return 400 if command is missing', async () => {
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('command is required');
+      });
+
+      it('should return 404 if repository does not exist locally', async () => {
+        mockFilesystem.exists.mockReturnValue(false);
+
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'nonexistent-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(404);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Repository not found locally');
+      });
+
+      it('should return 500 if branch checkout fails', async () => {
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockRejectedValue(new Error('Branch not found'));
+
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'nonexistent-branch',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(500);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Failed to checkout branch');
+      });
+
+      it('should append instructions to command with --prompt flag', async () => {
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Output',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "Create service"',
+          });
+
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
+        const promptIndex = callArgs.findIndex(arg => arg === '--prompt');
+        expect(promptIndex).toBeGreaterThan(-1);
+        expect(callArgs[promptIndex + 1]).toContain('Create service');
+        expect(callArgs[promptIndex + 1]).toContain('If you need to run a terminal command');
+      });
+
+      it('should handle command execution errors', async () => {
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand.mockRejectedValue(new Error('Command failed'));
+
+        const response = await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(500);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Command failed');
+      });
+
+      it('should parse command with quoted arguments', async () => {
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Output',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        await request(app)
+          .post('/cursor/execute')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "Create user service with authentication"',
+          });
+
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
+        expect(callArgs).toContain('--prompt');
+        // The prompt argument will have instructions appended, so check that it contains the original text
+        const promptArg = callArgs[callArgs.indexOf('--prompt') + 1];
+        expect(promptArg).toContain('Create user service with authentication');
+      });
+    });
+
+    describe('POST /cursor/iterate', () => {
+      it('should execute iterate successfully with single iteration', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code generated successfully',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Task completed',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command
+          .mockResolvedValueOnce(mockReviewResult); // Review agent
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "Create user service"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.iterations).toBe(0); // No iterations needed, completed immediately
+        expect(response.body.output).toBe('Code generated successfully');
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(2); // Initial + review
+      });
+
+      it('should iterate when code is not complete', async () => {
+        const mockCursorResult1 = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code, but needs testing',
+          stderr: '',
+        };
+
+        const mockReviewResult1 = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: false,
+            execute_terminal_command: true,
+            terminal_command_requested: 'bundle exec rspec spec',
+            justification: 'Tests need to be run',
+          }),
+          stderr: '',
+        };
+
+        const mockTerminalResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Tests passed',
+          stderr: '',
+        };
+
+        const mockCursorResult2 = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code completed after tests',
+          stderr: '',
+        };
+
+        const mockReviewResult2 = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'All done',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockTerminalService.executeCommand.mockResolvedValue(mockTerminalResult);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult1) // Initial command
+          .mockResolvedValueOnce(mockReviewResult1) // First review
+          .mockResolvedValueOnce(mockCursorResult2) // Resume command
+          .mockResolvedValueOnce(mockReviewResult2); // Second review
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "Create user service"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.iterations).toBe(1);
+        expect(response.body.output).toBe('Code completed after tests');
+        expect(mockTerminalService.executeCommand).toHaveBeenCalledWith(
+          'bundle',
+          ['exec', 'rspec', 'spec'],
+          expect.any(Object)
+        );
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4); // Initial + review + resume + review
+      });
+
+      it('should return 400 if repository is missing', async () => {
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('repository is required');
+      });
+
+      it('should return 404 if repository does not exist locally', async () => {
+        mockFilesystem.exists.mockReturnValue(false);
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'nonexistent-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(404);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Repository not found locally');
+      });
+
+      it('should handle terminal command execution errors', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: false,
+            execute_terminal_command: true,
+            terminal_command_requested: 'bundle exec rspec spec',
+            justification: 'Need to run tests',
+          }),
+          stderr: '',
+        };
+
+        const mockResumeResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Continued after terminal error',
+          stderr: '',
+        };
+
+        const mockFinalReview = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Completed',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockTerminalService.executeCommand.mockRejectedValue(new Error('Command not found'));
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult)
+          .mockResolvedValueOnce(mockReviewResult)
+          .mockResolvedValueOnce(mockResumeResult)
+          .mockResolvedValueOnce(mockFinalReview);
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(mockTerminalService.executeCommand).toHaveBeenCalled();
+      });
+
+      it('should stop after max iterations', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Still working',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: false,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Still in progress',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        
+        // Set up mocks: initial command, then review, then 25 iterations of (resume + review)
+        const mockCalls = [
+          mockCursorResult, // Initial command
+          mockReviewResult, // First review
+        ];
+        
+        // Add 25 iterations (each iteration = resume + review)
+        for (let i = 0; i < 25; i++) {
+          mockCalls.push(mockCursorResult); // Resume
+          mockCalls.push(mockReviewResult); // Review
+        }
+        
+        mockCursorCLI.executeCommand.mockImplementation(() => {
+          const result = mockCalls.shift();
+          return Promise.resolve(result || mockCursorResult);
+        });
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.iterations).toBe(25);
+        expect(response.body.maxIterations).toBe(25);
+      });
+
+      it('should handle review agent JSON parsing failures', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Invalid JSON response',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult)
+          .mockResolvedValueOnce(mockReviewResult);
+
+        const response = await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.iterations).toBe(0); // Should break on review failure
+      });
+
+      it('should include terminal output in resume prompt', async () => {
+        const mockCursorResult1 = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Initial code',
+          stderr: '',
+        };
+
+        const mockReviewResult1 = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: false,
+            execute_terminal_command: true,
+            terminal_command_requested: 'bundle exec rspec',
+            justification: 'Run tests',
+          }),
+          stderr: '',
+        };
+
+        const mockTerminalResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Test output: 10 examples, 0 failures',
+          stderr: '',
+        };
+
+        const mockCursorResult2 = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Continued work',
+          stderr: '',
+        };
+
+        const mockReviewResult2 = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Done',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockGitService.checkoutBranch.mockResolvedValue({ success: true });
+        mockTerminalService.executeCommand.mockResolvedValue(mockTerminalResult);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult1)
+          .mockResolvedValueOnce(mockReviewResult1)
+          .mockResolvedValueOnce(mockCursorResult2)
+          .mockResolvedValueOnce(mockReviewResult2);
+
+        await request(app)
+          .post('/cursor/iterate')
+          .send({
+            repository: 'test-repo',
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+          });
+
+        // Check that resume command includes terminal output
+        // The resume call should be the 3rd call (after initial command and review)
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4);
+        const resumeCall = mockCursorCLI.executeCommand.mock.calls[2];
+        expect(resumeCall).toBeDefined();
+        expect(resumeCall[0]).toEqual(['--resume', expect.stringContaining('Test output: 10 examples, 0 failures')]);
       });
     });
   });

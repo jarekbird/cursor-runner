@@ -1,10 +1,12 @@
 import express from 'express';
-import path from 'path';
-import { existsSync } from 'fs';
 import { logger } from './logger.js';
 import { GitService } from './git-service.js';
 import { TerminalService } from './terminal-service.js';
 import { CursorCLI } from './cursor-cli.js';
+import { CommandParserService } from './command-parser-service.js';
+import { ReviewAgentService } from './review-agent-service.js';
+import { CursorExecutionService } from './cursor-execution-service.js';
+import { FilesystemService } from './filesystem-service.js';
 
 /**
  * HTTP Server for cursor-runner API
@@ -18,6 +20,17 @@ export class Server {
     this.gitService = new GitService();
     this.terminalService = new TerminalService();
     this.cursorCLI = new CursorCLI();
+    this.commandParser = new CommandParserService();
+    this.reviewAgent = new ReviewAgentService(this.cursorCLI);
+    this.filesystem = new FilesystemService();
+    this.cursorExecution = new CursorExecutionService(
+      this.gitService,
+      this.cursorCLI,
+      this.terminalService,
+      this.commandParser,
+      this.reviewAgent,
+      this.filesystem
+    );
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -74,7 +87,6 @@ export class Server {
      * Body: { repository: string, branchName: string, command: string }
      */
     router.post('/execute', async (req, res, next) => {
-      const startTime = Date.now();
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       try {
@@ -85,131 +97,61 @@ export class Server {
           userAgent: req.get('user-agent'),
         });
 
-        // Validate required parameters
-        const { repository, branchName, command } = req.body;
-
-        if (!repository) {
-          return res.status(400).json({
-            success: false,
-            error: 'repository is required',
-            requestId,
-          });
-        }
-
-        if (!branchName) {
-          return res.status(400).json({
-            success: false,
-            error: 'branchName is required',
-            requestId,
-          });
-        }
-
-        if (!command) {
-          return res.status(400).json({
-            success: false,
-            error: 'command is required',
-            requestId,
-          });
-        }
-
-        // Check if repository exists locally
-        const repositoryPath = this.gitService.repositoriesPath;
-        const fullRepositoryPath = path.join(repositoryPath, repository);
-
-        if (!existsSync(fullRepositoryPath)) {
-          return res.status(404).json({
-            success: false,
-            error: `Repository not found locally: ${repository}. Please clone it first using POST /git/clone`,
-            requestId,
-          });
-        }
-
-        // Checkout the branch
-        logger.info('Checking out branch', { repository, branchName });
-        try {
-          await this.gitService.checkoutBranch(repository, branchName);
-        } catch (error) {
-          logger.error('Failed to checkout branch', { repository, branchName, error: error.message });
-          return res.status(500).json({
-            success: false,
-            error: `Failed to checkout branch: ${error.message}`,
-            requestId,
-          });
-        }
-
-        // Parse command (split by spaces, handle quoted arguments)
-        const commandArgs = this.parseCommand(command);
-
-        // Append instructions to the command
-        // If the command has a prompt/instruction argument, append to it
-        const instructions = '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
-        
-        // Find prompt/instruction arguments and append instructions
-        const modifiedArgs = [...commandArgs];
-        let foundPromptFlag = false;
-        
-        for (let i = 0; i < modifiedArgs.length; i++) {
-          // Common prompt flags: --prompt, -p, --instruction, --message, etc.
-          if ((modifiedArgs[i] === '--prompt' || 
-               modifiedArgs[i] === '-p' || 
-               modifiedArgs[i] === '--instruction' ||
-               modifiedArgs[i] === '--message') && 
-              i + 1 < modifiedArgs.length) {
-            // Append instructions to the next argument (the prompt text)
-            modifiedArgs[i + 1] = modifiedArgs[i + 1] + instructions;
-            foundPromptFlag = true;
-            break;
-          }
-        }
-        
-        // If no prompt flag found, append instructions to the last argument
-        if (!foundPromptFlag && modifiedArgs.length > 0) {
-          modifiedArgs[modifiedArgs.length - 1] = modifiedArgs[modifiedArgs.length - 1] + instructions;
-        }
-
-        // Execute cursor command in the repository directory
-        logger.info('Executing cursor command', {
+        const result = await this.cursorExecution.execute({
+          repository: req.body.repository,
+          branchName: req.body.branchName,
+          command: req.body.command,
           requestId,
-          repository,
-          branchName,
-          command: modifiedArgs,
-          cwd: fullRepositoryPath,
         });
 
-        const result = await this.cursorCLI.executeCommand(modifiedArgs, {
-          cwd: fullRepositoryPath,
-        });
-
-        // Format response
-        const duration = Date.now() - startTime;
-        logger.info('Cursor execution completed', {
-          requestId,
-          repository,
-          branchName,
-          success: result.success,
-          duration: `${duration}ms`,
-        });
-
-        res.json({
-          success: result.success !== false,
-          requestId,
-          repository,
-          branchName,
-          command: modifiedArgs,
-          output: result.stdout || '',
-          error: result.stderr || null,
-          exitCode: result.exitCode || 0,
-          duration: `${duration}ms`,
-          timestamp: new Date().toISOString(),
-        });
+        res.status(result.status).json(result.body);
       } catch (error) {
-        // Log error with full context
-        const duration = Date.now() - startTime;
         logger.error('Cursor execution request failed', {
           requestId: requestId || 'unknown',
           error: error.message,
           stack: error.stack,
-          duration: `${duration}ms`,
+          body: req.body,
+        });
+
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          requestId: requestId || 'unknown',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    /**
+     * POST /cursor/iterate
+     * Execute cursor-cli command iteratively until completion
+     * Body: { repository: string, branchName: string, command: string }
+     */
+    router.post('/iterate', async (req, res, next) => {
+      let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      try {
+        logger.info('Cursor iterate request received', {
+          requestId,
+          body: req.body,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        const result = await this.cursorExecution.iterate({
+          repository: req.body.repository,
+          branchName: req.body.branchName,
+          command: req.body.command,
+          requestId,
+          maxIterations: 25,
+        });
+
+        res.status(result.status).json(result.body);
+      } catch (error) {
+        logger.error('Cursor iterate request failed', {
+          requestId: requestId || 'unknown',
+          error: error.message,
+          stack: error.stack,
           body: req.body,
         });
 
@@ -226,47 +168,6 @@ export class Server {
     this.app.use('/cursor', router);
   }
 
-  /**
-   * Parse command string into arguments array
-   * Handles quoted arguments and spaces
-   * @param {string} command - Command string
-   * @returns {Array<string>} Command arguments
-   */
-  parseCommand(command) {
-    const args = [];
-    let current = '';
-    let inQuotes = false;
-    let quoteChar = null;
-
-    for (let i = 0; i < command.length; i++) {
-      const char = command[i];
-
-      if ((char === '"' || char === "'") && (i === 0 || command[i - 1] !== '\\')) {
-        if (!inQuotes) {
-          inQuotes = true;
-          quoteChar = char;
-        } else if (char === quoteChar) {
-          inQuotes = false;
-          quoteChar = null;
-        } else {
-          current += char;
-        }
-      } else if (char === ' ' && !inQuotes) {
-        if (current) {
-          args.push(current);
-          current = '';
-        }
-      } else {
-        current += char;
-      }
-    }
-
-    if (current) {
-      args.push(current);
-    }
-
-    return args;
-  }
 
   /**
    * Enhanced error handling

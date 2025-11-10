@@ -52,6 +52,7 @@ class CursorRunner {
         endpoints: [
           'GET /health',
           'POST /cursor/execute',
+          'POST /cursor/iterate',
           'POST /git/clone',
           'GET /git/repositories',
           'POST /git/checkout',

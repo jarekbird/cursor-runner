@@ -1,0 +1,61 @@
+import { logger } from './logger.js';
+
+/**
+ * ReviewAgentService - Uses cursor as a review agent to evaluate code completion
+ * 
+ * Analyzes cursor output to determine if code generation is complete
+ * and if terminal commands need to be executed.
+ */
+export class ReviewAgentService {
+  constructor(cursorCLI) {
+    this.cursorCLI = cursorCLI;
+  }
+
+  /**
+   * Review output using cursor as a review agent
+   * @param {string} output - Output to review
+   * @param {string} cwd - Working directory
+   * @returns {Promise<Object|null>} Review result or null if parsing failed
+   */
+  async reviewOutput(output, cwd) {
+    const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return a simple JSON parsable output with a simple structure defining whether the task was completed. Also evaluate whether a terminal command has been requested by the agent to be run. If a terminal request is being requested, mark the output as code_complete: false. If the output is not requesting a terminal request, but simply asking a question, set code_complete to true and execute_terminal_command to false. Return following the pattern of this shape:
+
+{
+  "code_complete": true,
+  "execute_terminal_command": true,
+  "terminal_command_requested": "bundle exec rspec spec",
+  "justification": "step 3 was skipped"
+}
+
+Previous agent output:
+${output}`;
+
+    try {
+      const result = await this.cursorCLI.executeCommand(['--prompt', reviewPrompt], {
+        cwd,
+      });
+
+      // Try to extract JSON from output
+      const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (parseError) {
+          logger.warn('Failed to parse review JSON', { error: parseError.message });
+        }
+      }
+
+      // If no JSON found, try to parse the entire output
+      try {
+        return JSON.parse(result.stdout);
+      } catch (parseError) {
+        logger.warn('Failed to parse review output as JSON', { error: parseError.message });
+        return null;
+      }
+    } catch (error) {
+      logger.error('Review agent failed', { error: error.message });
+      return null;
+    }
+  }
+}
+

@@ -79,13 +79,14 @@ export class TerminalService {
           stderr: stderr.trim(),
         };
 
+        // Always resolve with result, even on failure, so caller can access stdout/stderr
         if (code === 0) {
           logger.debug('Terminal command completed successfully', { command, args });
-          resolve(result);
         } else {
           logger.warn('Terminal command failed', { command, args, exitCode: code, stderr });
-          reject(new Error(`Command failed with exit code ${code}: ${stderr || stdout}`));
         }
+        
+        resolve(result);
       });
 
       // Handle process errors
