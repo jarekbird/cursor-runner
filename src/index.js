@@ -47,7 +47,17 @@ class CursorRunner {
       // Start HTTP server
       await this.server.start();
       
-      this.logger.info('cursor-runner initialized successfully');
+      this.logger.info('cursor-runner initialized successfully', {
+        port: this.server.port,
+        endpoints: [
+          'GET /health',
+          'POST /git/clone',
+          'GET /git/repositories',
+          'POST /git/checkout',
+          'POST /git/push',
+          'POST /git/pull',
+        ],
+      });
     } catch (error) {
       this.logger.error('Failed to initialize cursor-runner', { error: error.message });
       throw error;
@@ -85,49 +95,67 @@ class CursorRunner {
 
   /**
    * Execute code generation workflow
-   * @param {Object} request - Code generation request from jarek-va
+   * @param {Object} request - Code generation request (already formatted)
    * @returns {Promise<Object>} Result of code generation
    */
   async executeCodeGeneration(request) {
+    const startTime = Date.now();
+    
     try {
-      this.logger.info('Executing code generation workflow', { requestId: request.id });
+      this.logger.info('Executing code generation workflow', {
+        requestId: request.id,
+        phase: request.phase,
+        targetPath: request.targetPath,
+      });
       
       const { phase, requirements, targetPath } = request;
       
       let result;
       
+      // Execute based on phase
       switch (phase) {
         case 'red':
           // Generate tests first (TDD Red phase)
+          this.logger.debug('Starting Red phase: test generation', { requestId: request.id });
           result = await this.cursorCLI.generateTests(requirements, targetPath);
           break;
         case 'green':
           // Generate implementation (TDD Green phase)
+          this.logger.debug('Starting Green phase: implementation generation', { requestId: request.id });
           result = await this.cursorCLI.generateImplementation(requirements, targetPath);
           break;
         case 'refactor':
           // Refactor code (TDD Refactor phase)
+          this.logger.debug('Starting Refactor phase: code refactoring', { requestId: request.id });
           result = await this.cursorCLI.refactorCode(requirements, targetPath);
           break;
         case 'validate':
           // Run tests and validate
+          this.logger.debug('Starting Validate phase: test execution', { requestId: request.id });
           result = await this.targetAppRunner.runTests(targetPath);
           break;
         default:
           throw new Error(`Unknown phase: ${phase}`);
       }
       
-      this.logger.info('Code generation workflow completed', { 
+      const duration = Date.now() - startTime;
+      this.logger.info('Code generation workflow completed', {
         requestId: request.id,
         phase,
-        success: result.success 
+        success: result.success,
+        duration: `${duration}ms`,
+        filesCount: result.files?.length || 0,
       });
       
       return result;
     } catch (error) {
-      this.logger.error('Code generation workflow failed', { 
+      const duration = Date.now() - startTime;
+      this.logger.error('Code generation workflow failed', {
         requestId: request.id,
-        error: error.message 
+        phase: request.phase,
+        error: error.message,
+        stack: error.stack,
+        duration: `${duration}ms`,
       });
       throw error;
     }

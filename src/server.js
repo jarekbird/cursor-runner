@@ -51,17 +51,60 @@ export class Server {
 
     // Error handling middleware (must be after all routes)
     this.app.use((err, req, res, next) => {
-      logger.error('HTTP Error', {
-        error: err.message,
-        stack: err.stack,
-        path: req.path,
-      });
-      
-      res.status(err.status || 500).json({
-        success: false,
-        error: err.message,
-      });
+      this.handleError(err, req, res);
     });
+  }
+
+  /**
+   * Enhanced error handling
+   * @param {Error} err - Error object
+   * @param {Object} req - Express request
+   * @param {Object} res - Express response
+   */
+  handleError(err, req, res) {
+    // Log error with full context
+    logger.error('HTTP Error Handler', {
+      error: err.message,
+      stack: err.stack,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      body: req.body,
+      query: req.query,
+      headers: {
+        'user-agent': req.get('user-agent'),
+        'content-type': req.get('content-type'),
+      },
+    });
+
+    // Determine status code
+    let statusCode = err.status || err.statusCode || 500;
+
+    // Handle specific error types
+    if (err.name === 'ValidationError') {
+      statusCode = 400;
+    } else if (err.name === 'UnauthorizedError') {
+      statusCode = 401;
+    } else if (err.name === 'ForbiddenError') {
+      statusCode = 403;
+    } else if (err.name === 'NotFoundError') {
+      statusCode = 404;
+    }
+
+    // Format error response
+    const errorResponse = {
+      success: false,
+      error: err.message || 'Internal server error',
+      timestamp: new Date().toISOString(),
+      path: req.path,
+    };
+
+    // Add stack trace in development
+    if (process.env.NODE_ENV === 'development') {
+      errorResponse.stack = err.stack;
+    }
+
+    res.status(statusCode).json(errorResponse);
   }
 
   /**
