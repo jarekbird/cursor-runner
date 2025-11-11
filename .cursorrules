@@ -574,6 +574,14 @@ npm run format        # Format code
 npm run format:check  # Check formatting
 ```
 
+### When Making Changes
+**Always run linting after making code changes:**
+1. After editing any JavaScript files, run: `npm run lint`
+2. Auto-fix issues when possible: `npm run lint:fix`
+3. Check formatting: `npm run format:check`
+4. Auto-format if needed: `npm run format`
+5. Ensure ESLint and Prettier pass before considering changes complete
+
 ### Before Committing
 1. Run tests: `npm test`
 2. Run linter: `npm run lint`
