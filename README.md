@@ -241,6 +241,10 @@ cursor-runner communicates with jarek-va via HTTP API. jarek-va sends code gener
 
 See `DEVELOPMENT.md` for detailed integration patterns.
 
+## Docker / Production
+
+For Docker setup and production deployment instructions, see [DOCKER.md](DOCKER.md).
+
 ## License
 
 ISC
