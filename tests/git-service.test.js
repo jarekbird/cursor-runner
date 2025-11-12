@@ -1,4 +1,5 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+// eslint-disable-next-line node/no-unpublished-import
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { GitService } from '../src/git-service.js';
 
 describe('GitService', () => {

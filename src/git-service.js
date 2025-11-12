@@ -119,7 +119,7 @@ export class GitService {
       logger.info('Cloning repository', { url: repositoryUrl, name: repoName });
 
       // Clone repository
-      const result = await this.executeGitCommand(['clone', repositoryUrl, repoName], {
+      await this.executeGitCommand(['clone', repositoryUrl, repoName], {
         cwd: this.repositoriesPath,
       });
 
@@ -216,7 +216,7 @@ export class GitService {
       logger.info('Checking out branch', { repository: repositoryName, branch: branchName });
 
       // Checkout branch (create if doesn't exist with -b flag, or just checkout if exists)
-      const result = await this.executeGitCommand(['checkout', branchName], {
+      await this.executeGitCommand(['checkout', branchName], {
         cwd: repositoryPath,
       }).catch(async (error) => {
         // If branch doesn't exist, try to create it
@@ -343,7 +343,7 @@ export class GitService {
     // https://github.com/user/repo
     // git@github.com:user/repo.git
     // user/repo
-    const match = url.match(/(?:.*\/)?([^\/]+?)(?:\.git)?$/);
+    const match = url.match(/(?:.*\/)?([^/]+?)(?:\.git)?$/);
     return match ? match[1] : 'repository';
   }
 }

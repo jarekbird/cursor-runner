@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * cursor-runner - Main entry point
  * 
@@ -174,16 +172,19 @@ if (import.meta.url === `file://${__filename}`) {
   // Handle graceful shutdown
   process.on('SIGTERM', async () => {
     await runner.shutdown();
+    // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
   
   process.on('SIGINT', async () => {
     await runner.shutdown();
+    // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
   
   runner.initialize().catch(error => {
     console.error('Failed to start cursor-runner:', error);
+    // eslint-disable-next-line no-process-exit
     process.exit(1);
   });
 }

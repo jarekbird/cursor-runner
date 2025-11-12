@@ -1,6 +1,5 @@
 import { spawn } from 'child_process';
 import { logger } from './logger.js';
-import path from 'path';
 import { existsSync } from 'fs';
 
 /**

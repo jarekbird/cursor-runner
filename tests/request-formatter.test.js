@@ -1,4 +1,5 @@
-import { jest, describe, it, expect } from '@jest/globals';
+// eslint-disable-next-line node/no-unpublished-import
+import { describe, it, expect } from '@jest/globals';
 import { RequestFormatter } from '../src/request-formatter.js';
 
 describe('RequestFormatter', () => {

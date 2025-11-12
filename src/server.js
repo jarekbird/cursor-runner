@@ -70,7 +70,7 @@ export class Server {
     this.setupGitRoutes();
 
     // Error handling middleware (must be after all routes)
-    this.app.use((err, req, res, next) => {
+    this.app.use((err, req, res) => {
       this.handleError(err, req, res);
     });
   }
@@ -86,7 +86,7 @@ export class Server {
      * Execute cursor-cli command in a repository
      * Body: { repository: string, branchName: string, command: string }
      */
-    router.post('/execute', async (req, res, next) => {
+    router.post('/execute', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       try {
@@ -127,7 +127,7 @@ export class Server {
      * Execute cursor-cli command iteratively until completion
      * Body: { repository: string, branchName: string, command: string }
      */
-    router.post('/iterate', async (req, res, next) => {
+    router.post('/iterate', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       try {

@@ -1,7 +1,5 @@
 import { spawn } from 'child_process';
-import { promisify } from 'util';
 import { logger } from './logger.js';
-import path from 'path';
 
 /**
  * CursorCLI - Wrapper for cursor-cli execution

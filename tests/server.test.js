@@ -1,4 +1,6 @@
+// eslint-disable-next-line node/no-unpublished-import
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+// eslint-disable-next-line node/no-unpublished-import
 import request from 'supertest';
 import { Server } from '../src/server.js';
 
