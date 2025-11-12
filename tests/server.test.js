@@ -15,7 +15,7 @@ describe('Server', () => {
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
-    
+
     // Create mock git service
     mockGitService = {
       cloneRepository: jest.fn(),
@@ -25,27 +25,27 @@ describe('Server', () => {
       pullBranch: jest.fn(),
       repositoriesPath: '/test/repositories',
     };
-    
+
     // Create mock cursor CLI
     mockCursorCLI = {
       executeCommand: jest.fn(),
       validate: jest.fn(),
     };
-    
+
     // Create mock terminal service
     mockTerminalService = {
       executeCommand: jest.fn(),
     };
-    
+
     // Create mock filesystem service
     mockFilesystem = {
       exists: jest.fn().mockReturnValue(true), // Default: repository exists
     };
-    
+
     // Create server instance
     server = new Server();
     app = server.app;
-    
+
     // Replace services with our mocks
     server.gitService = mockGitService;
     server.cursorCLI = mockCursorCLI;
@@ -90,12 +90,10 @@ describe('Server', () => {
 
         mockGitService.cloneRepository.mockResolvedValue(mockResult);
 
-        const response = await request(app)
-          .post('/git/clone')
-          .send({
-            repositoryUrl: 'https://github.com/user/repo.git',
-            repositoryName: 'test-repo',
-          });
+        const response = await request(app).post('/git/clone').send({
+          repositoryUrl: 'https://github.com/user/repo.git',
+          repositoryName: 'test-repo',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mockResult);
@@ -106,11 +104,9 @@ describe('Server', () => {
       });
 
       it('should return 400 if repositoryUrl is missing', async () => {
-        const response = await request(app)
-          .post('/git/clone')
-          .send({
-            repositoryName: 'test-repo',
-          });
+        const response = await request(app).post('/git/clone').send({
+          repositoryName: 'test-repo',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
@@ -120,11 +116,9 @@ describe('Server', () => {
       it('should handle clone errors', async () => {
         mockGitService.cloneRepository.mockRejectedValue(new Error('Repository already exists'));
 
-        const response = await request(app)
-          .post('/git/clone')
-          .send({
-            repositoryUrl: 'https://github.com/user/repo.git',
-          });
+        const response = await request(app).post('/git/clone').send({
+          repositoryUrl: 'https://github.com/user/repo.git',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
@@ -180,36 +174,27 @@ describe('Server', () => {
 
         mockGitService.checkoutBranch.mockResolvedValue(mockResult);
 
-        const response = await request(app)
-          .post('/git/checkout')
-          .send({
-            repository: 'test-repo',
-            branch: 'feature-branch',
-          });
+        const response = await request(app).post('/git/checkout').send({
+          repository: 'test-repo',
+          branch: 'feature-branch',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mockResult);
-        expect(mockGitService.checkoutBranch).toHaveBeenCalledWith(
-          'test-repo',
-          'feature-branch'
-        );
+        expect(mockGitService.checkoutBranch).toHaveBeenCalledWith('test-repo', 'feature-branch');
       });
 
       it('should return 400 if repository or branch is missing', async () => {
-        const response1 = await request(app)
-          .post('/git/checkout')
-          .send({
-            branch: 'feature-branch',
-          });
+        const response1 = await request(app).post('/git/checkout').send({
+          branch: 'feature-branch',
+        });
 
         expect(response1.status).toBe(400);
         expect(response1.body.error).toBe('repository and branch are required');
 
-        const response2 = await request(app)
-          .post('/git/checkout')
-          .send({
-            repository: 'test-repo',
-          });
+        const response2 = await request(app).post('/git/checkout').send({
+          repository: 'test-repo',
+        });
 
         expect(response2.status).toBe(400);
         expect(response2.body.error).toBe('repository and branch are required');
@@ -218,12 +203,10 @@ describe('Server', () => {
       it('should handle checkout errors', async () => {
         mockGitService.checkoutBranch.mockRejectedValue(new Error('Repository not found'));
 
-        const response = await request(app)
-          .post('/git/checkout')
-          .send({
-            repository: 'nonexistent',
-            branch: 'main',
-          });
+        const response = await request(app).post('/git/checkout').send({
+          repository: 'nonexistent',
+          branch: 'main',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.error).toBeDefined();
@@ -242,12 +225,10 @@ describe('Server', () => {
 
         mockGitService.pushBranch.mockResolvedValue(mockResult);
 
-        const response = await request(app)
-          .post('/git/push')
-          .send({
-            repository: 'test-repo',
-            branch: 'main',
-          });
+        const response = await request(app).post('/git/push').send({
+          repository: 'test-repo',
+          branch: 'main',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mockResult);
@@ -255,11 +236,9 @@ describe('Server', () => {
       });
 
       it('should return 400 if repository or branch is missing', async () => {
-        const response = await request(app)
-          .post('/git/push')
-          .send({
-            repository: 'test-repo',
-          });
+        const response = await request(app).post('/git/push').send({
+          repository: 'test-repo',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.error).toBe('repository and branch are required');
@@ -268,12 +247,10 @@ describe('Server', () => {
       it('should handle push errors', async () => {
         mockGitService.pushBranch.mockRejectedValue(new Error('Push failed'));
 
-        const response = await request(app)
-          .post('/git/push')
-          .send({
-            repository: 'test-repo',
-            branch: 'main',
-          });
+        const response = await request(app).post('/git/push').send({
+          repository: 'test-repo',
+          branch: 'main',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.error).toBeDefined();
@@ -292,12 +269,10 @@ describe('Server', () => {
 
         mockGitService.pullBranch.mockResolvedValue(mockResult);
 
-        const response = await request(app)
-          .post('/git/pull')
-          .send({
-            repository: 'test-repo',
-            branch: 'main',
-          });
+        const response = await request(app).post('/git/pull').send({
+          repository: 'test-repo',
+          branch: 'main',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mockResult);
@@ -305,11 +280,9 @@ describe('Server', () => {
       });
 
       it('should return 400 if repository or branch is missing', async () => {
-        const response = await request(app)
-          .post('/git/pull')
-          .send({
-            repository: 'test-repo',
-          });
+        const response = await request(app).post('/git/pull').send({
+          repository: 'test-repo',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.error).toBe('repository and branch are required');
@@ -318,12 +291,10 @@ describe('Server', () => {
       it('should handle pull errors', async () => {
         mockGitService.pullBranch.mockRejectedValue(new Error('Pull failed'));
 
-        const response = await request(app)
-          .post('/git/pull')
-          .send({
-            repository: 'test-repo',
-            branch: 'main',
-          });
+        const response = await request(app).post('/git/pull').send({
+          repository: 'test-repo',
+          branch: 'main',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.error).toBeDefined();
@@ -345,13 +316,11 @@ describe('Server', () => {
         mockGitService.checkoutBranch.mockResolvedValue({ success: true });
         mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
 
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "Create user service"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "Create user service"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -363,12 +332,10 @@ describe('Server', () => {
       });
 
       it('should return 400 if repository is missing', async () => {
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
@@ -376,12 +343,10 @@ describe('Server', () => {
       });
 
       it('should return 400 if branchName is missing', async () => {
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
@@ -389,12 +354,10 @@ describe('Server', () => {
       });
 
       it('should return 400 if command is missing', async () => {
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
@@ -404,13 +367,11 @@ describe('Server', () => {
       it('should return 404 if repository does not exist locally', async () => {
         mockFilesystem.exists.mockReturnValue(false);
 
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'nonexistent-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'nonexistent-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
@@ -421,13 +382,11 @@ describe('Server', () => {
         mockFilesystem.exists.mockReturnValue(true);
         mockGitService.checkoutBranch.mockRejectedValue(new Error('Branch not found'));
 
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'nonexistent-branch',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'nonexistent-branch',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
@@ -446,17 +405,15 @@ describe('Server', () => {
         mockGitService.checkoutBranch.mockResolvedValue({ success: true });
         mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
 
-        await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "Create service"',
-          });
+        await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "Create service"',
+        });
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const promptIndex = callArgs.findIndex(arg => arg === '--prompt');
+        const promptIndex = callArgs.findIndex((arg) => arg === '--prompt');
         expect(promptIndex).toBeGreaterThan(-1);
         expect(callArgs[promptIndex + 1]).toContain('Create service');
         expect(callArgs[promptIndex + 1]).toContain('If you need to run a terminal command');
@@ -467,13 +424,11 @@ describe('Server', () => {
         mockGitService.checkoutBranch.mockResolvedValue({ success: true });
         mockCursorCLI.executeCommand.mockRejectedValue(new Error('Command failed'));
 
-        const response = await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
@@ -492,13 +447,11 @@ describe('Server', () => {
         mockGitService.checkoutBranch.mockResolvedValue({ success: true });
         mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
 
-        await request(app)
-          .post('/cursor/execute')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "Create user service with authentication"',
-          });
+        await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "Create user service with authentication"',
+        });
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
@@ -536,13 +489,11 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult) // Initial command
           .mockResolvedValueOnce(mockReviewResult); // Review agent
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "Create user service"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "Create user service"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -606,13 +557,11 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult2) // Resume command
           .mockResolvedValueOnce(mockReviewResult2); // Second review
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "Create user service"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "Create user service"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -627,12 +576,10 @@ describe('Server', () => {
       });
 
       it('should return 400 if repository is missing', async () => {
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.error).toBe('repository is required');
@@ -641,13 +588,11 @@ describe('Server', () => {
       it('should return 404 if repository does not exist locally', async () => {
         mockFilesystem.exists.mockReturnValue(false);
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'nonexistent-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'nonexistent-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
@@ -702,13 +647,11 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockResumeResult)
           .mockResolvedValueOnce(mockFinalReview);
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -737,31 +680,29 @@ describe('Server', () => {
 
         mockFilesystem.exists.mockReturnValue(true);
         mockGitService.checkoutBranch.mockResolvedValue({ success: true });
-        
+
         // Set up mocks: initial command, then review, then 25 iterations of (resume + review)
         const mockCalls = [
           mockCursorResult, // Initial command
           mockReviewResult, // First review
         ];
-        
+
         // Add 25 iterations (each iteration = resume + review)
         for (let i = 0; i < 25; i++) {
           mockCalls.push(mockCursorResult); // Resume
           mockCalls.push(mockReviewResult); // Review
         }
-        
+
         mockCursorCLI.executeCommand.mockImplementation(() => {
           const result = mockCalls.shift();
           return Promise.resolve(result || mockCursorResult);
         });
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.iterations).toBe(25);
@@ -789,13 +730,11 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult)
           .mockResolvedValueOnce(mockReviewResult);
 
-        const response = await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.iterations).toBe(0); // Should break on review failure
@@ -856,20 +795,21 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult2)
           .mockResolvedValueOnce(mockReviewResult2);
 
-        await request(app)
-          .post('/cursor/iterate')
-          .send({
-            repository: 'test-repo',
-            branchName: 'main',
-            command: 'cursor generate --prompt "test"',
-          });
+        await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          command: 'cursor generate --prompt "test"',
+        });
 
         // Check that resume command includes terminal output
         // The resume call should be the 3rd call (after initial command and review)
         expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4);
         const resumeCall = mockCursorCLI.executeCommand.mock.calls[2];
         expect(resumeCall).toBeDefined();
-        expect(resumeCall[0]).toEqual(['--resume', expect.stringContaining('Test output: 10 examples, 0 failures')]);
+        expect(resumeCall[0]).toEqual([
+          '--resume',
+          expect.stringContaining('Test output: 10 examples, 0 failures'),
+        ]);
       });
     });
   });

@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 
 /**
  * TargetAppRunner - Runs tests and commands in target applications
- * 
+ *
  * Handles execution of tests and other commands in the target application
  * being developed by cursor (e.g., jarek-va Rails app).
  */
@@ -24,11 +24,11 @@ export class TargetAppRunner {
       throw new Error(`Target application path does not exist: ${this.targetAppPath}`);
     }
 
-    logger.info('Target application validated', { 
+    logger.info('Target application validated', {
       path: this.targetAppPath,
-      type: this.targetAppType 
+      type: this.targetAppType,
     });
-    
+
     return true;
   }
 
@@ -39,10 +39,10 @@ export class TargetAppRunner {
    */
   async runTests(targetPath = null) {
     const appPath = targetPath || this.targetAppPath;
-    
-    logger.info('Running tests in target application', { 
+
+    logger.info('Running tests in target application', {
       path: appPath,
-      type: this.targetAppType 
+      type: this.targetAppType,
     });
 
     try {
@@ -63,7 +63,7 @@ export class TargetAppRunner {
       }
 
       const result = await this.executeCommand(command, args, { cwd: appPath });
-      
+
       return {
         success: result.exitCode === 0,
         exitCode: result.exitCode,
@@ -92,10 +92,10 @@ export class TargetAppRunner {
       const cwd = options.cwd || this.targetAppPath;
       const timeout = options.timeout || this.timeout;
 
-      logger.debug('Executing command in target app', { 
+      logger.debug('Executing command in target app', {
         command,
         args,
-        cwd 
+        cwd,
       });
 
       const child = spawn(command, args, {
@@ -177,4 +177,3 @@ export class TargetAppRunner {
     return results;
   }
 }
-

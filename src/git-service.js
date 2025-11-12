@@ -5,14 +5,15 @@ import { logger } from './logger.js';
 
 /**
  * GitService - Handles git operations
- * 
+ *
  * Provides secure git command execution with validation and error handling.
  */
 export class GitService {
   constructor() {
-    this.repositoriesPath = process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
+    this.repositoriesPath =
+      process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
     this.timeout = parseInt(process.env.GIT_COMMAND_TIMEOUT || '60000', 10); // 1 minute default
-    
+
     // Ensure repositories directory exists
     this.ensureRepositoriesDirectory();
   }
@@ -159,15 +160,13 @@ export class GitService {
           if (existsSync(gitPath)) {
             try {
               // Get repository info
-              const remoteResult = await this.executeGitCommand(
-                ['remote', 'get-url', 'origin'],
-                { cwd: entryPath }
-              ).catch(() => ({ stdout: 'unknown' }));
+              const remoteResult = await this.executeGitCommand(['remote', 'get-url', 'origin'], {
+                cwd: entryPath,
+              }).catch(() => ({ stdout: 'unknown' }));
 
-              const branchResult = await this.executeGitCommand(
-                ['branch', '--show-current'],
-                { cwd: entryPath }
-              ).catch(() => ({ stdout: 'unknown' }));
+              const branchResult = await this.executeGitCommand(['branch', '--show-current'], {
+                cwd: entryPath,
+              }).catch(() => ({ stdout: 'unknown' }));
 
               repositories.push({
                 name: entry,
@@ -176,7 +175,10 @@ export class GitService {
                 currentBranch: branchResult.stdout || 'unknown',
               });
             } catch (error) {
-              logger.warn('Error getting repository info', { repository: entry, error: error.message });
+              logger.warn('Error getting repository info', {
+                repository: entry,
+                error: error.message,
+              });
               repositories.push({
                 name: entry,
                 path: entryPath,
@@ -347,4 +349,3 @@ export class GitService {
     return match ? match[1] : 'repository';
   }
 }
-

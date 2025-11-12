@@ -1,6 +1,6 @@
 /**
  * cursor-runner - Main entry point
- * 
+ *
  * Node.js application for cursor-cli execution and code generation workflows.
  * Integrates with jarek-va for code writing tool requests.
  */
@@ -35,16 +35,16 @@ class CursorRunner {
   async initialize() {
     try {
       this.logger.info('Initializing cursor-runner...');
-      
+
       // Validate configuration
       this.validateConfig();
-      
+
       // Test cursor-cli availability
       await this.cursorCLI.validate();
-      
+
       // Start HTTP server
       await this.server.start();
-      
+
       this.logger.info('cursor-runner initialized successfully', {
         port: this.server.port,
         endpoints: [
@@ -81,13 +81,10 @@ class CursorRunner {
    * Validate configuration
    */
   validateConfig() {
-    const required = [
-      'CURSOR_CLI_PATH',
-      'TARGET_APP_PATH',
-    ];
+    const required = ['CURSOR_CLI_PATH', 'TARGET_APP_PATH'];
 
-    const missing = required.filter(key => !process.env[key]);
-    
+    const missing = required.filter((key) => !process.env[key]);
+
     if (missing.length > 0) {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
@@ -100,18 +97,18 @@ class CursorRunner {
    */
   async executeCodeGeneration(request) {
     const startTime = Date.now();
-    
+
     try {
       this.logger.info('Executing code generation workflow', {
         requestId: request.id,
         phase: request.phase,
         targetPath: request.targetPath,
       });
-      
+
       const { phase, requirements, targetPath } = request;
-      
+
       let result;
-      
+
       // Execute based on phase
       switch (phase) {
         case 'red':
@@ -121,7 +118,9 @@ class CursorRunner {
           break;
         case 'green':
           // Generate implementation (TDD Green phase)
-          this.logger.debug('Starting Green phase: implementation generation', { requestId: request.id });
+          this.logger.debug('Starting Green phase: implementation generation', {
+            requestId: request.id,
+          });
           result = await this.cursorCLI.generateImplementation(requirements, targetPath);
           break;
         case 'refactor':
@@ -137,7 +136,7 @@ class CursorRunner {
         default:
           throw new Error(`Unknown phase: ${phase}`);
       }
-      
+
       const duration = Date.now() - startTime;
       this.logger.info('Code generation workflow completed', {
         requestId: request.id,
@@ -146,7 +145,7 @@ class CursorRunner {
         duration: `${duration}ms`,
         filesCount: result.files?.length || 0,
       });
-      
+
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -168,24 +167,23 @@ export { CursorRunner };
 // Run as CLI if executed directly
 if (import.meta.url === `file://${__filename}`) {
   const runner = new CursorRunner();
-  
+
   // Handle graceful shutdown
   process.on('SIGTERM', async () => {
     await runner.shutdown();
     // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
-  
+
   process.on('SIGINT', async () => {
     await runner.shutdown();
     // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
-  
-  runner.initialize().catch(error => {
+
+  runner.initialize().catch((error) => {
     console.error('Failed to start cursor-runner:', error);
     // eslint-disable-next-line no-process-exit
     process.exit(1);
   });
 }
-

@@ -3,17 +3,21 @@ import { logger } from './logger.js';
 
 /**
  * TerminalService - Handles terminal command execution
- * 
+ *
  * Provides secure terminal command execution with validation, timeouts, and security restrictions.
  */
 export class TerminalService {
   constructor() {
     this.timeout = parseInt(process.env.TERMINAL_COMMAND_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.TERMINAL_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
-    
+
     // Security: Allowed and blocked commands
-    this.allowedCommands = (process.env.ALLOWED_TERMINAL_COMMANDS || 'git,cursor,npm,node,bundle,rails,rspec').split(',');
-    this.blockedCommands = (process.env.BLOCKED_TERMINAL_COMMANDS || 'rm,del,format,dd,sudo,su').split(',');
+    this.allowedCommands = (
+      process.env.ALLOWED_TERMINAL_COMMANDS || 'git,cursor,npm,node,bundle,rails,rspec'
+    ).split(',');
+    this.blockedCommands = (
+      process.env.BLOCKED_TERMINAL_COMMANDS || 'rm,del,format,dd,sudo,su'
+    ).split(',');
   }
 
   /**
@@ -53,13 +57,13 @@ export class TerminalService {
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
-        
+
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
           reject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
         }
-        
+
         stdout += chunk;
       });
 
@@ -85,7 +89,7 @@ export class TerminalService {
         } else {
           logger.warn('Terminal command failed', { command, args, exitCode: code, stderr });
         }
-        
+
         resolve(result);
       });
 
@@ -109,7 +113,10 @@ export class TerminalService {
 
     // Check for blocked commands
     for (const blocked of this.blockedCommands) {
-      if (commandLower.includes(blocked.toLowerCase()) || commandString.includes(blocked.toLowerCase())) {
+      if (
+        commandLower.includes(blocked.toLowerCase()) ||
+        commandString.includes(blocked.toLowerCase())
+      ) {
         throw new Error(`Blocked command detected: ${blocked}`);
       }
     }
@@ -117,10 +124,10 @@ export class TerminalService {
     // Check against allowed commands (if whitelist is enforced)
     // For now, we only block dangerous commands, but you can enable strict whitelisting
     if (process.env.ENFORCE_COMMAND_WHITELIST === 'true') {
-      const isAllowed = this.allowedCommands.some(allowed => 
+      const isAllowed = this.allowedCommands.some((allowed) =>
         commandLower.includes(allowed.toLowerCase())
       );
-      
+
       if (!isAllowed) {
         throw new Error(`Command not in whitelist: ${command}`);
       }
@@ -129,4 +136,3 @@ export class TerminalService {
     logger.debug('Command security validated', { command, args });
   }
 }
-

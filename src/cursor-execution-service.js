@@ -4,19 +4,27 @@ import { FilesystemService } from './filesystem-service.js';
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
- * 
+ *
  * Handles repository validation, branch checkout, command preparation,
  * and execution coordination for both single and iterative cursor commands.
  */
 export class CursorExecutionService {
-  constructor(gitService, cursorCLI, terminalService, commandParser, reviewAgent, filesystem = null) {
+  constructor(
+    gitService,
+    cursorCLI,
+    terminalService,
+    commandParser,
+    reviewAgent,
+    filesystem = null
+  ) {
     this.gitService = gitService;
     this.cursorCLI = cursorCLI;
     this.terminalService = terminalService;
     this.commandParser = commandParser;
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
-    this.terminalInstructions = '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+    this.terminalInstructions =
+      '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
   }
 
   /**
@@ -241,8 +249,11 @@ export class CursorExecutionService {
       });
 
       // Review the output
-      const reviewResult = await this.reviewAgent.reviewOutput(lastResult.stdout, fullRepositoryPath);
-      
+      const reviewResult = await this.reviewAgent.reviewOutput(
+        lastResult.stdout,
+        fullRepositoryPath
+      );
+
       if (!reviewResult) {
         logger.warn('Failed to parse review result', { requestId, iteration });
         break;
@@ -271,7 +282,9 @@ export class CursorExecutionService {
 
         try {
           // Parse terminal command into command and args
-          const terminalCommandParts = this.commandParser.parseCommand(reviewResult.terminal_command_requested);
+          const terminalCommandParts = this.commandParser.parseCommand(
+            reviewResult.terminal_command_requested
+          );
           const terminalCommand = terminalCommandParts[0];
           const terminalArgs = terminalCommandParts.slice(1);
 
@@ -280,7 +293,7 @@ export class CursorExecutionService {
             terminalArgs,
             { cwd: fullRepositoryPath }
           );
-          terminalOutput = terminalResult.stdout || (terminalResult.stderr || '');
+          terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
           logger.info('Terminal command executed', {
             requestId,
             iteration,
@@ -298,8 +311,9 @@ export class CursorExecutionService {
       }
 
       // Prepare resume prompt
-      let resumePrompt = 'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
-      
+      let resumePrompt =
+        'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
+
       if (terminalOutput) {
         resumePrompt += `\n\nIf you requested a terminal command, here is the output from the latest terminal command:\n${terminalOutput}`;
       }
@@ -342,4 +356,3 @@ export class CursorExecutionService {
     };
   }
 }
-

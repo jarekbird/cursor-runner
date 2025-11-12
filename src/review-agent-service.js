@@ -2,7 +2,7 @@ import { logger } from './logger.js';
 
 /**
  * ReviewAgentService - Uses cursor as a review agent to evaluate code completion
- * 
+ *
  * Analyzes cursor output to determine if code generation is complete
  * and if terminal commands need to be executed.
  */
@@ -58,4 +58,3 @@ ${output}`;
     }
   }
 }
-

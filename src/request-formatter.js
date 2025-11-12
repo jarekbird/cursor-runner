@@ -2,7 +2,7 @@ import { logger } from './logger.js';
 
 /**
  * RequestFormatter - Formats requests and responses for cursor-cli commands
- * 
+ *
  * Provides standardized request/response formatting for communication
  * between jarek-va and cursor-runner.
  */
@@ -39,7 +39,9 @@ export class RequestFormatter {
       // Validate phase
       const validPhases = ['red', 'green', 'refactor', 'validate'];
       if (!validPhases.includes(formatted.phase)) {
-        throw new Error(`Invalid phase: ${formatted.phase}. Must be one of: ${validPhases.join(', ')}`);
+        throw new Error(
+          `Invalid phase: ${formatted.phase}. Must be one of: ${validPhases.join(', ')}`
+        );
       }
 
       logger.debug('Formatted code generation request', {
@@ -73,11 +75,12 @@ export class RequestFormatter {
     if (typeof requirements === 'object' && requirements !== null) {
       // Prioritize snake_case over camelCase for consistency
       const testFramework = requirements.test_framework || requirements.testFramework || 'rspec';
-      
+
       return {
         ...requirements, // Spread first to include all fields
         // Then override with formatted values
-        description: requirements.description || requirements.desc || requirements.description || '',
+        description:
+          requirements.description || requirements.desc || requirements.description || '',
         type: requirements.type || 'general',
         testFramework, // Use the resolved value (prioritize snake_case)
         test_framework: testFramework, // Also include snake_case version
@@ -257,4 +260,3 @@ export class RequestFormatter {
     };
   }
 }
-

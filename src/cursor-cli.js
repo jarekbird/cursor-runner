@@ -3,7 +3,7 @@ import { logger } from './logger.js';
 
 /**
  * CursorCLI - Wrapper for cursor-cli execution
- * 
+ *
  * Handles execution of cursor-cli commands with security restrictions,
  * timeouts, and error handling.
  */
@@ -12,9 +12,11 @@ export class CursorCLI {
     this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
-    
+
     // Security: Allowed and blocked commands
-    this.allowedCommands = (process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails').split(',');
+    this.allowedCommands = (
+      process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails'
+    ).split(',');
     this.blockedCommands = (process.env.BLOCKED_COMMANDS || 'rm,del,format,dd').split(',');
   }
 
@@ -47,10 +49,10 @@ export class CursorCLI {
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
 
-      logger.debug('Executing cursor-cli command', { 
+      logger.debug('Executing cursor-cli command', {
         command: this.cursorPath,
         args,
-        cwd 
+        cwd,
       });
 
       const child = spawn(this.cursorPath, args, {
@@ -73,13 +75,13 @@ export class CursorCLI {
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
-        
+
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
           reject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
         }
-        
+
         stdout += chunk;
       });
 
@@ -104,7 +106,7 @@ export class CursorCLI {
         } else {
           logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
         }
-        
+
         // Always resolve with result, even on failure, so caller can access stdout/stderr
         resolve(result);
       });
@@ -152,7 +154,7 @@ export class CursorCLI {
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
-      
+
       return {
         success: true,
         phase: 'red',
@@ -183,7 +185,7 @@ export class CursorCLI {
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
-      
+
       return {
         success: true,
         phase: 'green',
@@ -214,7 +216,7 @@ export class CursorCLI {
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
-      
+
       return {
         success: true,
         phase: 'refactor',
@@ -249,4 +251,3 @@ export class CursorCLI {
     return files;
   }
 }
-

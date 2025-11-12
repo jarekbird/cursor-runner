@@ -30,13 +30,10 @@ export const logger = winston.createLogger({
   transports: [
     // Write all logs to console
     new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
+      format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
     }),
     // Write all logs to file
-    new winston.transports.File({ 
+    new winston.transports.File({
       filename: logFile,
       maxsize: 5242880, // 5MB
       maxFiles: 5,
@@ -52,4 +49,3 @@ logger.exceptions.handle(
 logger.rejections.handle(
   new winston.transports.File({ filename: path.join(__dirname, '../logs/rejections.log') })
 );
-

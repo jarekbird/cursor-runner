@@ -15,7 +15,9 @@ describe('GitService', () => {
       expect(gitService.extractRepositoryName('https://github.com/user/repo')).toBe('repo');
       expect(gitService.extractRepositoryName('git@github.com:user/repo.git')).toBe('repo');
       expect(gitService.extractRepositoryName('user/repo')).toBe('repo');
-      expect(gitService.extractRepositoryName('https://github.com/user/my-awesome-repo.git')).toBe('my-awesome-repo');
+      expect(gitService.extractRepositoryName('https://github.com/user/my-awesome-repo.git')).toBe(
+        'my-awesome-repo'
+      );
     });
   });
 
@@ -31,11 +33,11 @@ describe('GitService', () => {
       await expect(gitService.checkoutBranch(null, 'main')).rejects.toThrow(
         'Repository name and branch name are required'
       );
-      
+
       await expect(gitService.checkoutBranch('repo', null)).rejects.toThrow(
         'Repository name and branch name are required'
       );
-      
+
       await expect(gitService.checkoutBranch('', 'main')).rejects.toThrow(
         'Repository name and branch name are required'
       );
@@ -47,7 +49,7 @@ describe('GitService', () => {
       await expect(gitService.pushBranch(null, 'main')).rejects.toThrow(
         'Repository name and branch name are required'
       );
-      
+
       await expect(gitService.pushBranch('repo', null)).rejects.toThrow(
         'Repository name and branch name are required'
       );
@@ -59,7 +61,7 @@ describe('GitService', () => {
       await expect(gitService.pullBranch(null, 'main')).rejects.toThrow(
         'Repository name and branch name are required'
       );
-      
+
       await expect(gitService.pullBranch('repo', null)).rejects.toThrow(
         'Repository name and branch name are required'
       );

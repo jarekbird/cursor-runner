@@ -24,4 +24,3 @@ export const createMockResponse = (overrides = {}) => {
     ...overrides,
   };
 };
-

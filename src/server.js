@@ -10,7 +10,7 @@ import { FilesystemService } from './filesystem-service.js';
 
 /**
  * HTTP Server for cursor-runner API
- * 
+ *
  * Provides endpoints for git operations and terminal commands.
  */
 export class Server {
@@ -31,7 +31,7 @@ export class Server {
       this.reviewAgent,
       this.filesystem
     );
-    
+
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -42,7 +42,7 @@ export class Server {
   setupMiddleware() {
     // JSON body parser
     this.app.use(express.json());
-    
+
     // Request logging
     this.app.use((req, res, next) => {
       logger.info('HTTP Request', {
@@ -167,7 +167,6 @@ export class Server {
     // Mount cursor routes
     this.app.use('/cursor', router);
   }
-
 
   /**
    * Enhanced error handling
@@ -371,4 +370,3 @@ export class Server {
     });
   }
 }
-

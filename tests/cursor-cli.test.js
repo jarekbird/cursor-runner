@@ -33,7 +33,7 @@ describe('CursorCLI', () => {
     it('should extract file paths from output', () => {
       const output = 'created: app/services/test.rb\nmodified: spec/services/test_spec.rb';
       const files = cursorCLI.extractFilesFromOutput(output);
-      
+
       expect(files).toContain('app/services/test.rb');
       expect(files).toContain('spec/services/test_spec.rb');
     });
@@ -41,9 +41,8 @@ describe('CursorCLI', () => {
     it('should return empty array when no files found', () => {
       const output = 'No files created';
       const files = cursorCLI.extractFilesFromOutput(output);
-      
+
       expect(files).toEqual([]);
     });
   });
 });
-
