@@ -9,11 +9,17 @@
     "dev": "node --watch src/index.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:changed": "NODE_OPTIONS=--experimental-vm-modules jest --onlyChanged",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:coverage:changed": "NODE_OPTIONS=--experimental-vm-modules jest --onlyChanged --coverage",
+    "test:ci": "./test-ci.sh",
+    "ci": "./test-ci.sh",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
+    "lint:changed": "node scripts/lint-changed.js",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\""
+    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\"",
+    "format:check:changed": "node scripts/format-check-changed.js"
   },
   "keywords": [
     "cursor",

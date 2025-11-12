@@ -161,6 +161,31 @@ const result = await runner.executeCodeGeneration({
 
 ## Development
 
+### Running CI Tests (Required Before Committing)
+
+**IMPORTANT**: Before considering changes complete, run all CI test steps:
+
+```bash
+# Run all CI test workflow steps (REQUIRED)
+npm run ci
+# or
+./test-ci.sh
+```
+
+This runs all steps from the GitHub Actions test workflow:
+- ✅ Node.js version check
+- ✅ Install dependencies (`npm ci`)
+- ✅ **Detect changed files** (optimization: only tests changed files)
+- ✅ Run linter (on changed files if detected, otherwise all files)
+- ✅ Check code formatting (on changed files if detected, otherwise all files)
+- ✅ Run Jest tests (on changed files if detected, otherwise all files)
+- ✅ Generate test coverage (on changed files if detected, otherwise all files)
+- ✅ Verify coverage files exist
+
+**All steps must pass before committing changes.**
+
+**Note**: The CI workflow automatically detects changed files and only runs tests/linting on those files. This speeds up the workflow significantly when only a few files are modified. If no changes are detected or if the detection fails, it falls back to running all tests.
+
 ### Running Tests
 
 ```bash
@@ -239,11 +264,22 @@ cursor-runner includes security features:
 
 cursor-runner communicates with jarek-va via HTTP API. jarek-va sends code generation requests to cursor-runner, which executes cursor-cli commands and returns results.
 
-See `DEVELOPMENT.md` for detailed integration patterns.
+See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed integration patterns.
 
 ## Docker / Production
 
-For Docker setup and production deployment instructions, see [DOCKER.md](DOCKER.md).
+For Docker setup and production deployment instructions, see [DOCKER.md](docs/DOCKER.md).
+
+## Troubleshooting
+
+If you encounter issues, check the [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) guide for common problems and solutions.
+
+Common issues:
+- **Installation problems**: See [Installation & Setup](docs/TROUBLESHOOTING.md#installation--setup)
+- **Runtime errors**: Check logs in `logs/` directory
+- **Docker issues**: See [DOCKER_TROUBLESHOOTING.md](docs/DOCKER_TROUBLESHOOTING.md)
+- **Git service errors**: See [Git Service Issues](docs/TROUBLESHOOTING.md#git-service-issues)
+- **Cursor CLI problems**: See [Cursor CLI Issues](docs/TROUBLESHOOTING.md#cursor-cli-issues)
 
 ## License
 

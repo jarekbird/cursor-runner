@@ -56,7 +56,7 @@ All setup tasks from the Virtual Assistant To Do List (lines 137-161) have been 
 
 ### ✅ Document Development Process
 - Created `README.md` with project overview
-- Created `DEVELOPMENT.md` with detailed development guide
+- Created `docs/DEVELOPMENT.md` with detailed development guide
 - Documented cursor-cli integration patterns
 - Documented communication with jarek-va
 
@@ -74,6 +74,11 @@ cursor-runner/
 │   ├── target-app.test.js
 │   └── helpers/
 │       └── test-helpers.js
+├── docs/                 # Documentation
+│   ├── DEVELOPMENT.md
+│   ├── DOCKER.md
+│   ├── DOCKER_TROUBLESHOOTING.md
+│   └── TROUBLESHOOTING.md
 ├── logs/                 # Log files directory
 ├── package.json
 ├── jest.config.js
@@ -83,9 +88,10 @@ cursor-runner/
 ├── .gitignore
 ├── .env                  # Environment variables (not in git)
 ├── README.md
-├── DEVELOPMENT.md
 └── SETUP_COMPLETE.md     # This file
 ```
+<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
+run_terminal_cmd
 
 ## Next Steps
 

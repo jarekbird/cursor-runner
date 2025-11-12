@@ -239,7 +239,8 @@ If issues persist:
    ```
 
 4. **Review documentation:**
-   - See `DOCKER.md` for setup instructions
-   - See `README.md` for general information
+   - See [DOCKER.md](./DOCKER.md) for setup instructions
+   - See [README.md](../README.md) for general information
+
 
 

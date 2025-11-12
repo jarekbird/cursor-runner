@@ -28,21 +28,75 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Detect changed files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For PRs, compare against base branch
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.sha }}"
+            CHANGED=$(git diff --name-only --diff-filter=ACMR $BASE_SHA..$HEAD_SHA | grep -E '(src/|tests/).*\.js$' || true)
+          else
+            # For pushes, compare against previous commit
+            CHANGED=$(git diff --name-only --diff-filter=ACMR HEAD~1..HEAD | grep -E '(src/|tests/).*\.js$' || true)
+          fi
+          
+          if [ -z "$CHANGED" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changed files detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changed files:"
+            echo "$CHANGED" | while read file; do
+              echo "  - $file"
+            done
+          fi
+      
       - name: Run linter
-        run: npm run lint
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_changes }}" == "true" ]; then
+            echo "Linting changed files..."
+            CI=true npm run lint:changed || npm run lint
+          else
+            echo "No files changed, linting all files..."
+            npm run lint
+          fi
       
       - name: Check code formatting
-        run: npm run format:check
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_changes }}" == "true" ]; then
+            echo "Checking formatting of changed files..."
+            CI=true npm run format:check:changed || npm run format:check
+          else
+            echo "No files changed, checking all files..."
+            npm run format:check
+          fi
       
       - name: Run Jest tests
-        run: npm test
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_changes }}" == "true" ]; then
+            echo "Running tests for changed files..."
+            npm run test:changed || npm test
+          else
+            echo "No files changed, running all tests..."
+            npm test
+          fi
         env:
           NODE_OPTIONS: --experimental-vm-modules
+          CI: true
       
       - name: Generate test coverage
-        run: npm run test:coverage
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_changes }}" == "true" ]; then
+            echo "Generating coverage for changed files..."
+            npm run test:coverage:changed || npm run test:coverage
+          else
+            echo "No files changed, generating full coverage..."
+            npm run test:coverage
+          fi
         env:
           NODE_OPTIONS: --experimental-vm-modules
+          CI: true
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

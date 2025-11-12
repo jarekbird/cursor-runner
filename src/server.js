@@ -70,7 +70,9 @@ export class Server {
     this.setupGitRoutes();
 
     // Error handling middleware (must be after all routes)
-    this.app.use((err, req, res) => {
+    // Express requires 4 parameters (err, req, res, next) to recognize error handlers
+    // eslint-disable-next-line no-unused-vars
+    this.app.use((err, req, res, next) => {
       this.handleError(err, req, res);
     });
   }

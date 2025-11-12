@@ -13,16 +13,19 @@ jobs:
     
     steps:
       - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            cd cursor-runner
-            git pull
-            docker compose build cursor-runner
-            docker compose up -d cursor-runner
+            set -e
+            cd cursor-runner || { echo "Directory cursor-runner not found"; exit 1; }
+            git pull || { echo "Git pull failed"; exit 1; }
+            docker compose build cursor-runner || { echo "Docker build failed"; exit 1; }
+            docker compose up -d cursor-runner || { echo "Docker up failed"; exit 1; }
+            echo "Deployment completed successfully"
           script_stop: true
+          debug: true
 

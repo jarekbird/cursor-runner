@@ -586,11 +586,19 @@ npm run format:check  # Check formatting
 6. **Never commit code that fails linting** - fix all lint errors first
 
 ### Before Committing
+**REQUIRED: Run all CI test steps before considering changes complete:**
+1. Run CI test workflow: `npm run ci` or `./test-ci.sh` (REQUIRED)
+   - This runs all steps from the GitHub Actions test workflow
+   - Verifies Node.js version, dependencies, linting, formatting, tests, and coverage
+   - Must pass completely before committing
+
+**Or run steps individually:**
 1. Run tests: `npm test`
 2. Run linter: `npm run lint` (REQUIRED)
 3. Check formatting: `npm run format:check`
-4. Fix any issues
-5. Verify linting passes: `npm run lint` must exit with code 0
+4. Generate coverage: `npm run test:coverage`
+5. Fix any issues
+6. Verify all steps pass: `npm run ci` must exit with code 0
 
 ## Development Workflow
 
@@ -598,10 +606,12 @@ npm run format:check  # Check formatting
 1. Write tests first (TDD Red phase)
 2. Implement feature (TDD Green phase)
 3. Refactor if needed (TDD Refactor phase)
-4. Ensure all tests pass: `npm test`
-5. **Run linter: `npm run lint`** (REQUIRED - must pass)
-6. Run formatter: `npm run format`
-7. Update documentation if needed
+4. **Run CI test workflow: `npm run ci`** (REQUIRED - must pass)
+   - This verifies all GitHub Actions test steps pass locally
+   - Includes: Node.js check, dependencies, linting, formatting, tests, coverage
+5. Fix any issues found by CI tests
+6. Update documentation if needed
+7. **Verify CI passes again: `npm run ci`** before considering feature complete
 
 ### Debugging
 - Use `console.log` sparingly (prefer logger)
