@@ -627,4 +627,119 @@ describe('Server', () => {
       });
     });
   });
+
+  describe('Telegram Webhook Endpoints', () => {
+    describe('POST /telegram/webhook', () => {
+      it('should receive and acknowledge message update', async () => {
+        const messageUpdate = {
+          message: {
+            message_id: 1,
+            text: '/start',
+            chat: { id: 123456 },
+            from: { id: 789, username: 'test_user' },
+          },
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(messageUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+        expect(response.body.updateType).toBe('message');
+        expect(response.body.timestamp).toBeDefined();
+      });
+
+      it('should receive and acknowledge edited_message update', async () => {
+        const editedUpdate = {
+          edited_message: {
+            message_id: 2,
+            text: 'edited text',
+            chat: { id: 123456 },
+          },
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(editedUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+        expect(response.body.updateType).toBe('edited_message');
+      });
+
+      it('should receive and acknowledge callback_query update', async () => {
+        const callbackUpdate = {
+          callback_query: {
+            id: 'callback-123',
+            data: 'button_clicked',
+            message: {
+              message_id: 3,
+              chat: { id: 123456 },
+            },
+          },
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(callbackUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+        expect(response.body.updateType).toBe('callback_query');
+      });
+
+      it('should handle unknown update types', async () => {
+        const unknownUpdate = {
+          some_unknown_type: {
+            data: 'unknown',
+          },
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(unknownUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+        expect(response.body.updateType).toBe('unknown');
+      });
+
+      it('should handle empty update', async () => {
+        const emptyUpdate = {};
+
+        const response = await request(app).post('/telegram/webhook').send(emptyUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+        expect(response.body.updateType).toBe('unknown');
+      });
+
+      it('should handle malformed JSON gracefully', async () => {
+        // This test ensures the endpoint doesn't crash on unexpected data
+        const malformedUpdate = {
+          message: null,
+          edited_message: undefined,
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(malformedUpdate);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.received).toBe(true);
+      });
+
+      it('should return 200 even if processing fails', async () => {
+        // Create an update that might cause issues
+        const problematicUpdate = {
+          message: {
+            // Missing required fields but should still be handled
+          },
+        };
+
+        const response = await request(app).post('/telegram/webhook').send(problematicUpdate);
+
+        // Should still return 200 to avoid retries
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+      });
+    });
+  });
 });

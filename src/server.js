@@ -63,6 +63,9 @@ export class Server {
       res.json({ status: 'ok', service: 'cursor-runner' });
     });
 
+    // Telegram webhook endpoint (forwarded from jarek-va)
+    this.setupTelegramRoutes();
+
     // Cursor execution routes
     this.setupCursorRoutes();
 
@@ -165,6 +168,65 @@ export class Server {
 
     // Mount cursor routes
     this.app.use('/cursor', router);
+  }
+
+  /**
+   * Setup Telegram webhook routes
+   */
+  setupTelegramRoutes() {
+    const router = express.Router();
+
+    /**
+     * POST /telegram/webhook
+     * Receive forwarded Telegram webhook requests from jarek-va
+     * Body: Telegram update object (message, edited_message, callback_query, etc.)
+     */
+    router.post('/webhook', (req, res) => {
+      try {
+        logger.info('Telegram webhook received', {
+          update: req.body,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        // Basic request forwarding - just log and acknowledge
+        // Future: Add actual Telegram message processing here
+        const update = req.body;
+        const updateType = update.message
+          ? 'message'
+          : update.edited_message
+            ? 'edited_message'
+            : update.callback_query
+              ? 'callback_query'
+              : 'unknown';
+
+        logger.info('Telegram update type', { updateType });
+
+        // Return 200 OK to acknowledge receipt
+        res.status(200).json({
+          success: true,
+          received: true,
+          updateType,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error('Telegram webhook processing failed', {
+          error: error.message,
+          stack: error.stack,
+          body: req.body,
+        });
+
+        // Still return 200 to avoid retries from jarek-va
+        res.status(200).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // Mount telegram routes
+    this.app.use('/telegram', router);
   }
 
   /**
