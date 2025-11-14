@@ -55,10 +55,16 @@ export class CursorCLI {
         cwd,
       });
 
+      // Ensure environment variables (including CURSOR_API_KEY) are passed to child process
+      const env = {
+        ...process.env,
+      };
+
       const child = spawn(this.cursorPath, args, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
+        env,
       });
 
       let stdout = '';

@@ -52,6 +52,7 @@ PORT=3001
 # Cursor CLI Configuration
 CURSOR_CLI_PATH=cursor
 CURSOR_CLI_TIMEOUT=300000
+CURSOR_API_KEY=your-cursor-api-key-here
 
 # Target Application
 TARGET_APP_PATH=../jarek-va

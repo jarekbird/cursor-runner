@@ -52,6 +52,7 @@ Create a `.env` file in the `cursor-runner` directory (optional, defaults are in
 NODE_ENV=production
 CURSOR_CLI_PATH=cursor
 CURSOR_CLI_TIMEOUT=300000
+CURSOR_API_KEY=your-cursor-api-key-here
 TARGET_APP_TYPE=rails
 GIT_COMMAND_TIMEOUT=60000
 TERMINAL_COMMAND_TIMEOUT=300000
@@ -175,6 +176,7 @@ Most configuration is in `docker-compose.yml`, but you can override with a `.env
 NODE_ENV=production
 CURSOR_CLI_PATH=cursor
 CURSOR_CLI_TIMEOUT=300000
+CURSOR_API_KEY=your-cursor-api-key-here
 TARGET_APP_TYPE=rails
 GIT_COMMAND_TIMEOUT=60000
 TERMINAL_COMMAND_TIMEOUT=300000

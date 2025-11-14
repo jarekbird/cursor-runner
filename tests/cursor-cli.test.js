@@ -156,6 +156,7 @@ describe.skip('CursorCLI', () => {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
+        env: expect.objectContaining({ ...process.env }),
       });
     });
 
@@ -216,6 +217,7 @@ describe.skip('CursorCLI', () => {
         cwd: customCwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
+        env: expect.objectContaining({ ...process.env }),
       });
     });
 
