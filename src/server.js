@@ -86,8 +86,9 @@ export class Server {
     /**
      * POST /cursor/execute
      * Execute cursor-cli command in a repository or repositories directory
-     * Body: { repository?: string, branchName?: string, command: string }
+     * Body: { repository?: string, branchName?: string, command?: string, prompt?: string }
      * If repository is not provided, uses the repositories directory as working directory
+     * Either command or prompt must be provided. If prompt is provided, constructs command internally.
      */
     router.post('/execute', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -104,6 +105,7 @@ export class Server {
           repository: req.body.repository,
           branchName: req.body.branchName,
           command: req.body.command,
+          prompt: req.body.prompt,
           requestId,
         });
 
@@ -128,8 +130,9 @@ export class Server {
     /**
      * POST /cursor/iterate
      * Execute cursor-cli command iteratively until completion
-     * Body: { repository?: string, branchName?: string, command: string }
+     * Body: { repository?: string, branchName?: string, command?: string, prompt?: string }
      * If repository is not provided, uses the repositories directory as working directory
+     * Either command or prompt must be provided. If prompt is provided, constructs command internally.
      */
     router.post('/iterate', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -146,8 +149,9 @@ export class Server {
           repository: req.body.repository,
           branchName: req.body.branchName,
           command: req.body.command,
+          prompt: req.body.prompt,
           requestId,
-          maxIterations: 25,
+          maxIterations: req.body.maxIterations || 25,
         });
 
         res.status(result.status).json(result.body);

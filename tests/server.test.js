@@ -171,7 +171,7 @@ describe('Server', () => {
         expect(response.body.branchName).toBe('feature-branch');
       });
 
-      it('should return 400 if command is missing', async () => {
+      it('should return 400 if both command and prompt are missing', async () => {
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
@@ -179,7 +179,37 @@ describe('Server', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('command is required');
+        expect(response.body.error).toBe('command or prompt is required');
+      });
+
+      it('should execute cursor command with prompt instead of command', async () => {
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'Create user service',
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.repository).toBe('test-repo');
+        expect(response.body.branchName).toBe('main');
+        expect(response.body.output).toBe('Generated code successfully');
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        // Verify it was called with generate --prompt
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
+        expect(callArgs[0]).toBe('generate');
+        expect(callArgs[1]).toBe('--prompt');
+        expect(callArgs[2]).toContain('Create user service');
       });
 
       it('should return 404 if repository does not exist locally', async () => {
@@ -448,6 +478,59 @@ describe('Server', () => {
         expect(response.body.success).toBe(true);
         expect(response.body.repository).toBe('test-repo');
         expect(response.body.branchName).toBeUndefined();
+      });
+
+      it('should execute iterate with prompt instead of command', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code generated successfully',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Task completed',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult)
+          .mockResolvedValueOnce(mockReviewResult);
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'Create user service',
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.iterations).toBe(0);
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        // Verify it was called with generate --prompt
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
+        expect(callArgs[0]).toBe('generate');
+        expect(callArgs[1]).toBe('--prompt');
+        expect(callArgs[2]).toContain('Create user service');
+      });
+
+      it('should return 400 if both command and prompt are missing', async () => {
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('command or prompt is required');
       });
 
       it('should return 404 if repository does not exist locally', async () => {

@@ -35,14 +35,15 @@ export class CursorExecutionService {
    * @returns {Object|null} Error response or null if valid
    */
   validateRequest(params) {
-    const { command } = params;
+    const { command, prompt } = params;
 
-    if (!command) {
+    // Either command or prompt must be provided
+    if (!command && !prompt) {
       return {
         status: 400,
         body: {
           success: false,
-          error: 'command is required',
+          error: 'command or prompt is required',
         },
       };
     }
@@ -74,11 +75,23 @@ export class CursorExecutionService {
 
   /**
    * Prepare command with instructions
-   * @param {string} command - Original command string
+   * @param {string} command - Original command string (optional)
+   * @param {string} prompt - Prompt text (optional, used if command not provided)
    * @returns {Array<string>} Prepared command arguments
    */
-  prepareCommand(command) {
-    const commandArgs = this.commandParser.parseCommand(command);
+  prepareCommand(command, prompt = null) {
+    let commandArgs;
+
+    if (command) {
+      // Parse existing command
+      commandArgs = this.commandParser.parseCommand(command);
+    } else if (prompt) {
+      // Construct command from prompt
+      commandArgs = ['generate', '--prompt', prompt];
+    } else {
+      throw new Error('Either command or prompt must be provided');
+    }
+
     return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
   }
 
@@ -87,16 +100,17 @@ export class CursorExecutionService {
    * @param {Object} params - Execution parameters
    * @param {string} [params.repository] - Optional repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.command - Command string
+   * @param {string} [params.command] - Command string (optional if prompt provided)
+   * @param {string} [params.prompt] - Prompt text (optional if command provided)
    * @param {string} params.requestId - Request ID
    * @returns {Promise<Object>} Execution result
    */
   async execute(params) {
-    const { repository, branchName, command, requestId } = params;
+    const { repository, branchName, command, prompt, requestId } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ command });
+    const validationError = this.validateRequest({ command, prompt });
     if (validationError) {
       return { ...validationError, requestId };
     }
@@ -116,7 +130,7 @@ export class CursorExecutionService {
     }
 
     // Prepare command
-    const modifiedArgs = this.prepareCommand(command);
+    const modifiedArgs = this.prepareCommand(command, prompt);
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -172,17 +186,18 @@ export class CursorExecutionService {
    * @param {Object} params - Execution parameters
    * @param {string} [params.repository] - Optional repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.command - Command string
+   * @param {string} [params.command] - Command string (optional if prompt provided)
+   * @param {string} [params.prompt] - Prompt text (optional if command provided)
    * @param {string} params.requestId - Request ID
    * @param {number} params.maxIterations - Maximum iterations (default: 25)
    * @returns {Promise<Object>} Execution result
    */
   async iterate(params) {
-    const { repository, branchName, command, requestId, maxIterations = 25 } = params;
+    const { repository, branchName, command, prompt, requestId, maxIterations = 25 } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ command });
+    const validationError = this.validateRequest({ command, prompt });
     if (validationError) {
       return { ...validationError, requestId };
     }
@@ -202,7 +217,7 @@ export class CursorExecutionService {
     }
 
     // Prepare and execute initial command
-    const modifiedArgs = this.prepareCommand(command);
+    const modifiedArgs = this.prepareCommand(command, prompt);
     let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
       cwd: fullRepositoryPath,
     });

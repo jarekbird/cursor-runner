@@ -127,9 +127,13 @@ export class CursorCLI {
   validateCommandSecurity(args) {
     const commandString = args.join(' ').toLowerCase();
 
-    // Check for blocked commands
+    // Check for blocked commands (as whole words, not substrings)
     for (const blocked of this.blockedCommands) {
-      if (commandString.includes(blocked.toLowerCase())) {
+      const blockedLower = blocked.toLowerCase();
+      // Use word boundary regex to match whole words only
+      // This prevents false positives like "generate" matching "rm"
+      const regex = new RegExp(`\\b${blockedLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (regex.test(commandString)) {
         throw new Error(`Blocked command detected: ${blocked}`);
       }
     }
