@@ -276,17 +276,28 @@ If cursor-runner can't access jarek-va codebase:
 
 ### cursor-cli Not Found
 
-If cursor-runner can't find cursor-cli:
+cursor-cli is automatically installed in the Docker container during the build process. If cursor-runner can't find cursor-cli:
 
-1. Install cursor-cli on the host system
-2. Mount it as a volume (uncomment in docker-compose.yml):
-   ```yaml
-   - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
+1. Rebuild the Docker image to ensure cursor-cli is installed:
+   ```bash
+   docker-compose build --no-cache cursor-runner
+   docker-compose up -d cursor-runner
    ```
-3. Or install it inside the container by modifying the Dockerfile
-4. Verify cursor-cli is accessible:
+
+2. Verify cursor-cli is accessible:
    ```bash
    docker-compose exec cursor-runner which cursor
    docker-compose exec cursor-runner cursor --version
+   ```
+
+3. Check the build logs for any installation errors:
+   ```bash
+   docker-compose build cursor-runner 2>&1 | grep -i cursor
+   ```
+
+4. If installation fails, you can manually install it in a running container (temporary fix):
+   ```bash
+   docker-compose exec cursor-runner bash -c "curl https://cursor.com/install -fsS | bash"
+   docker-compose restart cursor-runner
    ```
 

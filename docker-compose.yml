@@ -38,8 +38,7 @@ services:
       - cursor_runner_repositories:/app/repositories
       # Mount logs for debugging
       - ./logs:/app/logs
-      # Mount cursor-cli if available on host (optional)
-      # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
+      # Note: cursor-cli is now installed in the Docker container via Dockerfile
     networks:
       - virtual-assistant-network
     healthcheck:

@@ -213,6 +213,85 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
+## Cursor CLI Installation Issues
+
+### Issue: "cursor-cli not available: spawn cursor ENOENT"
+
+**Problem**: The cursor CLI is not installed or not found in the container's PATH.
+
+**Solution 1: Rebuild the Docker image**
+```bash
+cd cursor-runner
+docker-compose build --no-cache cursor-runner
+docker-compose up -d cursor-runner
+```
+
+**Solution 2: Verify cursor CLI installation in container**
+```bash
+# Check if cursor binary exists (should be in /usr/local/bin)
+docker-compose exec cursor-runner ls -la /usr/local/bin/cursor
+docker-compose exec cursor-runner ls -la /usr/local/bin/cursor-agent
+
+# Check the cursor library directory
+docker-compose exec cursor-runner ls -la /usr/local/lib/cursor/
+
+# Check PATH (should include /usr/local/bin by default)
+docker-compose exec cursor-runner echo $PATH
+
+# Try to find cursor
+docker-compose exec cursor-runner which cursor
+docker-compose exec cursor-runner find /usr/local -name cursor* -type f
+
+# Try to run cursor
+docker-compose exec cursor-runner cursor --version
+```
+
+**Solution 3: Manual installation in running container (temporary)**
+```bash
+# Enter the container
+docker-compose exec cursor-runner bash
+
+# Inside container, install cursor CLI
+curl -fsSL https://cursor.com/install | bash
+
+# Verify installation
+which cursor
+cursor --version
+
+# Exit and restart
+exit
+docker-compose restart cursor-runner
+```
+
+**Solution 4: Check build logs for installation errors**
+```bash
+# Rebuild and check for cursor installation errors
+docker-compose build cursor-runner 2>&1 | grep -i cursor
+
+# Or check full build output
+docker-compose build cursor-runner
+```
+
+**Solution 5: Use custom cursor CLI path**
+If cursor CLI is installed elsewhere or mounted from host:
+```yaml
+# In docker-compose.yml
+environment:
+  - CURSOR_CLI_PATH=/path/to/cursor
+```
+
+**Note**: The cursor CLI installation script (`https://cursor.com/install`) installs "Cursor Agent" which provides the `cursor` command. The Dockerfile:
+1. Runs the official installer
+2. Finds the `cursor-agent` binary after installation
+3. Copies it to `/usr/local/lib/cursor/`
+4. Creates symlinks in `/usr/local/bin/` for both `cursor-agent` and `cursor`
+
+If the installation fails, it may be due to:
+- Network issues during build
+- The install script not working in non-interactive Docker builds
+- Architecture mismatch (the script should detect Linux/ARM automatically)
+- The `cursor-agent` binary not being found after installation (check build logs)
+
 ## Getting Help
 
 If issues persist:
