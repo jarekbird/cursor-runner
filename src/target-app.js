@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { logger } from './logger.js';
-import { existsSync } from 'fs';
+import { existsSync as defaultExistsSync } from 'fs';
 
 /**
  * TargetAppRunner - Runs tests and commands in target applications
@@ -9,10 +9,17 @@ import { existsSync } from 'fs';
  * being developed by cursor (e.g., jarek-va Rails app).
  */
 export class TargetAppRunner {
-  constructor() {
+  /**
+   * @param {Object} [options]
+   * @param {Function} [options.fsExistsSync] - Optional injected fs.existsSync implementation (for testing)
+   */
+  constructor(options = {}) {
+    const { fsExistsSync } = options;
+
     this.targetAppPath = process.env.TARGET_APP_PATH || '../jarek-va';
     this.targetAppType = process.env.TARGET_APP_TYPE || 'rails';
     this.timeout = parseInt(process.env.TARGET_APP_TIMEOUT || '600000', 10); // 10 minutes default
+    this.fsExistsSync = fsExistsSync || defaultExistsSync;
   }
 
   /**
@@ -20,7 +27,7 @@ export class TargetAppRunner {
    * @returns {Promise<boolean>}
    */
   async validate() {
-    if (!existsSync(this.targetAppPath)) {
+    if (!this.fsExistsSync(this.targetAppPath)) {
       throw new Error(`Target application path does not exist: ${this.targetAppPath}`);
     }
 

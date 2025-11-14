@@ -22,10 +22,12 @@ const __filename = fileURLToPath(import.meta.url);
  * Main application class
  */
 class CursorRunner {
-  constructor() {
-    this.cursorCLI = new CursorCLI();
-    this.targetAppRunner = new TargetAppRunner();
-    this.server = new Server();
+  constructor(options = {}) {
+    const { cursorCLI, targetAppRunner, server: serverInstance } = options;
+
+    this.cursorCLI = cursorCLI || new CursorCLI();
+    this.targetAppRunner = targetAppRunner || new TargetAppRunner();
+    this.server = serverInstance || new Server();
     this.logger = logger;
   }
 
@@ -155,8 +157,8 @@ class CursorRunner {
 // Export for use as module
 export { CursorRunner };
 
-// Run as CLI if executed directly
-if (import.meta.url === `file://${__filename}`) {
+// Run as CLI if executed directly (but not during tests)
+if (import.meta.url === `file://${__filename}` && !process.env.JEST_WORKER_ID) {
   const runner = new CursorRunner();
 
   // Handle graceful shutdown

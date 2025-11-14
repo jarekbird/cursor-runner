@@ -36,13 +36,35 @@ ${output}`;
       });
 
       // Try to extract JSON from output
-      const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (parseError) {
-          logger.warn('Failed to parse review JSON', { error: parseError.message });
+      // Find all JSON objects by matching balanced braces
+      const jsonMatches = [];
+      let depth = 0;
+      let start = -1;
+
+      for (let i = 0; i < result.stdout.length; i++) {
+        if (result.stdout[i] === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (result.stdout[i] === '}') {
+          depth--;
+          if (depth === 0 && start !== -1) {
+            const jsonCandidate = result.stdout.substring(start, i + 1);
+            try {
+              const parsed = JSON.parse(jsonCandidate);
+              jsonMatches.push(parsed);
+            } catch (parseError) {
+              // Not valid JSON, skip
+            }
+            start = -1;
+          }
         }
+      }
+
+      // Return the last valid JSON object found
+      if (jsonMatches.length > 0) {
+        return jsonMatches[jsonMatches.length - 1];
       }
 
       // If no JSON found, try to parse the entire output
