@@ -25,6 +25,8 @@ export class CursorExecutionService {
     this.filesystem = filesystem || new FilesystemService();
     this.terminalInstructions =
       '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+    // Enable terminal command execution when cursor requests it (defaults to false)
+    this.enableTerminalCommands = process.env.ENABLE_TERMINAL_COMMANDS === 'true';
   }
 
   /**
@@ -230,39 +232,51 @@ export class CursorExecutionService {
       // If terminal command is requested, execute it (even if code is marked complete,
       // as cursor might want to verify with tests, linting, etc.)
       if (reviewResult.execute_terminal_command && reviewResult.terminal_command_requested) {
-        logger.info('Executing terminal command', {
-          requestId,
-          iteration,
-          command: reviewResult.terminal_command_requested,
-        });
-
-        try {
-          // Parse terminal command into command and args
-          const terminalCommandParts = this.commandParser.parseCommand(
-            reviewResult.terminal_command_requested
-          );
-          const terminalCommand = terminalCommandParts[0];
-          const terminalArgs = terminalCommandParts.slice(1);
-
-          const terminalResult = await this.terminalService.executeCommand(
-            terminalCommand,
-            terminalArgs,
-            { cwd: fullRepositoryPath }
-          );
-          terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
-          logger.info('Terminal command executed', {
+        if (this.enableTerminalCommands) {
+          logger.info('Executing terminal command', {
             requestId,
             iteration,
-            exitCode: terminalResult.exitCode,
-            success: terminalResult.success,
+            command: reviewResult.terminal_command_requested,
           });
-        } catch (error) {
-          logger.error('Terminal command failed', {
+
+          try {
+            // Parse terminal command into command and args
+            const terminalCommandParts = this.commandParser.parseCommand(
+              reviewResult.terminal_command_requested
+            );
+            const terminalCommand = terminalCommandParts[0];
+            const terminalArgs = terminalCommandParts.slice(1);
+
+            const terminalResult = await this.terminalService.executeCommand(
+              terminalCommand,
+              terminalArgs,
+              { cwd: fullRepositoryPath }
+            );
+            terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
+            logger.info('Terminal command executed', {
+              requestId,
+              iteration,
+              exitCode: terminalResult.exitCode,
+              success: terminalResult.success,
+            });
+          } catch (error) {
+            logger.error('Terminal command failed', {
+              requestId,
+              iteration,
+              error: error.message,
+            });
+            terminalOutput = `Error executing command: ${error.message}`;
+          }
+        } else {
+          logger.warn('Terminal command requested but execution is disabled', {
             requestId,
             iteration,
-            error: error.message,
+            command: reviewResult.terminal_command_requested,
+            note: 'Set ENABLE_TERMINAL_COMMANDS=true to enable',
           });
-          terminalOutput = `Error executing command: ${error.message}`;
+          terminalOutput =
+            'Terminal command execution is disabled. ' +
+            `Requested command: ${reviewResult.terminal_command_requested}`;
         }
       }
 

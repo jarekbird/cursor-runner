@@ -287,6 +287,9 @@ describe('Server', () => {
       });
 
       it('should iterate when code is not complete', async () => {
+        // Enable terminal commands for this test
+        server.cursorExecution.enableTerminalCommands = true;
+
         const mockCursorResult1 = {
           success: true,
           exitCode: 0,
@@ -418,6 +421,9 @@ describe('Server', () => {
       });
 
       it('should handle terminal command execution errors', async () => {
+        // Enable terminal commands for this test
+        server.cursorExecution.enableTerminalCommands = true;
+
         const mockCursorResult = {
           success: true,
           exitCode: 0,
@@ -556,6 +562,9 @@ describe('Server', () => {
       });
 
       it('should include terminal output in resume prompt', async () => {
+        // Enable terminal commands for this test
+        server.cursorExecution.enableTerminalCommands = true;
+
         const mockCursorResult1 = {
           success: true,
           exitCode: 0,
