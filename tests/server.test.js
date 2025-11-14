@@ -89,7 +89,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "Create user service"',
+          command: 'cursor generate --print "Create user service"',
         });
 
         expect(response.status).toBe(200);
@@ -112,7 +112,7 @@ describe('Server', () => {
 
         const response = await request(app).post('/cursor/execute').send({
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -139,7 +139,7 @@ describe('Server', () => {
 
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -162,7 +162,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'feature-branch',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -205,10 +205,10 @@ describe('Server', () => {
         expect(response.body.branchName).toBe('main');
         expect(response.body.output).toBe('Generated code successfully');
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        // Verify it was called with generate --prompt
+        // Verify it was called with generate --print
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
         expect(callArgs[0]).toBe('generate');
-        expect(callArgs[1]).toBe('--prompt');
+        expect(callArgs[1]).toBe('--print');
         expect(callArgs[2]).toContain('Create user service');
       });
 
@@ -218,7 +218,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/execute').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(404);
@@ -226,7 +226,7 @@ describe('Server', () => {
         expect(response.body.error).toContain('Repository not found locally');
       });
 
-      it('should append instructions to command with --prompt flag', async () => {
+      it('should append instructions to command with --print flag', async () => {
         const mockResult = {
           success: true,
           exitCode: 0,
@@ -240,15 +240,15 @@ describe('Server', () => {
         await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "Create service"',
+          command: 'cursor generate --print "Create service"',
         });
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const promptIndex = callArgs.findIndex((arg) => arg === '--prompt');
-        expect(promptIndex).toBeGreaterThan(-1);
-        expect(callArgs[promptIndex + 1]).toContain('Create service');
-        expect(callArgs[promptIndex + 1]).toContain('If you need to run a terminal command');
+        const printIndex = callArgs.findIndex((arg) => arg === '--print');
+        expect(printIndex).toBeGreaterThan(-1);
+        expect(callArgs[printIndex + 1]).toContain('Create service');
+        expect(callArgs[printIndex + 1]).toContain('If you need to run a terminal command');
       });
 
       it('should handle command execution errors', async () => {
@@ -258,7 +258,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(500);
@@ -280,14 +280,14 @@ describe('Server', () => {
         await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "Create user service with authentication"',
+          command: 'cursor generate --print "Create user service with authentication"',
         });
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        expect(callArgs).toContain('--prompt');
+        expect(callArgs).toContain('--print');
         // The prompt argument will have instructions appended, so check that it contains the original text
-        const promptArg = callArgs[callArgs.indexOf('--prompt') + 1];
+        const promptArg = callArgs[callArgs.indexOf('--print') + 1];
         expect(promptArg).toContain('Create user service with authentication');
       });
     });
@@ -321,7 +321,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "Create user service"',
+          command: 'cursor generate --print "Create user service"',
         });
 
         expect(response.status).toBe(200);
@@ -391,7 +391,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "Create user service"',
+          command: 'cursor generate --print "Create user service"',
         });
 
         expect(response.status).toBe(200);
@@ -431,7 +431,7 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockReviewResult);
 
         const response = await request(app).post('/cursor/iterate').send({
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -471,7 +471,7 @@ describe('Server', () => {
 
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
-          command: 'cursor generate --prompt "Create user service"',
+          command: 'cursor generate --print "Create user service"',
         });
 
         expect(response.status).toBe(200);
@@ -515,10 +515,10 @@ describe('Server', () => {
         expect(response.body.success).toBe(true);
         expect(response.body.iterations).toBe(0);
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        // Verify it was called with generate --prompt
+        // Verify it was called with generate --print
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
         expect(callArgs[0]).toBe('generate');
-        expect(callArgs[1]).toBe('--prompt');
+        expect(callArgs[1]).toBe('--print');
         expect(callArgs[2]).toContain('Create user service');
       });
 
@@ -539,7 +539,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(404);
@@ -600,7 +600,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -650,7 +650,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -681,7 +681,7 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         expect(response.status).toBe(200);
@@ -748,7 +748,7 @@ describe('Server', () => {
         await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
-          command: 'cursor generate --prompt "test"',
+          command: 'cursor generate --print "test"',
         });
 
         // Check that resume command includes terminal output

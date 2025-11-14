@@ -58,9 +58,10 @@ export class CommandParserService {
     let foundPromptFlag = false;
 
     for (let i = 0; i < modifiedArgs.length; i++) {
-      // Common prompt flags: --prompt, -p, --instruction, --message, etc.
+      // Common prompt flags: --print, --prompt, -p, --instruction, --message, etc.
       if (
-        (modifiedArgs[i] === '--prompt' ||
+        (modifiedArgs[i] === '--print' ||
+          modifiedArgs[i] === '--prompt' ||
           modifiedArgs[i] === '-p' ||
           modifiedArgs[i] === '--instruction' ||
           modifiedArgs[i] === '--message') &&

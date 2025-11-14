@@ -87,7 +87,7 @@ export class CursorExecutionService {
       commandArgs = this.commandParser.parseCommand(command);
     } else if (prompt) {
       // Construct command from prompt
-      commandArgs = ['generate', '--prompt', prompt];
+      commandArgs = ['generate', '--print', prompt];
     } else {
       throw new Error('Either command or prompt must be provided');
     }

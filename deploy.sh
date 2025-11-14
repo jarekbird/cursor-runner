@@ -113,7 +113,7 @@ PROMPT_EOF
   # Check if cursor-cli is available
   if command -v cursor &> /dev/null; then
     echo "  Using cursor-cli to generate commit message..."
-    CURSOR_RESULT=$(cursor --prompt "$(cat "$CURSOR_PROMPT_FILE")" 2>/dev/null || echo "")
+    CURSOR_RESULT=$(cursor --print "$(cat "$CURSOR_PROMPT_FILE")" 2>/dev/null || echo "")
     
     # Extract commit message from cursor output
     # Remove markdown code blocks, quotes, and extra whitespace

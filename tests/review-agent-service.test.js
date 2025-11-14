@@ -249,7 +249,7 @@ Second JSON: {"code_complete": true, "execute_terminal_command": true, "terminal
       expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       const callArgs = mockCursorCLI.executeCommand.mock.calls[0];
       const args = callArgs[0];
-      const promptArg = args[args.indexOf('--prompt') + 1];
+      const promptArg = args[args.indexOf('--print') + 1];
       expect(promptArg).toContain(testOutput);
     });
   });

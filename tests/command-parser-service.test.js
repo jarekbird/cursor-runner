@@ -101,6 +101,19 @@ describe('CommandParserService', () => {
   });
 
   describe('appendInstructions', () => {
+    it('should append instructions to --print flag', () => {
+      const args = ['cursor', 'generate', '--print', 'original prompt'];
+      const instructions = '\n\nAdditional instructions';
+      const result = parser.appendInstructions(args, instructions);
+
+      expect(result).toEqual([
+        'cursor',
+        'generate',
+        '--print',
+        'original prompt\n\nAdditional instructions',
+      ]);
+    });
+
     it('should append instructions to --prompt flag', () => {
       const args = ['cursor', 'generate', '--prompt', 'original prompt'];
       const instructions = '\n\nAdditional instructions';
