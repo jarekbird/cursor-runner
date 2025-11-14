@@ -11,7 +11,7 @@ import { FilesystemService } from './filesystem-service.js';
 /**
  * HTTP Server for cursor-runner API
  *
- * Provides endpoints for git operations and terminal commands.
+ * Provides endpoints for cursor command execution.
  */
 export class Server {
   constructor() {
@@ -66,9 +66,6 @@ export class Server {
     // Cursor execution routes
     this.setupCursorRoutes();
 
-    // Git routes
-    this.setupGitRoutes();
-
     // Error handling middleware (must be after all routes)
     // Express requires 4 parameters (err, req, res, next) to recognize error handlers
     // eslint-disable-next-line no-unused-vars
@@ -86,7 +83,7 @@ export class Server {
     /**
      * POST /cursor/execute
      * Execute cursor-cli command in a repository
-     * Body: { repository: string, branchName: string, command: string }
+     * Body: { repository: string, branchName?: string, command: string }
      */
     router.post('/execute', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -127,7 +124,7 @@ export class Server {
     /**
      * POST /cursor/iterate
      * Execute cursor-cli command iteratively until completion
-     * Body: { repository: string, branchName: string, command: string }
+     * Body: { repository: string, branchName?: string, command: string }
      */
     router.post('/iterate', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -220,125 +217,6 @@ export class Server {
     }
 
     res.status(statusCode).json(errorResponse);
-  }
-
-  /**
-   * Setup git-related routes
-   */
-  setupGitRoutes() {
-    const router = express.Router();
-
-    /**
-     * POST /git/clone
-     * Clone a repository to /repositories folder
-     * Body: { repositoryUrl: string, repositoryName?: string }
-     */
-    router.post('/clone', async (req, res, next) => {
-      try {
-        const { repositoryUrl, repositoryName } = req.body;
-
-        if (!repositoryUrl) {
-          return res.status(400).json({
-            success: false,
-            error: 'repositoryUrl is required',
-          });
-        }
-
-        const result = await this.gitService.cloneRepository(repositoryUrl, repositoryName);
-        res.json(result);
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    /**
-     * GET /git/repositories
-     * List locally cloned repositories
-     */
-    router.get('/repositories', async (req, res, next) => {
-      try {
-        const repositories = await this.gitService.listRepositories();
-        res.json({
-          success: true,
-          repositories,
-          count: repositories.length,
-        });
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    /**
-     * POST /git/checkout
-     * Checkout to a repository/branch
-     * Body: { repository: string, branch: string }
-     */
-    router.post('/checkout', async (req, res, next) => {
-      try {
-        const { repository, branch } = req.body;
-
-        if (!repository || !branch) {
-          return res.status(400).json({
-            success: false,
-            error: 'repository and branch are required',
-          });
-        }
-
-        const result = await this.gitService.checkoutBranch(repository, branch);
-        res.json(result);
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    /**
-     * POST /git/push
-     * Push local branch to origin
-     * Body: { repository: string, branch: string }
-     */
-    router.post('/push', async (req, res, next) => {
-      try {
-        const { repository, branch } = req.body;
-
-        if (!repository || !branch) {
-          return res.status(400).json({
-            success: false,
-            error: 'repository and branch are required',
-          });
-        }
-
-        const result = await this.gitService.pushBranch(repository, branch);
-        res.json(result);
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    /**
-     * POST /git/pull
-     * Pull local branch from origin
-     * Body: { repository: string, branch: string }
-     */
-    router.post('/pull', async (req, res, next) => {
-      try {
-        const { repository, branch } = req.body;
-
-        if (!repository || !branch) {
-          return res.status(400).json({
-            success: false,
-            error: 'repository and branch are required',
-          });
-        }
-
-        const result = await this.gitService.pullBranch(repository, branch);
-        res.json(result);
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    // Mount git routes
-    this.app.use('/git', router);
   }
 
   /**

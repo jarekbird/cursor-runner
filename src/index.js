@@ -47,16 +47,7 @@ class CursorRunner {
 
       this.logger.info('cursor-runner initialized successfully', {
         port: this.server.port,
-        endpoints: [
-          'GET /health',
-          'POST /cursor/execute',
-          'POST /cursor/iterate',
-          'POST /git/clone',
-          'GET /git/repositories',
-          'POST /git/checkout',
-          'POST /git/push',
-          'POST /git/pull',
-        ],
+        endpoints: ['GET /health', 'POST /cursor/execute', 'POST /cursor/iterate'],
       });
     } catch (error) {
       this.logger.error('Failed to initialize cursor-runner', { error: error.message });

@@ -5,7 +5,7 @@ import { FilesystemService } from './filesystem-service.js';
 /**
  * CursorExecutionService - Orchestrates cursor command execution
  *
- * Handles repository validation, branch checkout, command preparation,
+ * Handles repository validation, command preparation,
  * and execution coordination for both single and iterative cursor commands.
  */
 export class CursorExecutionService {
@@ -33,7 +33,7 @@ export class CursorExecutionService {
    * @returns {Object|null} Error response or null if valid
    */
   validateRequest(params) {
-    const { repository, branchName, command } = params;
+    const { repository, command } = params;
 
     if (!repository) {
       return {
@@ -41,16 +41,6 @@ export class CursorExecutionService {
         body: {
           success: false,
           error: 'repository is required',
-        },
-      };
-    }
-
-    if (!branchName) {
-      return {
-        status: 400,
-        body: {
-          success: false,
-          error: 'branchName is required',
         },
       };
     }
@@ -82,35 +72,12 @@ export class CursorExecutionService {
         status: 404,
         body: {
           success: false,
-          error: `Repository not found locally: ${repository}. Please clone it first using POST /git/clone`,
+          error: `Repository not found locally: ${repository}. Please ensure the repository exists in the repositories directory.`,
         },
       };
     }
 
     return { fullRepositoryPath };
-  }
-
-  /**
-   * Checkout branch and handle errors
-   * @param {string} repository - Repository name
-   * @param {string} branchName - Branch name
-   * @returns {Promise<Object|null>} Error response or null if successful
-   */
-  async checkoutBranch(repository, branchName) {
-    try {
-      logger.info('Checking out branch', { repository, branchName });
-      await this.gitService.checkoutBranch(repository, branchName);
-      return null;
-    } catch (error) {
-      logger.error('Failed to checkout branch', { repository, branchName, error: error.message });
-      return {
-        status: 500,
-        body: {
-          success: false,
-          error: `Failed to checkout branch: ${error.message}`,
-        },
-      };
-    }
   }
 
   /**
@@ -127,7 +94,7 @@ export class CursorExecutionService {
    * Execute a single cursor command
    * @param {Object} params - Execution parameters
    * @param {string} params.repository - Repository name
-   * @param {string} params.branchName - Branch name
+   * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
    * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
    * @returns {Promise<Object>} Execution result
@@ -137,7 +104,7 @@ export class CursorExecutionService {
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, branchName, command });
+    const validationError = this.validateRequest({ repository, command });
     if (validationError) {
       return { ...validationError, requestId };
     }
@@ -148,12 +115,6 @@ export class CursorExecutionService {
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
-
-    // Checkout branch
-    const checkoutError = await this.checkoutBranch(repository, branchName);
-    if (checkoutError) {
-      return { ...checkoutError, requestId };
-    }
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -180,20 +141,26 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
     });
 
+    const responseBody = {
+      success: result.success !== false,
+      requestId,
+      repository,
+      command: modifiedArgs,
+      output: result.stdout || '',
+      error: result.stderr || null,
+      exitCode: result.exitCode || 0,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Include branchName in response if provided
+    if (branchName) {
+      responseBody.branchName = branchName;
+    }
+
     return {
       status: 200,
-      body: {
-        success: result.success !== false,
-        requestId,
-        repository,
-        branchName,
-        command: modifiedArgs,
-        output: result.stdout || '',
-        error: result.stderr || null,
-        exitCode: result.exitCode || 0,
-        duration: `${duration}ms`,
-        timestamp: new Date().toISOString(),
-      },
+      body: responseBody,
     };
   }
 
@@ -201,7 +168,7 @@ export class CursorExecutionService {
    * Execute cursor command iteratively until completion
    * @param {Object} params - Execution parameters
    * @param {string} params.repository - Repository name
-   * @param {string} params.branchName - Branch name
+   * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
    * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
    * @param {number} params.maxIterations - Maximum iterations (default: 25)
@@ -212,7 +179,7 @@ export class CursorExecutionService {
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, branchName, command });
+    const validationError = this.validateRequest({ repository, command });
     if (validationError) {
       return { ...validationError, requestId };
     }
@@ -223,12 +190,6 @@ export class CursorExecutionService {
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
-
-    // Checkout branch
-    const checkoutError = await this.checkoutBranch(repository, branchName);
-    if (checkoutError) {
-      return { ...checkoutError, requestId };
-    }
 
     // Prepare and execute initial command
     const modifiedArgs = this.prepareCommand(command);
@@ -266,13 +227,8 @@ export class CursorExecutionService {
         execute_terminal_command: reviewResult.execute_terminal_command,
       });
 
-      // If code is complete, break
-      if (reviewResult.code_complete) {
-        logger.info('Code marked as complete', { requestId, iteration });
-        break;
-      }
-
-      // If terminal command is requested, execute it
+      // If terminal command is requested, execute it (even if code is marked complete,
+      // as cursor might want to verify with tests, linting, etc.)
       if (reviewResult.execute_terminal_command && reviewResult.terminal_command_requested) {
         logger.info('Executing terminal command', {
           requestId,
@@ -310,6 +266,14 @@ export class CursorExecutionService {
         }
       }
 
+      // If code is complete and no terminal command was requested, break
+      // If code is complete but terminal command was executed, continue to resume
+      // so cursor can see the terminal output and make final decisions
+      if (reviewResult.code_complete && !reviewResult.execute_terminal_command) {
+        logger.info('Code marked as complete', { requestId, iteration });
+        break;
+      }
+
       // Prepare resume prompt
       let resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
@@ -338,21 +302,27 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
     });
 
+    const responseBody = {
+      success: lastResult.success !== false,
+      requestId,
+      repository,
+      iterations: iteration - 1,
+      maxIterations,
+      output: lastResult.stdout || '',
+      error: lastResult.stderr || null,
+      exitCode: lastResult.exitCode || 0,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Include branchName in response if provided
+    if (branchName) {
+      responseBody.branchName = branchName;
+    }
+
     return {
       status: 200,
-      body: {
-        success: lastResult.success !== false,
-        requestId,
-        repository,
-        branchName,
-        iterations: iteration - 1,
-        maxIterations,
-        output: lastResult.stdout || '',
-        error: lastResult.stderr || null,
-        exitCode: lastResult.exitCode || 0,
-        duration: `${duration}ms`,
-        timestamp: new Date().toISOString(),
-      },
+      body: responseBody,
     };
   }
 }
