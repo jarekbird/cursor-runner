@@ -85,8 +85,9 @@ export class Server {
 
     /**
      * POST /cursor/execute
-     * Execute cursor-cli command in a repository
-     * Body: { repository: string, branchName?: string, command: string }
+     * Execute cursor-cli command in a repository or repositories directory
+     * Body: { repository?: string, branchName?: string, command: string }
+     * If repository is not provided, uses the repositories directory as working directory
      */
     router.post('/execute', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -127,7 +128,8 @@ export class Server {
     /**
      * POST /cursor/iterate
      * Execute cursor-cli command iteratively until completion
-     * Body: { repository: string, branchName?: string, command: string }
+     * Body: { repository?: string, branchName?: string, command: string }
+     * If repository is not provided, uses the repositories directory as working directory
      */
     router.post('/iterate', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

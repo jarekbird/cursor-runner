@@ -35,17 +35,7 @@ export class CursorExecutionService {
    * @returns {Object|null} Error response or null if valid
    */
   validateRequest(params) {
-    const { repository, command } = params;
-
-    if (!repository) {
-      return {
-        status: 400,
-        body: {
-          success: false,
-          error: 'repository is required',
-        },
-      };
-    }
+    const { command } = params;
 
     if (!command) {
       return {
@@ -95,7 +85,7 @@ export class CursorExecutionService {
   /**
    * Execute a single cursor command
    * @param {Object} params - Execution parameters
-   * @param {string} params.repository - Repository name
+   * @param {string} [params.repository] - Optional repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
    * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
@@ -106,17 +96,24 @@ export class CursorExecutionService {
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, command });
+    const validationError = this.validateRequest({ command });
     if (validationError) {
       return { ...validationError, requestId };
     }
 
-    // Validate repository exists
-    const repoValidation = this.validateRepository(repository);
-    if (repoValidation.status) {
-      return { ...repoValidation, requestId };
+    // Determine working directory
+    // If repository is provided, validate and use it; otherwise use repositories directory
+    let fullRepositoryPath;
+    if (repository) {
+      const repoValidation = this.validateRepository(repository);
+      if (repoValidation.status) {
+        return { ...repoValidation, requestId };
+      }
+      fullRepositoryPath = repoValidation.fullRepositoryPath;
+    } else {
+      // Use repositories directory when no repository is specified
+      fullRepositoryPath = this.gitService.repositoriesPath;
     }
-    const { fullRepositoryPath } = repoValidation;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -146,7 +143,6 @@ export class CursorExecutionService {
     const responseBody = {
       success: result.success !== false,
       requestId,
-      repository,
       command: modifiedArgs,
       output: result.stdout || '',
       error: result.stderr || null,
@@ -154,6 +150,11 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     };
+
+    // Include repository in response if provided
+    if (repository) {
+      responseBody.repository = repository;
+    }
 
     // Include branchName in response if provided
     if (branchName) {
@@ -169,7 +170,7 @@ export class CursorExecutionService {
   /**
    * Execute cursor command iteratively until completion
    * @param {Object} params - Execution parameters
-   * @param {string} params.repository - Repository name
+   * @param {string} [params.repository] - Optional repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
    * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
@@ -181,17 +182,24 @@ export class CursorExecutionService {
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, command });
+    const validationError = this.validateRequest({ command });
     if (validationError) {
       return { ...validationError, requestId };
     }
 
-    // Validate repository exists
-    const repoValidation = this.validateRepository(repository);
-    if (repoValidation.status) {
-      return { ...repoValidation, requestId };
+    // Determine working directory
+    // If repository is provided, validate and use it; otherwise use repositories directory
+    let fullRepositoryPath;
+    if (repository) {
+      const repoValidation = this.validateRepository(repository);
+      if (repoValidation.status) {
+        return { ...repoValidation, requestId };
+      }
+      fullRepositoryPath = repoValidation.fullRepositoryPath;
+    } else {
+      // Use repositories directory when no repository is specified
+      fullRepositoryPath = this.gitService.repositoriesPath;
     }
-    const { fullRepositoryPath } = repoValidation;
 
     // Prepare and execute initial command
     const modifiedArgs = this.prepareCommand(command);
@@ -319,7 +327,6 @@ export class CursorExecutionService {
     const responseBody = {
       success: lastResult.success !== false,
       requestId,
-      repository,
       iterations: iteration - 1,
       maxIterations,
       output: lastResult.stdout || '',
@@ -328,6 +335,11 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     };
+
+    // Include repository in response if provided
+    if (repository) {
+      responseBody.repository = repository;
+    }
 
     // Include branchName in response if provided
     if (branchName) {

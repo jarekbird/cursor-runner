@@ -100,15 +100,30 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
-      it('should return 400 if repository is missing', async () => {
+      it('should execute cursor command without repository (uses repositories directory)', async () => {
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
         const response = await request(app).post('/cursor/execute').send({
           branchName: 'main',
           command: 'cursor generate --prompt "test"',
         });
 
-        expect(response.status).toBe(400);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('repository is required');
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.repository).toBeUndefined();
+        expect(response.body.branchName).toBe('main');
+        expect(response.body.output).toBe('Generated code successfully');
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        // Verify it was called with repositories directory as cwd
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0];
+        expect(callArgs[1].cwd).toBe('/test/repositories');
       });
 
       it('should work without branchName', async () => {
@@ -361,13 +376,42 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4); // Initial + review + resume + review
       });
 
-      it('should return 400 if repository is missing', async () => {
+      it('should iterate cursor command without repository (uses repositories directory)', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code generated successfully',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Task completed',
+          }),
+          stderr: '',
+        };
+
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult)
+          .mockResolvedValueOnce(mockReviewResult);
+
         const response = await request(app).post('/cursor/iterate').send({
           command: 'cursor generate --prompt "test"',
         });
 
-        expect(response.status).toBe(400);
-        expect(response.body.error).toBe('repository is required');
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.repository).toBeUndefined();
+        expect(response.body.iterations).toBe(0);
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        // Verify it was called with repositories directory as cwd
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0];
+        expect(callArgs[1].cwd).toBe('/test/repositories');
       });
 
       it('should work without branchName', async () => {
