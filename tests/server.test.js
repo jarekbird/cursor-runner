@@ -720,10 +720,12 @@ describe('Server', () => {
       });
 
       it('should handle review agent JSON parsing failures', async () => {
+        const originalOutput = 'Generated code';
+
         const mockCursorResult = {
           success: true,
           exitCode: 0,
-          stdout: 'Generated code',
+          stdout: originalOutput,
           stderr: '',
         };
 
@@ -739,6 +741,8 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult)
           .mockResolvedValueOnce(mockReviewResult);
 
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
@@ -750,13 +754,33 @@ describe('Server', () => {
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with error and originalOutput
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: expect.stringContaining('Failed to parse review agent output'),
+            originalOutput: originalOutput,
+            iterations: 0,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
       });
 
       it('should break iterations when break_iteration is true', async () => {
+        const originalOutput = 'Workspace Trust Required - cursor needs permissions';
+        const reviewJustification = 'Workspace Trust Required - cursor needs permissions';
+
         const mockCursorResult = {
           success: true,
           exitCode: 0,
-          stdout: 'Workspace Trust Required - cursor needs permissions',
+          stdout: originalOutput,
           stderr: '',
         };
 
@@ -766,7 +790,7 @@ describe('Server', () => {
           stdout: JSON.stringify({
             code_complete: false,
             break_iteration: true,
-            justification: 'Workspace Trust Required - cursor needs permissions',
+            justification: reviewJustification,
           }),
           stderr: '',
         };
@@ -792,12 +816,14 @@ describe('Server', () => {
         // Wait for async processing
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Verify callback webhook was called with error
+        // Verify callback webhook was called with error and new fields
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
             success: false,
             error: expect.stringContaining('Workspace Trust Required'),
+            reviewJustification: reviewJustification,
+            originalOutput: originalOutput,
             iterations: 0, // Break happens before completing first iteration
           }),
           expect.any(String)

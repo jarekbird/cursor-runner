@@ -4,10 +4,14 @@ import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 
 /**
- * WorkspaceTrustService - Ensures workspace trust is configured
+ * WorkspaceTrustService - Ensures workspace trust and cursor-cli permissions are configured
  *
- * Creates .vscode/settings.json with workspace trust enabled
- * to allow cursor-cli to execute commands like git.
+ * Creates:
+ * - .vscode/settings.json with workspace trust enabled
+ * - .cursor/settings.json with cursor workspace trust settings
+ * - .cursor/cli.json with cursor-cli permissions to allow shell commands like git
+ *
+ * This is required for cursor-cli to execute commands without security restrictions.
  */
 export class WorkspaceTrustService {
   constructor(filesystem = null) {
@@ -96,6 +100,61 @@ export class WorkspaceTrustService {
           workspacePath,
           cursorSettingsPath,
         });
+      }
+
+      // Create cursor-cli permissions configuration
+      // This is required for cursor-cli to execute shell commands like git
+      const cliConfigPath = join(cursorDir, 'cli.json');
+      let cliConfig = {};
+
+      // Read existing cli.json if it exists
+      if (this.filesystem.exists(cliConfigPath)) {
+        try {
+          const existingContent = await readFile(cliConfigPath, 'utf-8');
+          cliConfig = JSON.parse(existingContent);
+        } catch (error) {
+          logger.warn('Failed to read existing cli.json, creating new one', {
+            workspacePath,
+            error: error.message,
+          });
+        }
+      }
+
+      // Ensure permissions are configured to allow git and shell commands
+      if (!cliConfig.permissions) {
+        cliConfig.permissions = {};
+      }
+
+      if (!cliConfig.permissions.allow) {
+        cliConfig.permissions.allow = [];
+      }
+
+      // Add git permissions if not already present
+      const requiredPermissions = [
+        'Shell(git)',
+        'Shell(bash)',
+        'Shell(sh)',
+        'Shell(chmod)',
+        'Shell(echo)',
+      ];
+
+      let permissionsUpdated = false;
+      for (const permission of requiredPermissions) {
+        if (!cliConfig.permissions.allow.includes(permission)) {
+          cliConfig.permissions.allow.push(permission);
+          permissionsUpdated = true;
+        }
+      }
+
+      if (permissionsUpdated || !this.filesystem.exists(cliConfigPath)) {
+        await writeFile(cliConfigPath, JSON.stringify(cliConfig, null, 2) + '\n', 'utf-8');
+        logger.info('Configured cursor-cli permissions', {
+          workspacePath,
+          cliConfigPath,
+          permissions: cliConfig.permissions.allow,
+        });
+      } else {
+        logger.debug('Cursor-cli permissions already configured', { workspacePath });
       }
     } catch (error) {
       logger.error('Failed to configure workspace trust', {

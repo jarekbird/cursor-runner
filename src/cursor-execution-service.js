@@ -317,6 +317,8 @@ export class CursorExecutionService {
 
     let iteration = 1;
     let iterationError = null;
+    let reviewJustification = null;
+    let originalOutput = null;
 
     // Iteration loop
     while (iteration <= maxIterations) {
@@ -332,6 +334,9 @@ export class CursorExecutionService {
         requestId,
         iteration,
       });
+
+      // Store the original output before review (in case we need to break)
+      originalOutput = lastResult.stdout || '';
 
       const reviewResult = await this.reviewAgent.reviewOutput(
         lastResult.stdout,
@@ -360,9 +365,10 @@ export class CursorExecutionService {
           iteration,
           justification: reviewResult.justification || 'Permission issue detected',
         });
-        iterationError =
+        reviewJustification =
           reviewResult.justification ||
           'Cursor is requesting permissions or indicating it lacks permissions to execute commands. This requires manual intervention.';
+        iterationError = reviewJustification;
         break;
       }
 
@@ -423,6 +429,16 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     };
+
+    // If there was a review agent error, include both the justification and original output
+    if (reviewJustification) {
+      responseBody.reviewJustification = reviewJustification;
+    }
+
+    // Include original output whenever there's an iteration error (review failure or break_iteration)
+    if (iterationError && originalOutput) {
+      responseBody.originalOutput = originalOutput;
+    }
 
     // Include branchName in response if provided
     if (branchName) {
