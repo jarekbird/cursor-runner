@@ -209,10 +209,46 @@ export class CursorExecutionService {
     }
 
     // Prepare and execute initial command
-    const modifiedArgs = this.prepareCommand(command, prompt);
-    let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
+    logger.info('Preparing initial cursor command', {
+      requestId,
+      repository,
+      branchName,
+      command,
+      prompt,
       cwd: fullRepositoryPath,
     });
+    const modifiedArgs = this.prepareCommand(command, prompt);
+    logger.info('Executing initial cursor command', {
+      requestId,
+      repository,
+      branchName,
+      args: modifiedArgs,
+      cwd: fullRepositoryPath,
+    });
+    let lastResult;
+    try {
+      lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
+        cwd: fullRepositoryPath,
+      });
+      logger.info('Initial cursor command completed', {
+        requestId,
+        repository,
+        branchName,
+        success: lastResult.success,
+        exitCode: lastResult.exitCode,
+        stdoutLength: lastResult.stdout?.length || 0,
+        stderrLength: lastResult.stderr?.length || 0,
+      });
+    } catch (error) {
+      logger.error('Initial cursor command failed', {
+        requestId,
+        repository,
+        branchName,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
 
     let iteration = 1;
     let terminalOutput = null;
