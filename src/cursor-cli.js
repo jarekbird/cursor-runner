@@ -12,6 +12,7 @@ export class CursorCLI {
     this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
+    this._ptyModule = null; // Lazy-loaded
 
     // Security: Allowed and blocked commands
     this.allowedCommands = (
@@ -42,23 +43,28 @@ export class CursorCLI {
    * @returns {Promise<Object>} Command result
    */
   async executeCommand(args = [], options = {}) {
+    // Validate command security
+    this.validateCommandSecurity(args);
+
+    const cwd = options.cwd || process.cwd();
+    const timeout = options.timeout || this.timeout;
+
+    // Lazy-load node-pty if available (before creating Promise)
+    if (this._ptyModule === null) {
+      try {
+        // eslint-disable-next-line node/no-unsupported-features/es-syntax
+        const ptyModule = await import('node-pty').catch(() => null);
+        this._ptyModule = ptyModule?.default || ptyModule || null;
+      } catch (error) {
+        this._ptyModule = null;
+      }
+    }
+
     return new Promise((resolve, reject) => {
-      // Validate command security
-      this.validateCommandSecurity(args);
-
-      const cwd = options.cwd || process.cwd();
-      const timeout = options.timeout || this.timeout;
-
       logger.debug('Executing cursor-cli command', {
         command: this.cursorPath,
         args,
         cwd,
-      });
-
-      const child = spawn(this.cursorPath, args, {
-        cwd,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
       });
 
       let stdout = '';
@@ -66,9 +72,44 @@ export class CursorCLI {
       let outputSize = 0;
       let lastOutputTime = Date.now();
       let hasReceivedOutput = false;
+      let completed = false;
+
+      // Try to use a pseudo-TTY so cursor behaves like an interactive session
+      let child;
+      let usePty = false;
+
+      if (this._ptyModule) {
+        try {
+          child = this._ptyModule.spawn(this.cursorPath, args, {
+            name: 'xterm-color',
+            cols: 80,
+            rows: 30,
+            cwd,
+            env: process.env,
+          });
+          usePty = true;
+          logger.debug('Using PTY for cursor-cli execution');
+        } catch (error) {
+          logger.warn('Failed to start cursor-cli with PTY, falling back to spawn', {
+            error: error.message,
+          });
+        }
+      }
+
+      // Fallback to regular spawn
+      if (!usePty) {
+        child = spawn(this.cursorPath, args, {
+          cwd,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: false,
+        });
+        logger.debug('Using regular spawn for cursor-cli execution');
+      }
 
       // Set timeout
       const timeoutId = setTimeout(() => {
+        if (completed) return;
+
         logger.error('cursor-cli command timeout', {
           command: this.cursorPath,
           args,
@@ -79,15 +120,27 @@ export class CursorCLI {
           stderrLength: stderr.length,
           lastOutputTime: lastOutputTime ? new Date(lastOutputTime).toISOString() : null,
         });
-        child.kill('SIGTERM');
-        // Try SIGKILL if SIGTERM doesn't work after a short delay
-        setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch (e) {
-            // Process may already be dead
+
+        try {
+          if (child.kill) {
+            child.kill('SIGTERM');
           }
-        }, 1000);
+        } catch (e) {
+          // Process may already be dead
+        }
+
+        // Try SIGKILL if SIGTERM doesn't work after a short delay (spawned processes only)
+        if (child.pid && child.kill) {
+          setTimeout(() => {
+            try {
+              child.kill('SIGKILL');
+            } catch (e) {
+              // Ignore
+            }
+          }, 1000);
+        }
+
+        completed = true;
         reject(new Error(`Command timeout after ${timeout}ms`));
       }, timeout);
 
@@ -105,8 +158,7 @@ export class CursorCLI {
         });
       }, 30000);
 
-      // Collect stdout with real-time logging
-      child.stdout.on('data', (data) => {
+      const handleData = (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
         lastOutputTime = Date.now();
@@ -123,35 +175,49 @@ export class CursorCLI {
         });
 
         if (outputSize > this.maxOutputSize) {
-          child.kill('SIGTERM');
+          try {
+            if (child.kill) {
+              child.kill('SIGTERM');
+            }
+          } catch (e) {
+            // Ignore
+          }
+          completed = true;
           reject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
         }
 
         stdout += chunk;
-      });
+      };
 
-      // Collect stderr with real-time logging
-      child.stderr.on('data', (data) => {
-        const chunk = data.toString();
-        lastOutputTime = Date.now();
-        hasReceivedOutput = true;
+      // PTY: single data stream
+      if (child.onData) {
+        child.onData(handleData);
+      } else if (child.stdout) {
+        // Fallback: regular child process
+        child.stdout.on('data', handleData);
+        child.stderr.on('data', (data) => {
+          const chunk = data.toString();
+          lastOutputTime = Date.now();
+          hasReceivedOutput = true;
 
-        // Log stderr chunks in real-time
-        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
-        logger.warn('cursor-cli stderr chunk', {
-          command: this.cursorPath,
-          args,
-          chunkLength: chunk.length,
-          chunkPreview: logChunk.replace(/\n/g, '\\n'),
-          totalStderrLength: stderr.length + chunk.length,
+          const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+          logger.warn('cursor-cli stderr chunk', {
+            command: this.cursorPath,
+            args,
+            chunkLength: chunk.length,
+            chunkPreview: logChunk.replace(/\n/g, '\\n'),
+            totalStderrLength: stderr.length + chunk.length,
+          });
+
+          stderr += chunk;
         });
+      }
 
-        stderr += chunk;
-      });
+      const handleExit = (code) => {
+        if (completed) return;
+        completed = true;
 
-      // Handle process completion
-      child.on('close', (code) => {
         clearTimeout(timeoutId);
         clearInterval(heartbeatInterval);
 
@@ -178,21 +244,31 @@ export class CursorCLI {
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
         resolve(result);
-      });
+      };
 
-      // Handle process errors
-      child.on('error', (error) => {
-        clearTimeout(timeoutId);
-        clearInterval(heartbeatInterval);
-        logger.error('cursor-cli command error', {
-          args,
-          error: error.message,
-          hasReceivedOutput,
-          stdoutLength: stdout.length,
-          stderrLength: stderr.length,
+      if (child.onExit) {
+        // PTY exit event
+        child.onExit(({ exitCode }) => {
+          handleExit(exitCode);
         });
-        reject(error);
-      });
+      } else {
+        // Regular child process
+        child.on('close', handleExit);
+        child.on('error', (error) => {
+          if (completed) return;
+          completed = true;
+          clearTimeout(timeoutId);
+          clearInterval(heartbeatInterval);
+          logger.error('cursor-cli command error', {
+            args,
+            error: error.message,
+            hasReceivedOutput,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+          });
+          reject(error);
+        });
+      }
     });
   }
 
