@@ -9,6 +9,8 @@ import { logger } from './logger.js';
  * Git operations are now handled by cursor, not by this service.
  */
 export class GitService {
+  public readonly repositoriesPath: string;
+
   constructor() {
     this.repositoriesPath =
       process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
@@ -20,7 +22,7 @@ export class GitService {
   /**
    * Ensure repositories directory exists
    */
-  ensureRepositoriesDirectory() {
+  ensureRepositoriesDirectory(): void {
     if (!existsSync(this.repositoriesPath)) {
       mkdirSync(this.repositoriesPath, { recursive: true });
       logger.info('Created repositories directory', { path: this.repositoriesPath });
