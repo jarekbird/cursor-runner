@@ -3,6 +3,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 // eslint-disable-next-line node/no-unpublished-import
 import request from 'supertest';
 import { Server } from '../src/server.js';
+import { logger } from '../src/logger.js';
 
 describe('Server', () => {
   let server;
@@ -11,10 +12,17 @@ describe('Server', () => {
   let mockCursorCLI;
   let mockTerminalService;
   let mockFilesystem;
+  let loggerWarnSpy;
 
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
+
+    // Spy on logger.warn (restore if already exists)
+    if (loggerWarnSpy) {
+      loggerWarnSpy.mockRestore();
+    }
+    loggerWarnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
 
     // Create mock git service
     mockGitService = {
@@ -58,6 +66,10 @@ describe('Server', () => {
   afterEach(async () => {
     if (server) {
       await server.stop();
+    }
+    // Restore logger spy
+    if (loggerWarnSpy) {
+      loggerWarnSpy.mockRestore();
     }
   });
 
@@ -109,6 +121,19 @@ describe('Server', () => {
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
         expect(response.body.error).toBe('repository is required');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor execution request validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: undefined,
+            branchName: 'main',
+            command: 'cursor generate --prompt "test"',
+            error: 'repository is required',
+            status: 400,
+          })
+        );
       });
 
       it('should work without branchName', async () => {
@@ -165,6 +190,19 @@ describe('Server', () => {
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
         expect(response.body.error).toBe('command is required');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor execution request validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: 'test-repo',
+            branchName: 'main',
+            command: undefined,
+            error: 'command is required',
+            status: 400,
+          })
+        );
       });
 
       it('should return 404 if repository does not exist locally', async () => {
@@ -179,6 +217,18 @@ describe('Server', () => {
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
         expect(response.body.error).toContain('Repository not found locally');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor execution repository validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: 'nonexistent-repo',
+            branchName: 'main',
+            error: expect.stringContaining('Repository not found locally'),
+            status: 404,
+          })
+        );
       });
 
       it('should append instructions to command with --prompt flag', async () => {
@@ -368,6 +418,43 @@ describe('Server', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error).toBe('repository is required');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor iterate request validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: undefined,
+            branchName: undefined,
+            command: 'cursor generate --prompt "test"',
+            error: 'repository is required',
+            status: 400,
+          })
+        );
+      });
+
+      it('should return 400 if command is missing', async () => {
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('command is required');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor iterate request validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: 'test-repo',
+            branchName: 'main',
+            command: undefined,
+            error: 'command is required',
+            status: 400,
+          })
+        );
       });
 
       it('should work without branchName', async () => {
@@ -418,6 +505,18 @@ describe('Server', () => {
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
         expect(response.body.error).toContain('Repository not found locally');
+
+        // Verify logging
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
+          'Cursor iterate repository validation failed',
+          expect.objectContaining({
+            requestId: expect.any(String),
+            repository: 'nonexistent-repo',
+            branchName: 'main',
+            error: expect.stringContaining('Repository not found locally'),
+            status: 404,
+          })
+        );
       });
 
       it('should handle terminal command execution errors', async () => {

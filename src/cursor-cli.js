@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { logger } from './logger.js';
 
 /**
@@ -9,8 +9,7 @@ import { logger } from './logger.js';
  */
 export class CursorCLI {
   constructor() {
-    const defaultCommand = process.env.CURSOR_CLI_PATH || 'cursor-agent';
-    this.cursorPath = this.resolveCommandPath(defaultCommand);
+    this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
@@ -19,39 +18,6 @@ export class CursorCLI {
       process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails'
     ).split(',');
     this.blockedCommands = (process.env.BLOCKED_COMMANDS || 'rm,del,format,dd').split(',');
-  }
-
-  /**
-   * Resolve the full path to a command
-   * @param {string} command - Command name
-   * @returns {string} Full path to command or original command if not found
-   */
-  resolveCommandPath(command) {
-    // If it's already an absolute path, return it
-    if (command.startsWith('/')) {
-      return command;
-    }
-
-    // Try to find the command using 'which'
-    try {
-      const path = execSync(`which ${command}`, {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim();
-      if (path) {
-        logger.debug('Resolved command path', { command, path });
-        return path;
-      }
-    } catch (error) {
-      // Command not found, will try with original name
-      logger.debug('Could not resolve command path, using original', {
-        command,
-        error: error.message,
-      });
-    }
-
-    // Fall back to original command (might work if it's in PATH at runtime)
-    return command;
   }
 
   /**
@@ -77,8 +43,8 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Command security check removed for now
-      // this.validateCommandSecurity(args);
+      // Validate command security
+      this.validateCommandSecurity(args);
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -89,86 +55,26 @@ export class CursorCLI {
         cwd,
       });
 
-      // Ensure environment variables (including CURSOR_API_KEY) are passed to child process
-      const env = {
-        ...process.env,
-      };
-
-      // Log if CURSOR_API_KEY is set (for debugging, but don't log the actual key)
-      if (!env.CURSOR_API_KEY) {
-        logger.warn('CURSOR_API_KEY not set in environment - cursor-cli may fail to authenticate', {
-          command: this.cursorPath,
-          args,
-        });
-      } else {
-        logger.debug('CURSOR_API_KEY is set', {
-          command: this.cursorPath,
-          keyLength: env.CURSOR_API_KEY.length,
-        });
-      }
-
-      // Build full command string for logging
-      const fullCommand = `${this.cursorPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`;
-      logger.info('Full cursor-cli command being executed', {
-        fullCommand,
-        command: this.cursorPath,
-        args,
-        cwd,
-      });
-
       const child = spawn(this.cursorPath, args, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
-        env,
-      });
-
-      logger.info('cursor-cli process spawned', {
-        pid: child.pid,
-        command: this.cursorPath,
-        args,
-        cwd,
       });
 
       let stdout = '';
       let stderr = '';
       let outputSize = 0;
-      let hasOutput = false;
-      let processCompleted = false;
 
       // Set timeout
       const timeoutId = setTimeout(() => {
-        logger.error('cursor-cli command timeout', {
-          pid: child.pid,
-          args,
-          timeout: `${timeout}ms`,
-          hasOutput,
-          stdoutLength: stdout.length,
-          stderrLength: stderr.length,
-        });
         child.kill('SIGTERM');
         reject(new Error(`Command timeout after ${timeout}ms`));
       }, timeout);
-
-      // Warning timeout - log if command is still running after 10 seconds
-      const warningTimeoutId = setTimeout(() => {
-        if (!processCompleted) {
-          logger.warn('cursor-cli command still running after 10 seconds', {
-            pid: child.pid,
-            args,
-            cwd,
-            hasOutput,
-            stdoutLength: stdout.length,
-            stderrLength: stderr.length,
-          });
-        }
-      }, 10000);
 
       // Collect stdout
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
-        hasOutput = true;
 
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
@@ -177,30 +83,16 @@ export class CursorCLI {
         }
 
         stdout += chunk;
-        logger.info('cursor-cli stdout', {
-          pid: child.pid,
-          chunk: chunk,
-          totalLength: stdout.length,
-        });
       });
 
       // Collect stderr
       child.stderr.on('data', (data) => {
-        const chunk = data.toString();
-        stderr += chunk;
-        hasOutput = true;
-        logger.warn('cursor-cli stderr', {
-          pid: child.pid,
-          chunk: chunk,
-          totalLength: stderr.length,
-        });
+        stderr += data.toString();
       });
 
       // Handle process completion
       child.on('close', (code) => {
-        processCompleted = true;
         clearTimeout(timeoutId);
-        clearTimeout(warningTimeoutId);
 
         const result = {
           success: code === 0,
@@ -210,20 +102,9 @@ export class CursorCLI {
         };
 
         if (code === 0) {
-          logger.info('cursor-cli command completed successfully', {
-            pid: child.pid,
-            args,
-            stdoutLength: stdout.length,
-            stderrLength: stderr.length,
-          });
+          logger.debug('cursor-cli command completed successfully', { args });
         } else {
-          logger.warn('cursor-cli command failed', {
-            pid: child.pid,
-            args,
-            exitCode: code,
-            stderr: stderr || '(no stderr output)',
-            stdout: stdout || '(no stdout output)',
-          });
+          logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
         }
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
@@ -232,16 +113,8 @@ export class CursorCLI {
 
       // Handle process errors
       child.on('error', (error) => {
-        processCompleted = true;
         clearTimeout(timeoutId);
-        clearTimeout(warningTimeoutId);
-        logger.error('cursor-cli command error', {
-          pid: child.pid,
-          args,
-          cwd,
-          error: error.message,
-          stack: error.stack,
-        });
+        logger.error('cursor-cli command error', { args, error: error.message });
         reject(error);
       });
     });
