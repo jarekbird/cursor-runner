@@ -23,7 +23,14 @@ export class ReviewAgentService {
 
 CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
 
-Evaluate whether the task was completed and whether a terminal command has been requested by the agent to be run. If a terminal request is being requested, mark the output as code_complete: false. If the output is not requesting a terminal request, but simply asking a question, set code_complete to true and execute_terminal_command to false.
+Evaluate whether the task was completed and whether a terminal command has been requested by the agent to be run.
+
+IMPORTANT COMPLETION RULES:
+- If the output is a simple text response (greeting, answer to a question, conversational reply), mark code_complete: true and execute_terminal_command: false
+- If the output is asking a question or requesting clarification, mark code_complete: true and execute_terminal_command: false
+- If the output contains code changes, file modifications, or requests to run terminal commands, mark code_complete: false
+- If a terminal command is explicitly requested (e.g., "run tests", "execute this command"), mark execute_terminal_command: true and include the command in terminal_command_requested
+- If the output is just informational, explanatory, or a direct response without code/commands, mark code_complete: true
 
 Return ONLY this JSON structure (no other text):
 
