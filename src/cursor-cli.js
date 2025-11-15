@@ -43,8 +43,7 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Validate command security
-      this.validateCommandSecurity(args);
+      // Command security validation removed
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -199,20 +198,11 @@ export class CursorCLI {
   /**
    * Validate command security
    * @param {Array<string>} args - Command arguments
+   * @deprecated Validation removed - no longer blocks commands
    */
   validateCommandSecurity(args) {
-    const commandString = args.join(' ').toLowerCase();
-
-    // Check for blocked commands
-    for (const blocked of this.blockedCommands) {
-      if (commandString.includes(blocked.toLowerCase())) {
-        throw new Error(`Blocked command detected: ${blocked}`);
-      }
-    }
-
-    // For sensitive operations, validate against allowed commands
-    // This is a basic check - enhance as needed
-    logger.debug('Command security validated', { args });
+    // Validation removed - no longer blocking commands
+    logger.debug('Command security check skipped', { args });
   }
 
   /**

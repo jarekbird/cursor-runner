@@ -105,10 +105,11 @@ describe.skip('CursorCLI', () => {
   });
 
   describe('validateCommandSecurity', () => {
-    it('should block dangerous commands', () => {
+    it('should not block commands (validation removed)', () => {
+      // Validation has been removed - commands are no longer blocked
       expect(() => {
         cursorCLI.validateCommandSecurity(['rm', '-rf', '/']);
-      }).toThrow('Blocked command detected');
+      }).not.toThrow();
     });
 
     it('should allow safe commands', () => {

@@ -95,55 +95,56 @@ describe.skip('TerminalService', () => {
       }).not.toThrow();
     });
 
-    it('should block rm command', () => {
+    it('should not block rm command (validation removed)', () => {
+      // Validation has been removed - commands are no longer blocked
       expect(() => {
         terminalService.validateCommandSecurity('rm', ['-rf', '/']);
-      }).toThrow('Blocked command detected: rm');
+      }).not.toThrow();
     });
 
-    it('should block del command', () => {
+    it('should not block del command (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('del', ['file.txt']);
-      }).toThrow('Blocked command detected: del');
+      }).not.toThrow();
     });
 
-    it('should block format command', () => {
+    it('should not block format command (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('format', ['C:']);
-      }).toThrow('Blocked command detected: format');
+      }).not.toThrow();
     });
 
-    it('should block dd command', () => {
+    it('should not block dd command (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('dd', ['if=/dev/zero']);
-      }).toThrow('Blocked command detected: dd');
+      }).not.toThrow();
     });
 
-    it('should block sudo command', () => {
+    it('should not block sudo command (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('sudo', ['rm', '-rf', '/']);
-      }).toThrow('Blocked command detected: sudo');
+      }).not.toThrow();
     });
 
-    it('should block su command', () => {
+    it('should not block su command (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('su', ['-']);
-      }).toThrow('Blocked command detected: su');
+      }).not.toThrow();
     });
 
-    it('should block commands case-insensitively', () => {
+    it('should not block commands case-insensitively (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('RM', ['-rf', '/']);
-      }).toThrow('Blocked command detected: rm');
+      }).not.toThrow();
     });
 
-    it('should block blocked commands in arguments', () => {
+    it('should not block blocked commands in arguments (validation removed)', () => {
       expect(() => {
         terminalService.validateCommandSecurity('echo', ['rm', '-rf']);
-      }).toThrow('Blocked command detected: rm');
+      }).not.toThrow();
     });
 
-    it('should enforce whitelist when ENFORCE_COMMAND_WHITELIST is true', () => {
+    it('should not enforce whitelist (validation removed)', () => {
       process.env.ENFORCE_COMMAND_WHITELIST = 'true';
       const service = new TerminalService();
 
@@ -152,10 +153,10 @@ describe.skip('TerminalService', () => {
         service.validateCommandSecurity('git', ['status']);
       }).not.toThrow();
 
-      // Non-whitelisted command should fail
+      // Non-whitelisted command should also pass (validation removed)
       expect(() => {
         service.validateCommandSecurity('unknown', ['command']);
-      }).toThrow('Command not in whitelist: unknown');
+      }).not.toThrow();
     });
 
     it('should not enforce whitelist when ENFORCE_COMMAND_WHITELIST is not set', () => {
@@ -386,12 +387,31 @@ describe.skip('TerminalService', () => {
       expect(result.stderr).toBe('error with spaces');
     });
 
-    it('should validate command security before execution', async () => {
-      await expect(terminalService.executeCommand('rm', ['-rf', '/'])).rejects.toThrow(
-        'Blocked command detected: rm'
-      );
+    it('should execute previously blocked commands (validation removed)', async () => {
+      // Validation has been removed - previously blocked commands should now execute
+      const mockStdoutData = Buffer.from('command executed');
 
-      expect(mockSpawn).not.toHaveBeenCalled();
+      const promise = terminalService.executeCommand('rm', ['-rf', '/']);
+
+      // Get handlers from mock call history
+      const handlers = getHandlers();
+      expect(handlers.stdout).toBeDefined();
+      expect(handlers.close).toBeDefined();
+
+      // Simulate stdout data then process close
+      handlers.stdout(mockStdoutData);
+      handlers.close(0);
+
+      const result = await promise;
+
+      // Command should execute successfully
+      expect(mockSpawn).toHaveBeenCalledWith('rm', ['-rf', '/'], {
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: false,
+      });
+      expect(result.success).toBe(true);
+      expect(result.exitCode).toBe(0);
     });
   });
 });

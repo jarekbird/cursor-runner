@@ -36,8 +36,7 @@ export class TerminalService {
    */
   async executeCommand(command, args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Validate command security
-      this.validateCommandSecurity(command, args);
+      // Command security validation removed
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -113,43 +112,10 @@ export class TerminalService {
    * Validate command security
    * @param {string} command - Command to validate
    * @param {Array<string>} args - Command arguments
+   * @deprecated Validation removed - no longer blocks commands
    */
   validateCommandSecurity(command, args) {
-    const commandLower = command.toLowerCase();
-    const commandString = [command, ...args].join(' ').toLowerCase();
-    const blockedLowerList = this.blockedCommands.map((b) => b.toLowerCase());
-
-    // Check if command name exactly matches a blocked command
-    if (blockedLowerList.includes(commandLower)) {
-      throw new Error(
-        `Blocked command detected: ${this.blockedCommands[blockedLowerList.indexOf(commandLower)]}`
-      );
-    }
-
-    // Check if any blocked command appears in the full command string as a whole word
-    // Use word boundaries to avoid false positives (e.g., "format" containing "rm")
-    for (let i = 0; i < this.blockedCommands.length; i++) {
-      const blocked = this.blockedCommands[i];
-      const blockedLower = blocked.toLowerCase();
-      // Check as whole word in command string (not just substring)
-      const regex = new RegExp(`\\b${blockedLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      if (regex.test(commandString)) {
-        throw new Error(`Blocked command detected: ${blocked}`);
-      }
-    }
-
-    // Check against allowed commands (if whitelist is enforced)
-    // For now, we only block dangerous commands, but you can enable strict whitelisting
-    if (process.env.ENFORCE_COMMAND_WHITELIST === 'true') {
-      const isAllowed = this.allowedCommands.some((allowed) =>
-        commandLower.includes(allowed.toLowerCase())
-      );
-
-      if (!isAllowed) {
-        throw new Error(`Command not in whitelist: ${command}`);
-      }
-    }
-
-    logger.debug('Command security validated', { command, args });
+    // Validation removed - no longer blocking commands
+    logger.debug('Command security check skipped', { command, args });
   }
 }
