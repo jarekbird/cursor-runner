@@ -48,16 +48,21 @@ interface TestResult {
 }
 
 /**
+ * Supported target application types
+ */
+export type TargetAppType = 'rails' | 'node';
+
+/**
  * TargetAppRunner - Runs tests and commands in target applications
  *
  * Handles execution of tests and other commands in the target application
  * being developed by cursor (e.g., jarek-va Rails app).
  */
 export class TargetAppRunner {
-  targetAppPath: string;
-  targetAppType: string;
-  timeout: number;
-  fsExistsSync: (path: string) => boolean;
+  readonly targetAppPath: string;
+  readonly targetAppType: TargetAppType;
+  readonly timeout: number;
+  readonly fsExistsSync: (path: string) => boolean;
 
   /**
    * @param options - Optional configuration
@@ -67,7 +72,11 @@ export class TargetAppRunner {
     const { fsExistsSync } = options;
 
     this.targetAppPath = process.env.TARGET_APP_PATH || '../jarek-va';
-    this.targetAppType = process.env.TARGET_APP_TYPE || 'rails';
+    const appType = (process.env.TARGET_APP_TYPE || 'rails') as TargetAppType;
+    if (appType !== 'rails' && appType !== 'node') {
+      throw new Error(`Invalid target app type: ${appType}. Must be 'rails' or 'node'`);
+    }
+    this.targetAppType = appType;
     this.timeout = parseInt(process.env.TARGET_APP_TIMEOUT || '600000', 10); // 10 minutes default
     this.fsExistsSync = fsExistsSync || defaultExistsSync;
   }

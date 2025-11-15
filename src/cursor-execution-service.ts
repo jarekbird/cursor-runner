@@ -103,6 +103,13 @@ interface CommandError extends Error {
 }
 
 /**
+ * Type guard to check if an error is a CommandError
+ */
+function isCommandError(error: unknown): error is CommandError {
+  return error instanceof Error && ('stdout' in error || 'stderr' in error || 'exitCode' in error);
+}
+
+/**
  * Review result structure
  */
 interface ReviewResult {
@@ -500,7 +507,7 @@ export class CursorExecutionService {
       });
     } catch (error) {
       // If command failed (e.g., timeout), extract partial output from error if available
-      const commandError = error as CommandError;
+      const commandError = isCommandError(error) ? error : (error as CommandError);
       logger.error('Initial cursor command failed', {
         requestId,
         error: commandError.message,
@@ -619,7 +626,7 @@ export class CursorExecutionService {
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
       // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
-      const resumeArgs = ['--print', '--resume', '--force', resumePrompt];
+      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePrompt];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -635,7 +642,7 @@ export class CursorExecutionService {
         });
       } catch (error) {
         // If command failed (e.g., timeout), extract partial output from error if available
-        const commandError = error as CommandError;
+        const commandError = isCommandError(error) ? error : (error as CommandError);
         logger.error('Cursor resume command failed', {
           requestId,
           iteration,

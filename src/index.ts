@@ -11,7 +11,7 @@ import { logger } from './logger.js';
 import { CursorCLI, type GenerationRequirements } from './cursor-cli.js';
 import { TargetAppRunner } from './target-app.js';
 import { Server } from './server.js';
-import type { FormattedRequest } from './request-formatter.js';
+import type { FormattedRequest, Phase } from './request-formatter.js';
 
 // Load environment variables
 dotenv.config();
@@ -20,20 +20,25 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 
 /**
+ * Test results structure
+ */
+interface TestResults {
+  passed: number;
+  failed: number;
+  total: number;
+  success: boolean;
+}
+
+/**
  * Result from code generation workflow
  */
 interface CodeGenerationResult {
   success: boolean;
-  phase?: string;
+  phase?: Phase;
   output?: string;
   files?: string[];
   error?: string;
-  passed?: {
-    passed: number;
-    failed: number;
-    total: number;
-    success: boolean;
-  };
+  passed?: TestResults;
 }
 
 /**
@@ -108,9 +113,9 @@ class CursorRunner {
    * Validate configuration
    */
   validateConfig(): void {
-    const required = ['CURSOR_CLI_PATH', 'TARGET_APP_PATH'];
+    const required = ['CURSOR_CLI_PATH', 'TARGET_APP_PATH'] as const;
 
-    const missing = required.filter((key) => !process.env[key]);
+    const missing = (required as readonly string[]).filter((key) => !process.env[key]);
 
     if (missing.length > 0) {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);

@@ -191,7 +191,7 @@ export class WorkspaceTrustService {
         'FileSystem(delete)',
         'FileSystem(write)',
         'FileSystem(read)',
-      ];
+      ] as const;
 
       for (const permission of requiredPermissions) {
         if (!cliConfig.permissions.allow.includes(permission)) {

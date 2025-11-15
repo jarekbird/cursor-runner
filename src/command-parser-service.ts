@@ -58,7 +58,7 @@ export class CommandParserService {
     let foundPromptFlag = false;
 
     // Flags that might appear between the prompt flag and the actual prompt text
-    const skipFlags: string[] = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'];
+    const skipFlags = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'] as const;
 
     for (let i = 0; i < modifiedArgs.length; i++) {
       // Common prompt flags: --print, --prompt, -p, --instruction, --message, etc.
@@ -72,7 +72,10 @@ export class CommandParserService {
         // Find the next non-flag argument (the prompt text)
         // Skip over flags like --force, --resume, etc.
         let promptIndex = i + 1;
-        while (promptIndex < modifiedArgs.length && skipFlags.includes(modifiedArgs[promptIndex])) {
+        while (
+          promptIndex < modifiedArgs.length &&
+          (skipFlags as readonly string[]).includes(modifiedArgs[promptIndex])
+        ) {
           promptIndex++;
         }
 

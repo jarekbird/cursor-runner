@@ -3,7 +3,19 @@ import { logger } from './logger.js';
 /**
  * TDD Phase type
  */
-type Phase = 'red' | 'green' | 'refactor' | 'validate';
+export type Phase = 'red' | 'green' | 'refactor' | 'validate';
+
+/**
+ * Valid phase values as const array
+ */
+export const VALID_PHASES = ['red', 'green', 'refactor', 'validate'] as const;
+
+/**
+ * Type guard to check if a string is a valid Phase
+ */
+export function isPhase(value: string): value is Phase {
+  return VALID_PHASES.includes(value as Phase);
+}
 
 /**
  * Raw request from jarek-va
@@ -139,10 +151,18 @@ export class RequestFormatter {
         throw new Error('Missing required field: requirements');
       }
 
+      // Normalize and validate phase
+      const normalizedPhase = rawRequest.phase.toLowerCase();
+      if (!isPhase(normalizedPhase)) {
+        throw new Error(
+          `Invalid phase: ${rawRequest.phase}. Must be one of: ${VALID_PHASES.join(', ')}`
+        );
+      }
+
       // Format request
       const formatted: FormattedRequest = {
         id: rawRequest.id || this.generateRequestId(),
-        phase: rawRequest.phase.toLowerCase() as Phase,
+        phase: normalizedPhase,
         requirements: this.formatRequirements(rawRequest.requirements),
         targetPath: rawRequest.targetPath || process.env.TARGET_APP_PATH,
         metadata: {
@@ -151,14 +171,6 @@ export class RequestFormatter {
           conversationId: rawRequest.conversation_id || rawRequest.conversationId,
         },
       };
-
-      // Validate phase
-      const validPhases: Phase[] = ['red', 'green', 'refactor', 'validate'];
-      if (!validPhases.includes(formatted.phase)) {
-        throw new Error(
-          `Invalid phase: ${formatted.phase}. Must be one of: ${validPhases.join(', ')}`
-        );
-      }
 
       logger.debug('Formatted code generation request', {
         requestId: formatted.id,
@@ -381,12 +393,8 @@ export class RequestFormatter {
     if (!req.phase) {
       errors.push('phase is required');
     } else {
-      const validPhases: Phase[] = ['red', 'green', 'refactor', 'validate'];
-      if (
-        typeof req.phase === 'string' &&
-        !validPhases.includes(req.phase.toLowerCase() as Phase)
-      ) {
-        errors.push(`Invalid phase: ${req.phase}. Must be one of: ${validPhases.join(', ')}`);
+      if (typeof req.phase === 'string' && !isPhase(req.phase.toLowerCase())) {
+        errors.push(`Invalid phase: ${req.phase}. Must be one of: ${VALID_PHASES.join(', ')}`);
       }
     }
 
