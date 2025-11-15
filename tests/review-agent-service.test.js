@@ -342,7 +342,7 @@ Some text after (missing closing brace)`;
       expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       const callArgs = mockCursorCLI.executeCommand.mock.calls[0];
       const args = callArgs[0];
-      const promptArg = args[args.indexOf('--print') + 1];
+      const promptArg = args[args.indexOf('--resume') + 1];
       expect(promptArg).toContain(testOutput);
     });
 

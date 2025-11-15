@@ -315,7 +315,7 @@ describe('Server', () => {
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        expect(callArgs).toContain('--print');
+        expect(callArgs).toContain('--resume');
         expect(callArgs).toContain('--force');
         // The prompt argument comes after --force, and will have instructions appended
         // Find the index of --force and get the next argument (the prompt)

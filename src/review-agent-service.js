@@ -56,7 +56,7 @@ ${output}`;
       if (timeout) {
         options.timeout = timeout;
       }
-      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], options);
+      const result = await this.cursorCLI.executeCommand(['--resume', reviewPrompt], options);
 
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex

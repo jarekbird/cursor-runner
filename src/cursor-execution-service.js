@@ -155,8 +155,8 @@ export class CursorExecutionService {
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Construct command from prompt with --force to enable actual file operations
-    // --print provides output, --force enables file modifications
-    const command = `--print --force "${prompt}"`;
+    // --resume maintains historical context, --force enables file modifications
+    const command = `--resume --force "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -301,8 +301,8 @@ export class CursorExecutionService {
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
     const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
-    // --print provides output, --force enables file modifications
-    const command = `--print --force "${prompt}"`;
+    // --resume maintains historical context, --force enables file modifications
+    const command = `--resume --force "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
