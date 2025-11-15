@@ -27,9 +27,9 @@ RUN curl https://cursor.com/install -fsS | bash && \
         exit 1; \
     fi
 
-# Verify cursor CLI is accessible and fail build if not found
-RUN which cursor || (echo "ERROR: cursor command not found in PATH" && exit 1) && \
-    cursor --version || (echo "ERROR: cursor --version failed" && exit 1)
+# Verify cursor-agent CLI is accessible and fail build if not found
+RUN which cursor-agent || (echo "ERROR: cursor-agent command not found in PATH" && exit 1) && \
+    cursor-agent --version || (echo "ERROR: cursor-agent --version failed" && exit 1)
 
 # Set working directory
 WORKDIR /app

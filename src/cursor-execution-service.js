@@ -84,6 +84,10 @@ export class CursorExecutionService {
     if (command) {
       // Parse existing command
       commandArgs = this.commandParser.parseCommand(command);
+      // Remove "cursor" from the beginning if present, since we use cursor-agent as the executable
+      if (commandArgs[0] === 'cursor') {
+        commandArgs = commandArgs.slice(1);
+      }
     } else if (prompt) {
       // Construct command from prompt
       commandArgs = ['generate', '--print', prompt];
