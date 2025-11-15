@@ -48,6 +48,7 @@ export class CursorCLI {
 
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
+    const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '60000', 10); // 60s default
 
     // Lazy-load node-pty if available (before creating Promise)
     if (this._ptyModule === null) {
@@ -88,10 +89,17 @@ export class CursorCLI {
             env: process.env,
           });
           usePty = true;
-          logger.debug('Using PTY for cursor-cli execution');
+          logger.info('Using PTY for cursor-cli execution', {
+            command: this.cursorPath,
+            args,
+            cwd,
+          });
         } catch (error) {
           logger.warn('Failed to start cursor-cli with PTY, falling back to spawn', {
             error: error.message,
+            command: this.cursorPath,
+            args,
+            cwd,
           });
         }
       }
@@ -103,7 +111,11 @@ export class CursorCLI {
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
         });
-        logger.debug('Using regular spawn for cursor-cli execution');
+        logger.info('Using regular spawn for cursor-cli execution', {
+          command: this.cursorPath,
+          args,
+          cwd,
+        });
       }
 
       // Set timeout
@@ -146,7 +158,8 @@ export class CursorCLI {
 
       // Log heartbeat every 30 seconds to show process is still running
       const heartbeatInterval = setInterval(() => {
-        const timeSinceLastOutput = Date.now() - lastOutputTime;
+        const now = Date.now();
+        const timeSinceLastOutput = now - lastOutputTime;
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
           args,
@@ -154,8 +167,34 @@ export class CursorCLI {
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
           timeSinceLastOutput: `${timeSinceLastOutput}ms`,
-          elapsed: `${Date.now() - (lastOutputTime || Date.now())}ms`,
+          elapsed: `${now - (lastOutputTime || now)}ms`,
         });
+
+        // If we've had no output for longer than idleTimeout, fail fast instead of waiting
+        if (!completed && timeSinceLastOutput > idleTimeout) {
+          logger.error('cursor-cli idle timeout reached', {
+            command: this.cursorPath,
+            args,
+            cwd,
+            idleTimeout: `${idleTimeout}ms`,
+            hasReceivedOutput,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+          });
+
+          try {
+            if (child.kill) {
+              child.kill('SIGTERM');
+            }
+          } catch (e) {
+            // Ignore if already exited
+          }
+
+          completed = true;
+          clearTimeout(timeoutId);
+          clearInterval(heartbeatInterval);
+          reject(new Error(`No output from cursor-cli for ${idleTimeout}ms`));
+        }
       }, 30000);
 
       const handleData = (data) => {
