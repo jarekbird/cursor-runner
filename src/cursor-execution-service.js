@@ -2,6 +2,7 @@ import path from 'path';
 import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
+import { WorkspaceTrustService } from './workspace-trust-service.js';
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
@@ -16,6 +17,7 @@ export class CursorExecutionService {
     this.commandParser = commandParser;
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
+    this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
   }
 
   /**
@@ -148,6 +150,9 @@ export class CursorExecutionService {
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
+
+    // Ensure workspace trust is configured before executing commands
+    await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Construct command from prompt
     const command = `--print "${prompt}"`;
@@ -288,6 +293,9 @@ export class CursorExecutionService {
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
+
+    // Ensure workspace trust is configured before executing commands
+    await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
