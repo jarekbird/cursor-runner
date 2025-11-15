@@ -73,6 +73,24 @@ export class CursorCLI {
         });
       }
 
+      // Build full command string for logging
+      const fullCommand = [this.cursorPath, ...args]
+        .map((arg) => {
+          // Quote arguments that contain spaces or special characters
+          if (arg.includes(' ') || arg.includes('\n') || arg.includes('"')) {
+            return `"${arg.replace(/"/g, '\\"')}"`;
+          }
+          return arg;
+        })
+        .join(' ');
+
+      logger.info('Full cursor-cli command being executed', {
+        fullCommand,
+        command: this.cursorPath,
+        args,
+        cwd,
+      });
+
       const child = spawn(this.cursorPath, args, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
