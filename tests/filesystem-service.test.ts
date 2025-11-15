@@ -9,7 +9,7 @@ describe('FilesystemService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExistsFn = jest.fn();
-    filesystemService = new FilesystemService(mockExistsFn);
+    filesystemService = new FilesystemService(mockExistsFn as any);
   });
 
   afterEach(() => {

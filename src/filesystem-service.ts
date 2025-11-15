@@ -6,20 +6,24 @@ import { existsSync as defaultExistsSync } from 'fs';
  * Provides a testable interface for filesystem operations.
  * Can be mocked in tests by injecting a custom implementation.
  */
+type ExistsFunction = (path: string | Buffer) => boolean;
+
 export class FilesystemService {
+  private existsFn: ExistsFunction;
+
   /**
-   * @param {Function} existsFn - Optional dependency-injected exists function (primarily for testing)
+   * @param existsFn - Optional dependency-injected exists function (primarily for testing)
    */
-  constructor(existsFn = defaultExistsSync) {
+  constructor(existsFn: ExistsFunction = defaultExistsSync) {
     this.existsFn = existsFn;
   }
 
   /**
    * Check if a path exists
-   * @param {string} path - Path to check
-   * @returns {boolean} True if path exists
+   * @param path - Path to check
+   * @returns True if path exists
    */
-  exists(path) {
+  exists(path: string): boolean {
     return this.existsFn(path);
   }
 }
