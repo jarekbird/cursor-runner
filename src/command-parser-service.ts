@@ -8,14 +8,14 @@ export class CommandParserService {
   /**
    * Parse command string into arguments array
    * Handles quoted arguments and spaces
-   * @param {string} command - Command string
-   * @returns {Array<string>} Command arguments
+   * @param command - Command string
+   * @returns Command arguments
    */
-  parseCommand(command) {
-    const args = [];
+  parseCommand(command: string): string[] {
+    const args: string[] = [];
     let current = '';
     let inQuotes = false;
-    let quoteChar = null;
+    let quoteChar: string | null = null;
 
     for (let i = 0; i < command.length; i++) {
       const char = command[i];
@@ -49,16 +49,16 @@ export class CommandParserService {
 
   /**
    * Append instructions to command arguments
-   * @param {Array<string>} commandArgs - Command arguments
-   * @param {string} instructions - Instructions to append
-   * @returns {Array<string>} Modified arguments
+   * @param commandArgs - Command arguments
+   * @param instructions - Instructions to append
+   * @returns Modified arguments
    */
-  appendInstructions(commandArgs, instructions) {
+  appendInstructions(commandArgs: string[], instructions: string): string[] {
     const modifiedArgs = [...commandArgs];
     let foundPromptFlag = false;
 
     // Flags that might appear between the prompt flag and the actual prompt text
-    const skipFlags = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'];
+    const skipFlags: string[] = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'];
 
     for (let i = 0; i < modifiedArgs.length; i++) {
       // Common prompt flags: --print, --prompt, -p, --instruction, --message, etc.
