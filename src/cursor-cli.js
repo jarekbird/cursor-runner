@@ -4,8 +4,7 @@ import { logger } from './logger.js';
 /**
  * CursorCLI - Wrapper for cursor-cli execution
  *
- * Handles execution of cursor-cli commands with security restrictions,
- * timeouts, and error handling.
+ * Handles execution of cursor-cli commands with timeouts and error handling.
  */
 export class CursorCLI {
   constructor() {
@@ -13,12 +12,6 @@ export class CursorCLI {
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
     this._ptyModule = null; // Lazy-loaded
-
-    // Security: Allowed and blocked commands
-    this.allowedCommands = (
-      process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails'
-    ).split(',');
-    this.blockedCommands = (process.env.BLOCKED_COMMANDS || 'rm,del,format,dd').split(',');
   }
 
   /**
@@ -43,9 +36,6 @@ export class CursorCLI {
    * @returns {Promise<Object>} Command result
    */
   async executeCommand(args = [], options = {}) {
-    // Validate command security
-    this.validateCommandSecurity(args);
-
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
     const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '60000', 10); // 60s default
@@ -300,7 +290,7 @@ export class CursorCLI {
           clearInterval(heartbeatInterval);
           logger.error('cursor-cli command error', {
             args,
-            error: error.message,
+            error: error.messaxge,
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
@@ -309,25 +299,6 @@ export class CursorCLI {
         });
       }
     });
-  }
-
-  /**
-   * Validate command security
-   * @param {Array<string>} args - Command arguments
-   */
-  validateCommandSecurity(args) {
-    const commandString = args.join(' ').toLowerCase();
-
-    // Check for blocked commands
-    for (const blocked of this.blockedCommands) {
-      if (commandString.includes(blocked.toLowerCase())) {
-        throw new Error(`Blocked command detected: ${blocked}`);
-      }
-    }
-
-    // For sensitive operations, validate against allowed commands
-    // This is a basic check - enhance as needed
-    logger.debug('Command security validated', { args });
   }
 
   /**

@@ -65,9 +65,6 @@ GIT_COMMAND_TIMEOUT=60000
 # Terminal Service Configuration
 TERMINAL_COMMAND_TIMEOUT=300000
 TERMINAL_MAX_OUTPUT_SIZE=10485760
-ALLOWED_TERMINAL_COMMANDS=git,cursor,npm,node,bundle,rails,rspec
-BLOCKED_TERMINAL_COMMANDS=rm,del,format,dd,sudo,su
-ENFORCE_COMMAND_WHITELIST=false
 
 # jarek-va Communication
 JAREK_VA_URL=http://localhost:3000

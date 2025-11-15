@@ -119,14 +119,6 @@ await cursor.validate();
 const result = await cursor.executeCommand(['generate', '--prompt', 'Create service']);
 ```
 
-### Security Validation
-Always validate commands before execution:
-- Check against whitelist (`ALLOWED_COMMANDS`)
-- Check against blacklist (`BLOCKED_COMMANDS`)
-- Validate paths and parameters
-- Set timeouts for all commands
-- Limit output size to prevent memory exhaustion
-
 ### Error Handling
 ```javascript
 try {
@@ -281,41 +273,6 @@ async function executeWorkflow(request) {
 }
 ```
 
-## Testing with Jest
-
-### Test Structure
-```javascript
-import { CursorCLI } from '../src/cursor-cli.js';
-
-describe('CursorCLI', () => {
-  let cursorCLI;
-
-  beforeEach(() => {
-    cursorCLI = new CursorCLI();
-  });
-
-  describe('executeCommand', () => {
-    it('should execute valid commands', async () => {
-      // Arrange
-      const args = ['--version'];
-      
-      // Act
-      const result = await cursorCLI.executeCommand(args);
-      
-      // Assert
-      expect(result.success).toBe(true);
-      expect(result.stdout).toBeDefined();
-    });
-
-    it('should reject blocked commands', () => {
-      expect(() => {
-        cursorCLI.validateCommandSecurity(['rm', '-rf', '/']);
-      }).toThrow('Blocked command detected');
-    });
-  });
-});
-```
-
 ### Test Best Practices
 - Use descriptive test names
 - Follow AAA pattern (Arrange, Act, Assert)
@@ -354,8 +311,6 @@ const timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10);
 ### Optional Environment Variables
 - `JAREK_VA_URL`: jarek-va API URL (for future HTTP server)
 - `JAREK_VA_API_KEY`: API key for jarek-va
-- `ALLOWED_COMMANDS`: Comma-separated list of allowed commands
-- `BLOCKED_COMMANDS`: Comma-separated list of blocked commands
 
 ## Communication with jarek-va
 
@@ -428,21 +383,6 @@ Parse test framework output to extract:
 
 ## Security Best Practices
 
-### Command Validation
-```javascript
-validateCommandSecurity(args) {
-  const commandString = args.join(' ').toLowerCase();
-  
-  // Check blacklist
-  for (const blocked of this.blockedCommands) {
-    if (commandString.includes(blocked.toLowerCase())) {
-      throw new Error(`Blocked command detected: ${blocked}`);
-    }
-  }
-  
-  // Additional validation...
-}
-```
 
 ### Path Validation
 ```javascript
