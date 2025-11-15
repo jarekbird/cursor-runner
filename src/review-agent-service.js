@@ -57,10 +57,9 @@ ${output}`;
         options.timeout = timeout;
       }
       // Use --print for non-interactive mode (required for automation)
-      const result = await this.cursorCLI.executeCommand(
-        ['--print', '--resume', reviewPrompt],
-        options
-      );
+      // Note: Don't use --resume as it triggers session selection menu when no session ID provided
+      // Cursor maintains session context automatically within the same workspace
+      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], options);
 
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex

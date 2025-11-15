@@ -156,8 +156,9 @@ export class CursorExecutionService {
 
     // Construct command from prompt with --force to enable actual file operations
     // --print runs in non-interactive mode (required for automation)
-    // --resume maintains historical context, --force enables file modifications
-    const command = `--print --resume --force "${prompt}"`;
+    // Note: Don't use --resume for initial commands as it triggers session selection menu
+    // --force enables file modifications
+    const command = `--print --force "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -303,8 +304,9 @@ export class CursorExecutionService {
     // Use longer timeout for iterate operations
     const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
     // --print runs in non-interactive mode (required for automation)
-    // --resume maintains historical context, --force enables file modifications
-    const command = `--print --resume --force "${prompt}"`;
+    // Note: Don't use --resume for initial commands as it triggers session selection menu
+    // --force enables file modifications
+    const command = `--print --force "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
