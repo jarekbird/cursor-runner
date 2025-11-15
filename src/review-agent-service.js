@@ -31,7 +31,7 @@ Previous agent output:
 ${output}`;
 
     try {
-      const result = await this.cursorCLI.executeCommand(['--prompt', reviewPrompt], {
+      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], {
         cwd,
       });
 

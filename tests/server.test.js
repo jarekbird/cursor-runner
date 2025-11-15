@@ -236,7 +236,7 @@ describe('Server', () => {
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const promptIndex = callArgs.findIndex((arg) => arg === '--prompt');
+        const promptIndex = callArgs.findIndex((arg) => arg === '--print');
         expect(promptIndex).toBeGreaterThan(-1);
         expect(callArgs[promptIndex + 1]).toContain('Create service');
         expect(callArgs[promptIndex + 1]).toContain('If you need to run a terminal command');
@@ -276,9 +276,9 @@ describe('Server', () => {
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        expect(callArgs).toContain('--prompt');
+        expect(callArgs).toContain('--print');
         // The prompt argument will have instructions appended, so check that it contains the original text
-        const promptArg = callArgs[callArgs.indexOf('--prompt') + 1];
+        const promptArg = callArgs[callArgs.indexOf('--print') + 1];
         expect(promptArg).toContain('Create user service with authentication');
       });
     });

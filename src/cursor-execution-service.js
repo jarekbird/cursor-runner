@@ -107,7 +107,7 @@ export class CursorExecutionService {
     }
 
     // Construct command from prompt
-    const command = `--prompt "${prompt}"`;
+    const command = `--print "${prompt}"`;
 
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
@@ -185,7 +185,7 @@ export class CursorExecutionService {
     }
 
     // Construct command from prompt
-    const command = `--prompt "${prompt}"`;
+    const command = `--print "${prompt}"`;
 
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);

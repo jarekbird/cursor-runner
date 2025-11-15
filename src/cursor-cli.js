@@ -147,7 +147,7 @@ export class CursorCLI {
 
     // Build cursor command to generate tests
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args = ['generate', '--prompt', prompt, '--type', 'test'];
+    const args = ['--print', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -178,7 +178,7 @@ export class CursorCLI {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args = ['generate', '--prompt', prompt, '--type', 'implementation'];
+    const args = ['--print', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -209,7 +209,7 @@ export class CursorCLI {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args = ['refactor', '--prompt', prompt];
+    const args = ['--print', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
