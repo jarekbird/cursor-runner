@@ -4,6 +4,8 @@ FROM node:18-slim
 # Install system dependencies
 RUN apt-get update -qq && apt-get install -y \
     build-essential \
+    python3 \
+    make \
     curl \
     git \
     ca-certificates \
