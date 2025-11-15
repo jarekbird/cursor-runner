@@ -49,16 +49,22 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
+# Install dependencies (including dev dependencies for TypeScript build)
 # Use npm ci if package-lock.json exists, otherwise fall back to npm install
 RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev; \
+      npm ci; \
     else \
-      npm install --omit=dev; \
+      npm install; \
     fi
 
 # Copy application code
 COPY . .
+
+# Build TypeScript to JavaScript
+RUN npm run build
+
+# Remove dev dependencies to reduce image size (optional - comment out if you need them)
+RUN npm prune --omit=dev
 
 # Create necessary directories
 RUN mkdir -p logs repositories
@@ -74,6 +80,6 @@ ENV PORT=3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the server
-CMD ["node", "src/index.js"]
+# Start the server (using compiled JavaScript from dist/)
+CMD ["node", "dist/index.js"]
 

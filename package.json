@@ -2,7 +2,7 @@
   "name": "cursor-runner",
   "version": "1.0.0",
   "description": "Node.js application for cursor-cli execution and code generation workflows",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
