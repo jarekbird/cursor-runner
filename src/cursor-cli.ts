@@ -1,5 +1,70 @@
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { logger } from './logger.js';
+
+/**
+ * Options for cursor-cli command execution
+ */
+export interface ExecuteCommandOptions {
+  cwd?: string;
+  timeout?: number;
+}
+
+/**
+ * Result of cursor-cli command execution
+ */
+export interface CommandResult {
+  success: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Extended error with command output
+ */
+interface CommandError extends Error {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number | null;
+}
+
+/**
+ * PTY module type (node-pty)
+ */
+interface IPty {
+  spawn(
+    file: string,
+    args: string[],
+    options: {
+      name?: string;
+      cols?: number;
+      rows?: number;
+      cwd?: string;
+      env?: NodeJS.ProcessEnv;
+    }
+  ): IPtyProcess;
+}
+
+/**
+ * PTY process interface
+ */
+interface IPtyProcess {
+  pid: number;
+  onData(callback: (data: string) => void): void;
+  onExit(callback: (data: { exitCode: number }) => void): void;
+  kill(signal?: string): void;
+}
+
+/**
+ * Generation result for TDD phases
+ */
+export interface GenerationResult {
+  success: boolean;
+  phase: 'red' | 'green' | 'refactor';
+  output?: string;
+  files?: string[];
+  error?: string;
+}
 
 /**
  * CursorCLI - Wrapper for cursor-cli execution
@@ -7,35 +72,43 @@ import { logger } from './logger.js';
  * Handles execution of cursor-cli commands with timeouts and error handling.
  */
 export class CursorCLI {
+  private readonly cursorPath: string;
+  private readonly timeout: number;
+  private readonly maxOutputSize: number;
+  private _ptyModule: IPty | null = null; // Lazy-loaded
+
   constructor() {
     this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
-    this._ptyModule = null; // Lazy-loaded
   }
 
   /**
    * Validate that cursor-cli is available
-   * @returns {Promise<boolean>}
+   * @returns Promise resolving to true if available
    */
-  async validate() {
+  async validate(): Promise<boolean> {
     try {
       const result = await this.executeCommand(['--version']);
       logger.info('cursor-cli validated', { version: result.stdout });
       return true;
     } catch (error) {
-      logger.error('cursor-cli validation failed', { error: error.message });
-      throw new Error(`cursor-cli not available: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('cursor-cli validation failed', { error: errorMessage });
+      throw new Error(`cursor-cli not available: ${errorMessage}`);
     }
   }
 
   /**
    * Execute a cursor-cli command
-   * @param {Array<string>} args - Command arguments
-   * @param {Object} options - Execution options
-   * @returns {Promise<Object>} Command result
+   * @param args - Command arguments
+   * @param options - Execution options
+   * @returns Promise resolving to command result
    */
-  async executeCommand(args = [], options = {}) {
+  async executeCommand(
+    args: string[] = [],
+    options: ExecuteCommandOptions = {}
+  ): Promise<CommandResult> {
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
     const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '60000', 10); // 60s default
@@ -45,13 +118,13 @@ export class CursorCLI {
       try {
         // eslint-disable-next-line node/no-unsupported-features/es-syntax
         const ptyModule = await import('node-pty').catch(() => null);
-        this._ptyModule = ptyModule?.default || ptyModule || null;
-      } catch (error) {
+        this._ptyModule = (ptyModule?.default || ptyModule || null) as IPty | null;
+      } catch {
         this._ptyModule = null;
       }
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<CommandResult>((resolve, reject) => {
       logger.debug('Executing cursor-cli command', {
         command: this.cursorPath,
         args,
@@ -66,7 +139,7 @@ export class CursorCLI {
       let completed = false;
 
       // Try to use a pseudo-TTY so cursor behaves like an interactive session
-      let child;
+      let child: ChildProcess | IPtyProcess | undefined;
       let usePty = false;
 
       if (this._ptyModule) {
@@ -85,8 +158,9 @@ export class CursorCLI {
             cwd,
           });
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           logger.warn('Failed to start cursor-cli with PTY, falling back to spawn', {
-            error: error.message,
+            error: errorMessage,
             command: this.cursorPath,
             args,
             cwd,
@@ -108,6 +182,11 @@ export class CursorCLI {
         });
       }
 
+      if (!child) {
+        reject(new Error('Failed to create child process'));
+        return;
+      }
+
       // Set timeout
       const timeoutId = setTimeout(() => {
         if (completed) return;
@@ -124,26 +203,28 @@ export class CursorCLI {
         });
 
         try {
-          if (child.kill) {
+          if ('kill' in child && typeof child.kill === 'function') {
             child.kill('SIGTERM');
           }
-        } catch (e) {
+        } catch {
           // Process may already be dead
         }
 
         // Try SIGKILL if SIGTERM doesn't work after a short delay (spawned processes only)
-        if (child.pid && child.kill) {
+        if ('pid' in child && child.pid && 'kill' in child && typeof child.kill === 'function') {
           setTimeout(() => {
             try {
-              child.kill('SIGKILL');
-            } catch (e) {
+              if (child && 'kill' in child && typeof child.kill === 'function') {
+                child.kill('SIGKILL');
+              }
+            } catch {
               // Ignore
             }
           }, 1000);
         }
 
         completed = true;
-        const timeoutError = new Error(`Command timeout after ${timeout}ms`);
+        const timeoutError: CommandError = new Error(`Command timeout after ${timeout}ms`);
         // Attach partial output to error so it can be retrieved by caller
         timeoutError.stdout = stdout;
         timeoutError.stderr = stderr;
@@ -178,17 +259,19 @@ export class CursorCLI {
           });
 
           try {
-            if (child.kill) {
+            if ('kill' in child && typeof child.kill === 'function') {
               child.kill('SIGTERM');
             }
-          } catch (e) {
+          } catch {
             // Ignore if already exited
           }
 
           completed = true;
           clearTimeout(timeoutId);
           clearInterval(heartbeatInterval);
-          const idleError = new Error(`No output from cursor-cli for ${idleTimeout}ms`);
+          const idleError: CommandError = new Error(
+            `No output from cursor-cli for ${idleTimeout}ms`
+          );
           // Attach partial output to error so it can be retrieved by caller
           idleError.stdout = stdout;
           idleError.stderr = stderr;
@@ -197,8 +280,8 @@ export class CursorCLI {
         }
       }, 30000);
 
-      const handleData = (data) => {
-        const chunk = data.toString();
+      const handleData = (data: string | Buffer): void => {
+        const chunk = typeof data === 'string' ? data : data.toString();
         outputSize += Buffer.byteLength(chunk);
         lastOutputTime = Date.now();
         hasReceivedOutput = true;
@@ -215,10 +298,10 @@ export class CursorCLI {
 
         if (outputSize > this.maxOutputSize) {
           try {
-            if (child.kill) {
+            if ('kill' in child && typeof child.kill === 'function') {
               child.kill('SIGTERM');
             }
-          } catch (e) {
+          } catch {
             // Ignore
           }
           completed = true;
@@ -230,37 +313,39 @@ export class CursorCLI {
       };
 
       // PTY: single data stream
-      if (child.onData) {
+      if ('onData' in child && typeof child.onData === 'function') {
         child.onData(handleData);
-      } else if (child.stdout) {
+      } else if ('stdout' in child && child.stdout) {
         // Fallback: regular child process
-        child.stdout.on('data', handleData);
-        child.stderr.on('data', (data) => {
-          const chunk = data.toString();
-          lastOutputTime = Date.now();
-          hasReceivedOutput = true;
+        child.stdout.on('data', (data: Buffer) => handleData(data));
+        if ('stderr' in child && child.stderr) {
+          child.stderr.on('data', (data: Buffer) => {
+            const chunk = data.toString();
+            lastOutputTime = Date.now();
+            hasReceivedOutput = true;
 
-          const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
-          logger.warn('cursor-cli stderr chunk', {
-            command: this.cursorPath,
-            args,
-            chunkLength: chunk.length,
-            chunkPreview: logChunk.replace(/\n/g, '\\n'),
-            totalStderrLength: stderr.length + chunk.length,
+            const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+            logger.warn('cursor-cli stderr chunk', {
+              command: this.cursorPath,
+              args,
+              chunkLength: chunk.length,
+              chunkPreview: logChunk.replace(/\n/g, '\\n'),
+              totalStderrLength: stderr.length + chunk.length,
+            });
+
+            stderr += chunk;
           });
-
-          stderr += chunk;
-        });
+        }
       }
 
-      const handleExit = (code) => {
+      const handleExit = (code: number | null): void => {
         if (completed) return;
         completed = true;
 
         clearTimeout(timeoutId);
         clearInterval(heartbeatInterval);
 
-        const result = {
+        const result: CommandResult = {
           success: code === 0,
           exitCode: code,
           stdout: stdout.trim(),
@@ -285,22 +370,22 @@ export class CursorCLI {
         resolve(result);
       };
 
-      if (child.onExit) {
+      if ('onExit' in child && typeof child.onExit === 'function') {
         // PTY exit event
-        child.onExit(({ exitCode }) => {
+        child.onExit(({ exitCode }: { exitCode: number }) => {
           handleExit(exitCode);
         });
-      } else {
+      } else if ('on' in child && typeof child.on === 'function') {
         // Regular child process
         child.on('close', handleExit);
-        child.on('error', (error) => {
+        child.on('error', (error: Error) => {
           if (completed) return;
           completed = true;
           clearTimeout(timeoutId);
           clearInterval(heartbeatInterval);
           logger.error('cursor-cli command error', {
             args,
-            error: error.messaxge,
+            error: error.message,
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
@@ -313,11 +398,11 @@ export class CursorCLI {
 
   /**
    * Generate tests (TDD Red phase)
-   * @param {Object} requirements - Test requirements
-   * @param {string} targetPath - Target application path
-   * @returns {Promise<Object>} Generation result
+   * @param requirements - Test requirements
+   * @param targetPath - Target application path
+   * @returns Promise resolving to generation result
    */
-  async generateTests(requirements, targetPath) {
+  async generateTests(requirements: unknown, targetPath: string): Promise<GenerationResult> {
     logger.info('Generating tests (TDD Red phase)', { targetPath });
 
     // Build cursor command to generate tests
@@ -334,22 +419,26 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      logger.error('Test generation failed', { error: error.message });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Test generation failed', { error: errorMessage });
       return {
         success: false,
         phase: 'red',
-        error: error.message,
+        error: errorMessage,
       };
     }
   }
 
   /**
    * Generate implementation (TDD Green phase)
-   * @param {Object} requirements - Implementation requirements
-   * @param {string} targetPath - Target application path
-   * @returns {Promise<Object>} Generation result
+   * @param requirements - Implementation requirements
+   * @param targetPath - Target application path
+   * @returns Promise resolving to generation result
    */
-  async generateImplementation(requirements, targetPath) {
+  async generateImplementation(
+    requirements: unknown,
+    targetPath: string
+  ): Promise<GenerationResult> {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
@@ -365,22 +454,23 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      logger.error('Implementation generation failed', { error: error.message });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Implementation generation failed', { error: errorMessage });
       return {
         success: false,
         phase: 'green',
-        error: error.message,
+        error: errorMessage,
       };
     }
   }
 
   /**
    * Refactor code (TDD Refactor phase)
-   * @param {Object} requirements - Refactoring requirements
-   * @param {string} targetPath - Target application path
-   * @returns {Promise<Object>} Refactoring result
+   * @param requirements - Refactoring requirements
+   * @param targetPath - Target application path
+   * @returns Promise resolving to refactoring result
    */
-  async refactorCode(requirements, targetPath) {
+  async refactorCode(requirements: unknown, targetPath: string): Promise<GenerationResult> {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
@@ -396,25 +486,26 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      logger.error('Refactoring failed', { error: error.message });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Refactoring failed', { error: errorMessage });
       return {
         success: false,
         phase: 'refactor',
-        error: error.message,
+        error: errorMessage,
       };
     }
   }
 
   /**
    * Extract file paths from cursor output
-   * @param {string} output - Command output
-   * @returns {Array<string>} File paths
+   * @param output - Command output
+   * @returns Array of file paths
    */
-  extractFilesFromOutput(output) {
+  extractFilesFromOutput(output: string): string[] {
     // Basic implementation - enhance based on actual cursor-cli output format
     const filePattern = /(?:created|modified|updated):\s*(.+)/gi;
-    const files = [];
-    let match;
+    const files: string[] = [];
+    let match: RegExpExecArray | null;
 
     while ((match = filePattern.exec(output)) !== null) {
       files.push(match[1].trim());
