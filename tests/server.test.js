@@ -16,6 +16,9 @@ describe('Server', () => {
     // Reset mocks
     jest.clearAllMocks();
 
+    // Clear ENABLE_TERMINAL_COMMANDS to ensure default behavior (false)
+    delete process.env.ENABLE_TERMINAL_COMMANDS;
+
     // Create mock git service
     mockGitService = {
       repositoriesPath: '/test/repositories',
@@ -217,7 +220,39 @@ describe('Server', () => {
         expect(response.body.error).toContain('Repository not found locally');
       });
 
-      it('should append instructions to prompt', async () => {
+      it('should not append terminal instructions by default', async () => {
+        // Set terminalInstructions to empty string (default behavior)
+        server.cursorExecution.terminalInstructions = '';
+
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Output',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'Create service',
+        });
+
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
+        const promptIndex = callArgs.findIndex((arg) => arg === '--print');
+        expect(promptIndex).toBeGreaterThan(-1);
+        expect(callArgs[promptIndex + 1]).toContain('Create service');
+        expect(callArgs[promptIndex + 1]).not.toContain('If you need to run a terminal command');
+      });
+
+      it('should append terminal instructions when ENABLE_TERMINAL_COMMANDS is true', async () => {
+        // Set terminalInstructions to include the wrapper text (when enabled)
+        server.cursorExecution.terminalInstructions =
+          '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+
         const mockResult = {
           success: true,
           exitCode: 0,

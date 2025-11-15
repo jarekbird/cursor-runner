@@ -30,6 +30,7 @@ services:
       - ALLOWED_TERMINAL_COMMANDS=${ALLOWED_TERMINAL_COMMANDS:-git,cursor,npm,node,bundle,rails,rspec}
       - BLOCKED_TERMINAL_COMMANDS=${BLOCKED_TERMINAL_COMMANDS:-rm,del,format,dd,sudo,su}
       - ENFORCE_COMMAND_WHITELIST=${ENFORCE_COMMAND_WHITELIST:-false}
+      - ENABLE_TERMINAL_COMMANDS=${ENABLE_TERMINAL_COMMANDS:-false}
       # jarek-va Communication (use Docker service name)
       - JAREK_VA_URL=http://app:3000
       - JAREK_VA_API_KEY=${JAREK_VA_API_KEY:-}
