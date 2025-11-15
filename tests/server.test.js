@@ -248,7 +248,8 @@ describe('Server', () => {
         const printIndex = callArgs.findIndex((arg) => arg === '--print');
         expect(printIndex).toBeGreaterThan(-1);
         expect(callArgs[printIndex + 1]).toContain('Create service');
-        expect(callArgs[printIndex + 1]).toContain('If you need to run a terminal command');
+        // Terminal instructions are no longer included by default in initial commands
+        expect(callArgs[printIndex + 1]).not.toContain('If you need to run a terminal command');
       });
 
       it('should handle command execution errors', async () => {

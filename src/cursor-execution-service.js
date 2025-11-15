@@ -75,9 +75,10 @@ export class CursorExecutionService {
    * Prepare command with instructions
    * @param {string} command - Original command string (optional)
    * @param {string} prompt - Prompt text (optional, used if command not provided)
+   * @param {boolean} includeTerminalInstructions - Whether to include terminal instructions (default: false)
    * @returns {Array<string>} Prepared command arguments
    */
-  prepareCommand(command, prompt = null) {
+  prepareCommand(command, prompt = null, includeTerminalInstructions = false) {
     let commandArgs;
 
     if (command) {
@@ -90,7 +91,10 @@ export class CursorExecutionService {
       throw new Error('Either command or prompt must be provided');
     }
 
-    return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
+    if (includeTerminalInstructions) {
+      return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
+    }
+    return commandArgs;
   }
 
   /**
@@ -333,6 +337,8 @@ export class CursorExecutionService {
 
       if (terminalOutput) {
         resumePrompt += `\n\nIf you requested a terminal command, here is the output from the latest terminal command:\n${terminalOutput}`;
+        // Only include terminal instructions if a terminal command was actually executed
+        resumePrompt += this.terminalInstructions;
       }
 
       // Execute cursor with --resume
