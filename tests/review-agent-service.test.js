@@ -190,9 +190,7 @@ More log output`;
     });
 
     it('should handle multiple JSON objects in output', async () => {
-      // The current implementation uses a greedy regex that matches from first { to last }
-      // This creates invalid JSON when multiple objects exist, so it falls back to parsing the whole output
-      // For this test, we'll use a format that works: a single valid JSON object
+      // The implementation now uses brace matching to find the first complete JSON object
       const stdout = `Some text before
 {"code_complete": true, "execute_terminal_command": true, "terminal_command_requested": "test"}
 Some text after`;
@@ -210,6 +208,81 @@ Some text after`;
       expect(result).not.toBeNull();
       expect(result.code_complete).toBe(true);
       expect(result.execute_terminal_command).toBe(true);
+    });
+
+    it('should handle ANSI escape sequences in output', async () => {
+      const stdout = `\u001b[?25hSome text before
+{\u001b[0m
+  "code_complete": true,
+  "execute_terminal_command": false,
+  "terminal_command_requested": null
+}\u001b[?25h
+Some text after`;
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result).not.toBeNull();
+      expect(result.code_complete).toBe(true);
+      expect(result.execute_terminal_command).toBe(false);
+    });
+
+    it('should handle output with carriage returns and newlines', async () => {
+      const stdout = `\r\nSome text before\r\n{\r\n  "code_complete": true,\r\n  "execute_terminal_command": false\r\n}\r\nSome text after`;
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result).not.toBeNull();
+      expect(result.code_complete).toBe(true);
+      expect(result.execute_terminal_command).toBe(false);
+    });
+
+    it('should return null for JSON missing required fields', async () => {
+      const stdout = JSON.stringify({
+        execute_terminal_command: false,
+        // Missing code_complete field
+      });
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for incomplete JSON (missing closing brace)', async () => {
+      const stdout = `Some text before
+{"code_complete": true, "execute_terminal_command": false
+Some text after (missing closing brace)`;
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result).toBeNull();
     });
 
     it('should pass repository path to cursor CLI', async () => {
