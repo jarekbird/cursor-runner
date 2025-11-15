@@ -42,7 +42,7 @@ export class TerminalService {
    */
   async executeCommand(
     command: string,
-    args: string[] = [],
+    args: readonly string[] = [],
     options: ExecuteCommandOptions = {}
   ): Promise<CommandResult> {
     return new Promise((resolve, reject) => {
@@ -51,7 +51,7 @@ export class TerminalService {
 
       logger.debug('Executing terminal command', { command, args, cwd });
 
-      const child: ChildProcess = spawn(command, args, {
+      const child: ChildProcess = spawn(command, [...args], {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false, // Never use shell: true for security

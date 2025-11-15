@@ -1,6 +1,7 @@
 import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { logger } from './logger.js';
+import { getErrorMessage } from './error-utils.js';
 import { FilesystemService } from './filesystem-service.js';
 
 /**
@@ -75,7 +76,7 @@ export class WorkspaceTrustService {
           const existingContent = await readFile(settingsPath, 'utf-8');
           settings = JSON.parse(existingContent) as WorkspaceTrustSettings;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = getErrorMessage(error);
           logger.warn('Failed to read existing settings.json, creating new one', {
             workspacePath,
             error: errorMessage,
@@ -147,7 +148,7 @@ export class WorkspaceTrustService {
           const existingContent = await readFile(cliConfigPath, 'utf-8');
           cliConfig = JSON.parse(existingContent) as CLIConfig;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = getErrorMessage(error);
           logger.warn('Failed to read existing cli.json, creating new one', {
             workspacePath,
             error: errorMessage,

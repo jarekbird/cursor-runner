@@ -1,4 +1,5 @@
 import { logger } from './logger.js';
+import { getErrorMessage } from './error-utils.js';
 
 /**
  * Review result structure returned by the review agent
@@ -39,7 +40,10 @@ interface ExecuteCommandResult {
  * Interface for CursorCLI instance
  */
 interface CursorCLIInterface {
-  executeCommand(args: string[], options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>;
+  executeCommand(
+    args: readonly string[],
+    options?: ExecuteCommandOptions
+  ): Promise<ExecuteCommandResult>;
 }
 
 /**
@@ -177,7 +181,7 @@ ${output}`;
         return { result: null, rawOutput: cleanedOutput };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Review agent failed', { error: errorMessage });
       // Return error message as raw output
       return {

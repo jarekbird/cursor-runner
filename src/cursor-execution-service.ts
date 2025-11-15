@@ -3,6 +3,7 @@ import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
+import { getErrorMessage } from './error-utils.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -32,38 +33,48 @@ export interface IterateParams {
 }
 
 /**
- * Error response structure
+ * Error response body (discriminated union member)
+ */
+interface ErrorResponseBody {
+  success: false;
+  error: string;
+}
+
+/**
+ * Success response body (discriminated union member)
+ */
+interface SuccessResponseBody {
+  success: true;
+  requestId: string;
+  repository?: string | null;
+  branchName?: string;
+  command?: readonly string[];
+  output?: string;
+  error?: string | null;
+  exitCode?: number;
+  duration: string;
+  timestamp: string;
+  iterations?: number;
+  maxIterations?: number;
+  reviewJustification?: string;
+  originalOutput?: string;
+}
+
+/**
+ * Error response structure (discriminated union)
  */
 interface ErrorResponse {
   status: number;
-  body: {
-    success: false;
-    error: string;
-  };
+  body: ErrorResponseBody;
   requestId?: string;
 }
 
 /**
- * Success response structure
+ * Success response structure (discriminated union)
  */
 interface SuccessResponse {
   status: number;
-  body: {
-    success: boolean;
-    requestId: string;
-    repository?: string | null;
-    branchName?: string;
-    command?: string[];
-    output?: string;
-    error?: string | null;
-    exitCode?: number;
-    duration: string;
-    timestamp: string;
-    iterations?: number;
-    maxIterations?: number;
-    reviewJustification?: string;
-    originalOutput?: string;
-  };
+  body: SuccessResponseBody;
 }
 
 /**
@@ -122,7 +133,7 @@ interface ReviewResult {
  * Callback webhook payload - can be success or error response body
  */
 type CallbackWebhookPayload =
-  | SuccessResponse['body']
+  | SuccessResponseBody
   | {
       success: false;
       requestId: string;
@@ -134,6 +145,8 @@ type CallbackWebhookPayload =
       iterations?: number;
       maxIterations?: number;
       output?: string;
+      reviewJustification?: string;
+      originalOutput?: string;
     };
 
 /**
@@ -220,7 +233,7 @@ export class CursorExecutionService {
    * @param command - Original command string
    * @returns Prepared command arguments
    */
-  prepareCommand(command: string): string[] {
+  prepareCommand(command: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
     return commandArgs;
   }
@@ -260,7 +273,7 @@ export class CursorExecutionService {
           logger.error('Failed to call callback webhook for validation error', {
             requestId,
             callbackUrl,
-            error: error.message,
+            error: getErrorMessage(error),
           });
         });
       }
@@ -288,7 +301,7 @@ export class CursorExecutionService {
           logger.error('Failed to call callback webhook for repository error', {
             requestId,
             callbackUrl,
-            error: error.message,
+            error: getErrorMessage(error),
           });
         });
       }
@@ -336,7 +349,7 @@ export class CursorExecutionService {
       cwd: fullRepositoryPath,
     });
 
-    const result = await this.cursorCLI.executeCommand(modifiedArgs, {
+    const result = await this.cursorCLI.executeCommand([...modifiedArgs], {
       cwd: fullRepositoryPath,
     });
 
@@ -349,8 +362,8 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
     });
 
-    const responseBody: SuccessResponse['body'] = {
-      success: result.success !== false,
+    const responseBody: SuccessResponseBody = {
+      success: true,
       requestId,
       repository,
       command: modifiedArgs,
@@ -372,7 +385,7 @@ export class CursorExecutionService {
         logger.error('Failed to call callback webhook', {
           requestId,
           callbackUrl,
-          error: error.message,
+          error: getErrorMessage(error),
         });
       });
     }
@@ -422,7 +435,7 @@ export class CursorExecutionService {
           logger.error('Failed to call callback webhook for validation error', {
             requestId,
             callbackUrl,
-            error: error.message,
+            error: getErrorMessage(error),
           });
         });
       }
@@ -453,7 +466,7 @@ export class CursorExecutionService {
           logger.error('Failed to call callback webhook for repository error', {
             requestId,
             callbackUrl,
-            error: error.message,
+            error: getErrorMessage(error),
           });
         });
       }
@@ -501,7 +514,7 @@ export class CursorExecutionService {
 
     let lastResult: CommandResult;
     try {
-      lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
+      lastResult = await this.cursorCLI.executeCommand([...modifiedArgs], {
         cwd: fullRepositoryPath,
         timeout: iterateTimeout,
       });
@@ -567,11 +580,11 @@ export class CursorExecutionService {
         logger.error('Review agent threw an error', {
           requestId,
           iteration,
-          error: error.message,
+          error: getErrorMessage(error),
         });
         reviewResponse = {
           result: null,
-          rawOutput: `Review agent execution error: ${error.message}`,
+          rawOutput: `Review agent execution error: ${getErrorMessage(error)}`,
         };
       }
 
@@ -636,7 +649,7 @@ export class CursorExecutionService {
       });
 
       try {
-        lastResult = await this.cursorCLI.executeCommand(resumeArgs, {
+        lastResult = await this.cursorCLI.executeCommand([...resumeArgs], {
           cwd: fullRepositoryPath,
           timeout: iterateTimeout,
         });
@@ -684,8 +697,53 @@ export class CursorExecutionService {
     // Combine errors: prefer iteration error if present, otherwise use lastResult error
     const errorMessage = iterationError || lastResult.stderr || null;
 
-    const responseBody: SuccessResponse['body'] = {
-      success: isSuccess,
+    // Use discriminated union - return ErrorResponse if failed, SuccessResponse if succeeded
+    if (!isSuccess) {
+      const errorResponseBody: CallbackWebhookPayload = {
+        success: false,
+        requestId,
+        repository,
+        error: errorMessage || 'Iteration failed',
+        exitCode: lastResult.exitCode || 1,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+        iterations: iteration - 1,
+        maxIterations,
+        output: lastResult.stdout || '',
+      };
+
+      // Include review justification and original output if available
+      if (reviewJustification) {
+        errorResponseBody.reviewJustification = reviewJustification;
+      }
+      if (originalOutput) {
+        errorResponseBody.originalOutput = originalOutput;
+      }
+
+      // If callback URL is provided, call it asynchronously (don't wait)
+      if (callbackUrl) {
+        this.callbackWebhook(callbackUrl, errorResponseBody, requestId).catch((error) => {
+          logger.error('Failed to call callback webhook for iteration error', {
+            requestId,
+            callbackUrl,
+            error: getErrorMessage(error),
+          });
+        });
+      }
+
+      const errorResponse: ErrorResponse = {
+        status: 422,
+        body: {
+          success: false,
+          error: errorMessage || 'Iteration failed',
+        },
+        requestId,
+      };
+      return errorResponse;
+    }
+
+    const responseBody: SuccessResponseBody = {
+      success: true,
       requestId,
       repository,
       iterations: iteration - 1,
@@ -724,7 +782,7 @@ export class CursorExecutionService {
         logger.error('Failed to call callback webhook', {
           requestId,
           callbackUrl,
-          error: error.message,
+          error: getErrorMessage(error),
         });
       });
     }
@@ -796,14 +854,14 @@ export class CursorExecutionService {
       });
     } catch (error) {
       // Log error but don't throw - we don't want to fail the main operation
-      const err = error instanceof Error ? error : new Error(String(error));
+      const err = error instanceof Error ? error : new Error(getErrorMessage(error));
       if (err.name === 'AbortError') {
         logger.error('Callback webhook timeout', { requestId, callbackUrl });
       } else {
         logger.error('Callback webhook error', {
           requestId,
           callbackUrl,
-          error: err.message,
+          error: getErrorMessage(err),
         });
       }
       throw err; // Re-throw so caller can handle if needed

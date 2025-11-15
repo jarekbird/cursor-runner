@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { logger } from './logger.js';
+import { getErrorMessage } from './error-utils.js';
 import { existsSync as defaultExistsSync } from 'fs';
 
 /**
@@ -138,7 +139,7 @@ export class TargetAppRunner {
         passed: this.extractTestResults(result.stdout, result.exitCode === 0),
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Test execution failed', { error: errorMessage });
       return {
         success: false,
@@ -169,7 +170,7 @@ export class TargetAppRunner {
         cwd,
       });
 
-      const child: ChildProcess = spawn(command, args, {
+      const child: ChildProcess = spawn(command, [...args], {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,

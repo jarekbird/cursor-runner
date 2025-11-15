@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 import { CursorCLI, type GenerationRequirements } from './cursor-cli.js';
 import { TargetAppRunner } from './target-app.js';
 import { Server } from './server.js';
+import { getErrorMessage, getErrorStack } from './error-utils.js';
 import type { FormattedRequest, Phase } from './request-formatter.js';
 
 // Load environment variables
@@ -36,7 +37,7 @@ interface CodeGenerationResult {
   success: boolean;
   phase?: Phase;
   output?: string;
-  files?: string[];
+  files?: readonly string[];
   error?: string;
   passed?: TestResults;
 }
@@ -89,7 +90,7 @@ class CursorRunner {
         endpoints: ['GET /health', 'POST /cursor/execute', 'POST /cursor/iterate'],
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       this.logger.error('Failed to initialize cursor-runner', { error: errorMessage });
       throw error;
     }
@@ -104,7 +105,7 @@ class CursorRunner {
       await this.server.stop();
       this.logger.info('cursor-runner shut down successfully');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       this.logger.error('Error during shutdown', { error: errorMessage });
     }
   }
@@ -198,8 +199,8 @@ class CursorRunner {
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
+      const errorMessage = getErrorMessage(error);
+      const errorStack = getErrorStack(error);
       this.logger.error('Code generation workflow failed', {
         requestId: request.id,
         phase: request.phase,

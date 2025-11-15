@@ -1,4 +1,5 @@
 import { logger } from './logger.js';
+import { getErrorMessage, getErrorStack } from './error-utils.js';
 
 /**
  * TDD Phase type
@@ -96,7 +97,7 @@ interface ExecutionResult {
   success?: boolean;
   phase?: Phase | string;
   output?: string;
-  files?: string[];
+  files?: readonly string[];
   error?: string;
   passed?: TestResults;
 }
@@ -113,7 +114,7 @@ interface FormattedResponse {
   error?: string;
   data?: {
     output?: string;
-    files?: string[];
+    files?: readonly string[];
     phase?: Phase | string;
     testResults?: TestResults;
   };
@@ -125,7 +126,7 @@ interface FormattedResponse {
  */
 interface ValidationResult {
   valid: boolean;
-  errors: string[];
+  readonly errors: readonly string[];
 }
 
 /**
@@ -179,7 +180,7 @@ export class RequestFormatter {
 
       return formatted;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Failed to format code generation request', {
         error: errorMessage,
         rawRequest,
@@ -273,7 +274,7 @@ export class RequestFormatter {
 
       return response;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Failed to format code generation response', {
         error: errorMessage,
         result,
@@ -313,7 +314,7 @@ export class RequestFormatter {
 
     // Add stack trace in development
     if (process.env.NODE_ENV === 'development') {
-      response.stack = error.stack;
+      response.stack = getErrorStack(error);
     }
 
     logger.error('Formatted error response', {
@@ -376,7 +377,7 @@ export class RequestFormatter {
    * @returns Validation result
    */
   static validateRequest(request: unknown): ValidationResult {
-    const errors: string[] = [];
+    const errors: string[] = []; // Mutable during construction
 
     if (!request) {
       errors.push('Request is required');
@@ -404,7 +405,7 @@ export class RequestFormatter {
 
     return {
       valid: errors.length === 0,
-      errors,
+      errors: errors as readonly string[], // Return as readonly
     };
   }
 }

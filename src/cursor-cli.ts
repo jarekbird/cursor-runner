@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { logger } from './logger.js';
+import { getErrorMessage } from './error-utils.js';
 
 /**
  * Options for cursor-cli command execution
@@ -67,7 +68,7 @@ export interface GenerationResult {
   success: boolean;
   phase: 'red' | 'green' | 'refactor';
   output?: string;
-  files?: string[];
+  files?: readonly string[];
   error?: string;
 }
 
@@ -98,7 +99,7 @@ export class CursorCLI {
       logger.info('cursor-cli validated', { version: result.stdout });
       return true;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('cursor-cli validation failed', { error: errorMessage });
       throw new Error(`cursor-cli not available: ${errorMessage}`);
     }
@@ -111,7 +112,7 @@ export class CursorCLI {
    * @returns Promise resolving to command result
    */
   async executeCommand(
-    args: string[] = [],
+    args: readonly string[] = [],
     options: ExecuteCommandOptions = {}
   ): Promise<CommandResult> {
     const cwd = options.cwd || process.cwd();
@@ -149,7 +150,7 @@ export class CursorCLI {
 
       if (this._ptyModule) {
         try {
-          child = this._ptyModule.spawn(this.cursorPath, args, {
+          child = this._ptyModule.spawn(this.cursorPath, [...args], {
             name: 'xterm-color',
             cols: 80,
             rows: 30,
@@ -163,7 +164,7 @@ export class CursorCLI {
             cwd,
           });
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = getErrorMessage(error);
           logger.warn('Failed to start cursor-cli with PTY, falling back to spawn', {
             error: errorMessage,
             command: this.cursorPath,
@@ -175,7 +176,7 @@ export class CursorCLI {
 
       // Fallback to regular spawn
       if (!usePty) {
-        child = spawn(this.cursorPath, args, {
+        child = spawn(this.cursorPath, [...args], {
           cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
@@ -427,7 +428,7 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Test generation failed', { error: errorMessage });
       return {
         success: false,
@@ -462,7 +463,7 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Implementation generation failed', { error: errorMessage });
       return {
         success: false,
@@ -497,7 +498,7 @@ export class CursorCLI {
         files: this.extractFilesFromOutput(result.stdout),
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       logger.error('Refactoring failed', { error: errorMessage });
       return {
         success: false,
@@ -512,16 +513,16 @@ export class CursorCLI {
    * @param output - Command output
    * @returns Array of file paths
    */
-  extractFilesFromOutput(output: string): string[] {
+  extractFilesFromOutput(output: string): readonly string[] {
     // Basic implementation - enhance based on actual cursor-cli output format
     const filePattern = /(?:created|modified|updated):\s*(.+)/gi;
-    const files: string[] = [];
+    const files: string[] = []; // Mutable during construction
     let match: RegExpExecArray | null;
 
     while ((match = filePattern.exec(output)) !== null) {
       files.push(match[1].trim());
     }
 
-    return files;
+    return files as readonly string[]; // Return as readonly
   }
 }

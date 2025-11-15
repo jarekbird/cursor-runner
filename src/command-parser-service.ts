@@ -11,7 +11,7 @@ export class CommandParserService {
    * @param command - Command string
    * @returns Command arguments
    */
-  parseCommand(command: string): string[] {
+  parseCommand(command: string): readonly string[] {
     const args: string[] = [];
     let current = '';
     let inQuotes = false;
@@ -44,7 +44,7 @@ export class CommandParserService {
       args.push(current);
     }
 
-    return args;
+    return args as readonly string[]; // Return as readonly
   }
 
   /**
@@ -53,7 +53,7 @@ export class CommandParserService {
    * @param instructions - Instructions to append
    * @returns Modified arguments
    */
-  appendInstructions(commandArgs: string[], instructions: string): string[] {
+  appendInstructions(commandArgs: readonly string[], instructions: string): readonly string[] {
     const modifiedArgs = [...commandArgs];
     let foundPromptFlag = false;
 
@@ -93,6 +93,6 @@ export class CommandParserService {
       modifiedArgs[modifiedArgs.length - 1] = modifiedArgs[modifiedArgs.length - 1] + instructions;
     }
 
-    return modifiedArgs;
+    return modifiedArgs as readonly string[]; // Return as readonly
   }
 }
