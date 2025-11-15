@@ -1,6 +1,7 @@
 import path from 'path';
 import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
+import { getWebhookSecret } from './callback-url-builder.js';
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
@@ -495,15 +496,24 @@ export class CursorExecutionService {
     try {
       logger.info('Calling callback webhook', { requestId, callbackUrl });
 
-      // Extract secret from URL if present, and add to headers
+      // Get webhook secret from environment or URL query parameter
       const url = new URL(callbackUrl);
-      const secret = url.searchParams.get('secret');
+      let secret = url.searchParams.get('secret');
+
+      // If no secret in URL, try environment variable
+      if (!secret) {
+        secret = getWebhookSecret();
+      }
+
       const headers = {
         'Content-Type': 'application/json',
         'User-Agent': 'cursor-runner/1.0',
       };
+
+      // Add secret to headers if available
       if (secret) {
         headers['X-Webhook-Secret'] = secret;
+        headers['X-Cursor-Runner-Secret'] = secret; // Also support this header name for compatibility
         // Remove secret from URL for cleaner logging
         url.searchParams.delete('secret');
         callbackUrl = url.toString();

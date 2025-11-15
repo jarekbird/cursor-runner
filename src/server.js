@@ -7,6 +7,7 @@ import { CommandParserService } from './command-parser-service.js';
 import { ReviewAgentService } from './review-agent-service.js';
 import { CursorExecutionService } from './cursor-execution-service.js';
 import { FilesystemService } from './filesystem-service.js';
+import { buildCallbackUrl } from './callback-url-builder.js';
 
 /**
  * HTTP Server for cursor-runner API
@@ -198,18 +199,15 @@ export class Server {
           userAgent: req.get('user-agent'),
         });
 
-        // Validate that callbackUrl is provided (required for async processing)
-        const callbackUrl = req.body.callbackUrl || req.body.callback_url;
+        // Auto-construct callback URL if not provided
+        // Will use Docker network default (http://app:3000) if JAREK_VA_URL not set
+        let callbackUrl = req.body.callbackUrl || req.body.callback_url;
         if (!callbackUrl) {
-          logger.warn('Cursor iterate request missing callbackUrl', {
+          callbackUrl = buildCallbackUrl();
+          logger.info('Auto-constructed callback URL for iterate request', {
             requestId,
-            body: req.body,
-          });
-          return res.status(400).json({
-            success: false,
-            error: 'callbackUrl is required for async processing',
-            requestId,
-            timestamp: new Date().toISOString(),
+            callbackUrl,
+            source: process.env.JAREK_VA_URL ? 'JAREK_VA_URL env var' : 'Docker network default',
           });
         }
 

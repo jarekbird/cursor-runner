@@ -551,14 +551,121 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
-      it('should return 400 if callbackUrl is missing', async () => {
+      it('should auto-construct callback URL if not provided and JAREK_VA_URL is set', async () => {
+        // Set JAREK_VA_URL environment variable
+        const originalJarekVaUrl = process.env.JAREK_VA_URL;
+        process.env.JAREK_VA_URL = 'http://app:3000';
+        process.env.WEBHOOK_SECRET = 'test-secret';
+
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code generated successfully',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Task completed',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command
+          .mockResolvedValueOnce(mockReviewResult); // Review agent
+
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           prompt: 'test',
         });
 
-        expect(response.status).toBe(400);
-        expect(response.body.error).toBe('callbackUrl is required for async processing');
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with auto-constructed URL
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+        const callArgs = callbackWebhookSpy.mock.calls[0];
+        expect(callArgs[0]).toContain('http://app:3000/cursor-runner/callback');
+
+        // Restore original environment
+        if (originalJarekVaUrl) {
+          process.env.JAREK_VA_URL = originalJarekVaUrl;
+        } else {
+          delete process.env.JAREK_VA_URL;
+        }
+        delete process.env.WEBHOOK_SECRET;
+
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should use Docker network default if callbackUrl is missing and JAREK_VA_URL is not set', async () => {
+        // Ensure JAREK_VA_URL is not set - should use Docker network default
+        const originalJarekVaUrl = process.env.JAREK_VA_URL;
+        delete process.env.JAREK_VA_URL;
+
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Code generated successfully',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: true,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Task completed',
+          }),
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command
+          .mockResolvedValueOnce(mockReviewResult); // Review agent
+
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          prompt: 'test',
+        });
+
+        // Should succeed with Docker network default
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with Docker network default URL
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+        const callArgs = callbackWebhookSpy.mock.calls[0];
+        expect(callArgs[0]).toContain('http://app:3000/cursor-runner/callback');
+
+        // Restore original environment
+        if (originalJarekVaUrl) {
+          process.env.JAREK_VA_URL = originalJarekVaUrl;
+        }
+
+        callbackWebhookSpy.mockRestore();
       });
 
       it('should work without branchName', async () => {
