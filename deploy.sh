@@ -85,9 +85,9 @@ if [ -n "$(git status --porcelain)" ]; then
   fi
   echo -e "${GREEN}✓${NC} All changes staged"
   
-  # Generate commit message using cursor-cli
+  # Generate commit message using cursor-agent
   echo ""
-  echo -e "${GREEN}Step 3.6:${NC} Generating commit message with cursor-cli..."
+  echo -e "${GREEN}Step 3.6:${NC} Generating commit message with cursor-agent..."
   
   # Get the diff of staged changes (limit to first 5000 lines to avoid huge prompts)
   STAGED_DIFF=$(git diff --cached | head -5000)
@@ -103,7 +103,7 @@ if [ -n "$(git status --porcelain)" ]; then
 $(echo "$NEW_FILES" | sed 's/^/  - /')"
   fi
   
-  # Build prompt for cursor-cli using heredoc to safely handle special characters
+  # Build prompt for cursor-agent using heredoc to safely handle special characters
   CURSOR_PROMPT_FILE=$(mktemp)
   cat > "$CURSOR_PROMPT_FILE" << 'PROMPT_EOF'
 Generate a concise, professional git commit message based on the following changes. The commit message should:
@@ -137,14 +137,23 @@ PROMPT_EOF
   echo "" >> "$CURSOR_PROMPT_FILE"
   echo "Return ONLY the commit message, nothing else. Do not include quotes, markdown formatting, or any other text." >> "$CURSOR_PROMPT_FILE"
   
-  # Check if cursor-cli is available
-  if command -v cursor &> /dev/null; then
-    echo "  Using cursor-cli to generate commit message..."
-    CURSOR_RESULT=$(cursor --print "$(cat "$CURSOR_PROMPT_FILE")" 2>/dev/null || echo "")
+  # Check if cursor-agent is available (check common locations)
+  CURSOR_AGENT=""
+  if command -v cursor-agent &> /dev/null; then
+    CURSOR_AGENT="cursor-agent"
+  elif [ -f "$HOME/.local/bin/cursor-agent" ]; then
+    CURSOR_AGENT="$HOME/.local/bin/cursor-agent"
+  elif [ -f "/usr/local/bin/cursor-agent" ]; then
+    CURSOR_AGENT="/usr/local/bin/cursor-agent"
+  fi
+  
+  if [ -n "$CURSOR_AGENT" ]; then
+    echo "  Using cursor-agent to generate commit message..."
+    # Try cursor-agent with --print flag for non-interactive use
+    CURSOR_RESULT=$("$CURSOR_AGENT" --print "$(cat "$CURSOR_PROMPT_FILE")" 2>/dev/null || echo "")
     
-    # Extract commit message from cursor output
+    # Extract commit message from cursor-agent output
     # Remove markdown code blocks, quotes, and extra whitespace
-    # Use printf to avoid backtick interpretation issues
     BACKTICK_PATTERN='```'
     COMMIT_MSG=$(echo "$CURSOR_RESULT" | \
       sed -e "s/^${BACKTICK_PATTERN}[a-z]*//" -e "s/${BACKTICK_PATTERN}\$//" \
@@ -156,7 +165,7 @@ PROMPT_EOF
       head -1)
     
     # Clean up any remaining markdown or formatting
-    COMMIT_MSG=$(echo "$COMMIT_MSG" | sed -e 's/^\*\*//' -e 's/\*\*$//' -e 's/^#*[[:space:]]*//')
+    COMMIT_MSG=$(echo "$COMMIT_MSG" | sed -e 's/^\*\*//' -e 's/\*\*$//' -e 's/^#*[[:space:]]*//' -e 's/^\[.*\]\s*//')
     
     # Validate the generated message
     if [ -z "$COMMIT_MSG" ] || [ ${#COMMIT_MSG} -lt 3 ]; then
@@ -171,8 +180,17 @@ PROMPT_EOF
       echo -e "${GREEN}✓${NC} Generated commit message: $COMMIT_MSG"
     fi
   else
-    echo -e "${YELLOW}⚠ Warning: cursor-cli not found, using default commit message${NC}"
-    COMMIT_MSG="Deploy: auto-commit before push"
+    echo -e "${YELLOW}⚠ Warning: cursor-agent not found, using default commit message${NC}"
+    # Generate a simple commit message based on file changes
+    if [ -n "$NEW_FILES" ]; then
+      COMMIT_MSG="Add: $(echo "$NEW_FILES" | head -1 | xargs basename)"
+    elif [ -n "$MODIFIED_FILES" ]; then
+      COMMIT_MSG="Update: $(echo "$MODIFIED_FILES" | head -1 | xargs basename)"
+    elif [ -n "$DELETED_FILES" ]; then
+      COMMIT_MSG="Remove: $(echo "$DELETED_FILES" | head -1 | xargs basename)"
+    else
+      COMMIT_MSG="Deploy: auto-commit before push"
+    fi
   fi
   
   # Clean up temp file
