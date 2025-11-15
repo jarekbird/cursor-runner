@@ -10,9 +10,9 @@ import { logger } from './logger.js';
  * In Docker networks, services can communicate using service names as hostnames.
  * The jarek-va service is named 'app' in docker-compose.yml, so we default to http://app:3000
  * Adds WEBHOOK_SECRET as query parameter if available
- * @returns {string} Constructed callback URL (always returns a URL, defaults to Docker network)
+ * @returns Constructed callback URL (always returns a URL, defaults to Docker network)
  */
-export function buildCallbackUrl() {
+export function buildCallbackUrl(): string {
   // Get jarek-va URL from environment, or use Docker network default
   // In Docker Compose networks, services communicate using service names as hostnames
   // The jarek-va service is consistently named 'app' in docker-compose.yml
@@ -47,8 +47,8 @@ export function buildCallbackUrl() {
 
 /**
  * Get webhook secret from environment
- * @returns {string|null} Webhook secret or null if not set
+ * @returns Webhook secret or null if not set
  */
-export function getWebhookSecret() {
+export function getWebhookSecret(): string | null {
   return process.env.WEBHOOK_SECRET || null;
 }

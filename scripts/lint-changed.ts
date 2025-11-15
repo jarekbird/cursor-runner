@@ -1,20 +1,14 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 
 /**
  * Lint only changed files
  */
 
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // Get changed files
-const changedFilesOutput = execSync('node scripts/get-changed-files.js', { encoding: 'utf-8' });
-const changedFiles = JSON.parse(changedFilesOutput);
+const changedFilesOutput = execSync('tsx scripts/get-changed-files.ts', { encoding: 'utf-8' });
+const changedFiles: string[] = JSON.parse(changedFilesOutput);
 
 // Filter to only src/ and tests/ files
 const filesToLint = changedFiles.filter(file => 

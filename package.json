@@ -20,10 +20,10 @@
     "ci": "./test-ci.sh",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
-    "lint:changed": "node scripts/lint-changed.js",
+    "lint:changed": "tsx scripts/lint-changed.ts",
     "format": "prettier --write \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
-    "format:check:changed": "node scripts/format-check-changed.js"
+    "format:check:changed": "tsx scripts/format-check-changed.ts"
   },
   "keywords": [
     "cursor",

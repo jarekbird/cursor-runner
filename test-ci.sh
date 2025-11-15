@@ -51,7 +51,7 @@ echo ""
 
 # Detect changed files
 echo -e "${GREEN}Step 3.5:${NC} Detecting changed files..."
-CHANGED_FILES=$(node scripts/get-changed-files.js 2>/dev/null || echo "[]")
+CHANGED_FILES=$(tsx scripts/get-changed-files.ts 2>/dev/null || echo "[]")
 HAS_CHANGES=false
 
 # Check if there are any changed JS files in src/ or tests/

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 
 /**
  * Get changed files from git
@@ -13,9 +13,9 @@ const isCI = process.env.CI === 'true';
 const baseRef = process.env.GITHUB_BASE_REF || 'main';
 const headRef = process.env.GITHUB_HEAD_REF || process.env.GITHUB_SHA || 'HEAD';
 
-function getChangedFiles() {
+function getChangedFiles(): string[] {
   try {
-    let commands = [];
+    const commands: string[] = [];
     
     if (isCI && process.env.GITHUB_EVENT_NAME === 'pull_request') {
       // In PR, compare against base branch
@@ -29,7 +29,7 @@ function getChangedFiles() {
       commands.push(`git diff --cached --name-only --diff-filter=ACMR`); // Staged only
     }
     
-    const allFiles = new Set();
+    const allFiles = new Set<string>();
     
     for (const command of commands) {
       try {

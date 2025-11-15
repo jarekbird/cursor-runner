@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 
 /**
  * Check formatting of only changed files
@@ -7,8 +7,8 @@
 import { execSync } from 'child_process';
 
 // Get changed files
-const changedFilesOutput = execSync('node scripts/get-changed-files.js', { encoding: 'utf-8' });
-const changedFiles = JSON.parse(changedFilesOutput);
+const changedFilesOutput = execSync('tsx scripts/get-changed-files.ts', { encoding: 'utf-8' });
+const changedFiles: string[] = JSON.parse(changedFilesOutput);
 
 // Filter to only src/ and tests/ files
 const filesToCheck = changedFiles.filter(file => 
