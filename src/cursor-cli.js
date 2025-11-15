@@ -60,6 +60,19 @@ export class CursorCLI {
         ...process.env,
       };
 
+      // Log if CURSOR_API_KEY is set (for debugging, but don't log the actual key)
+      if (!env.CURSOR_API_KEY) {
+        logger.warn('CURSOR_API_KEY not set in environment - cursor-cli may fail to authenticate', {
+          command: this.cursorPath,
+          args,
+        });
+      } else {
+        logger.debug('CURSOR_API_KEY is set', {
+          command: this.cursorPath,
+          keyLength: env.CURSOR_API_KEY.length,
+        });
+      }
+
       const child = spawn(this.cursorPath, args, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -67,52 +80,20 @@ export class CursorCLI {
         env,
       });
 
-      logger.info('cursor-cli process spawned', {
-        pid: child.pid,
-        command: this.cursorPath,
-        args,
-        cwd,
-      });
-
       let stdout = '';
       let stderr = '';
       let outputSize = 0;
-      let hasOutput = false;
 
       // Set timeout
       const timeoutId = setTimeout(() => {
-        logger.error('cursor-cli command timeout', {
-          pid: child.pid,
-          args,
-          timeout: `${timeout}ms`,
-          hasOutput,
-          stdoutLength: stdout.length,
-          stderrLength: stderr.length,
-        });
         child.kill('SIGTERM');
         reject(new Error(`Command timeout after ${timeout}ms`));
       }, timeout);
 
-      // Log warning if process is still running after 10 seconds
-      let processCompleted = false;
-      const warningTimeoutId = setTimeout(() => {
-        if (!processCompleted) {
-          logger.warn('cursor-cli command still running after 10 seconds', {
-            pid: child.pid,
-            args,
-            cwd,
-            hasOutput,
-            stdoutLength: stdout.length,
-            stderrLength: stderr.length,
-          });
-        }
-      }, 10000);
-
-      // Collect stdout
+      // Collect stdout and log immediately
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
-        hasOutput = true;
 
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
@@ -121,30 +102,29 @@ export class CursorCLI {
         }
 
         stdout += chunk;
-        logger.debug('cursor-cli stdout chunk', {
+        // Log stdout immediately to help diagnose issues (like authentication prompts)
+        logger.info('cursor-cli stdout', {
           pid: child.pid,
-          chunkLength: chunk.length,
+          chunk: chunk,
           totalLength: stdout.length,
         });
       });
 
-      // Collect stderr and log immediately for debugging
+      // Collect stderr and log immediately
       child.stderr.on('data', (data) => {
         const chunk = data.toString();
         stderr += chunk;
-        hasOutput = true;
-        // Log stderr immediately to help diagnose issues
-        logger.warn('cursor-cli stderr output', {
+        // Log stderr immediately to help diagnose issues (like authentication errors)
+        logger.warn('cursor-cli stderr', {
           pid: child.pid,
-          stderr: chunk,
+          chunk: chunk,
+          totalLength: stderr.length,
         });
       });
 
       // Handle process completion
       child.on('close', (code) => {
-        processCompleted = true;
         clearTimeout(timeoutId);
-        clearTimeout(warningTimeoutId);
 
         const result = {
           success: code === 0,
@@ -154,20 +134,9 @@ export class CursorCLI {
         };
 
         if (code === 0) {
-          logger.info('cursor-cli command completed successfully', {
-            pid: child.pid,
-            args,
-            stdoutLength: stdout.length,
-            stderrLength: stderr.length,
-          });
+          logger.debug('cursor-cli command completed successfully', { args });
         } else {
-          logger.warn('cursor-cli command failed', {
-            pid: child.pid,
-            args,
-            exitCode: code,
-            stderr: stderr || '(no stderr output)',
-            stdout: stdout || '(no stdout output)',
-          });
+          logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
         }
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
@@ -177,14 +146,7 @@ export class CursorCLI {
       // Handle process errors
       child.on('error', (error) => {
         clearTimeout(timeoutId);
-        clearTimeout(warningTimeoutId);
-        logger.error('cursor-cli command error', {
-          pid: child.pid,
-          args,
-          cwd,
-          error: error.message,
-          stack: error.stack,
-        });
+        logger.error('cursor-cli command error', { args, error: error.message });
         reject(error);
       });
     });
@@ -197,13 +159,9 @@ export class CursorCLI {
   validateCommandSecurity(args) {
     const commandString = args.join(' ').toLowerCase();
 
-    // Check for blocked commands (as whole words, not substrings)
+    // Check for blocked commands
     for (const blocked of this.blockedCommands) {
-      const blockedLower = blocked.toLowerCase();
-      // Use word boundary regex to match whole words only
-      // This prevents false positives like "generate" matching "rm"
-      const regex = new RegExp(`\\b${blockedLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      if (regex.test(commandString)) {
+      if (commandString.includes(blocked.toLowerCase())) {
         throw new Error(`Blocked command detected: ${blocked}`);
       }
     }
@@ -224,7 +182,7 @@ export class CursorCLI {
 
     // Build cursor command to generate tests
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args = ['generate', '--print', prompt, '--type', 'test'];
+    const args = ['generate', '--prompt', prompt, '--type', 'test'];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -255,7 +213,7 @@ export class CursorCLI {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args = ['generate', '--print', prompt, '--type', 'implementation'];
+    const args = ['generate', '--prompt', prompt, '--type', 'implementation'];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -286,7 +244,7 @@ export class CursorCLI {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args = ['refactor', '--print', prompt];
+    const args = ['refactor', '--prompt', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });

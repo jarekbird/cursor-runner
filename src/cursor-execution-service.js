@@ -25,8 +25,6 @@ export class CursorExecutionService {
     this.filesystem = filesystem || new FilesystemService();
     this.terminalInstructions =
       '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
-    // Enable terminal command execution when cursor requests it (defaults to false)
-    this.enableTerminalCommands = process.env.ENABLE_TERMINAL_COMMANDS === 'true';
   }
 
   /**
@@ -98,10 +96,9 @@ export class CursorExecutionService {
   /**
    * Execute a single cursor command
    * @param {Object} params - Execution parameters
-   * @param {string} [params.repository] - Optional repository name
+   * @param {string} params.repository - Repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} [params.command] - Command string (optional if prompt provided)
-   * @param {string} [params.prompt] - Prompt text (optional if command provided)
+   * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
    * @returns {Promise<Object>} Execution result
    */
@@ -157,6 +154,7 @@ export class CursorExecutionService {
     const responseBody = {
       success: result.success !== false,
       requestId,
+      repository,
       command: modifiedArgs,
       output: result.stdout || '',
       error: result.stderr || null,
@@ -164,11 +162,6 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     };
-
-    // Include repository in response if provided
-    if (repository) {
-      responseBody.repository = repository;
-    }
 
     // Include branchName in response if provided
     if (branchName) {
@@ -184,10 +177,9 @@ export class CursorExecutionService {
   /**
    * Execute cursor command iteratively until completion
    * @param {Object} params - Execution parameters
-   * @param {string} [params.repository] - Optional repository name
+   * @param {string} params.repository - Repository name
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} [params.command] - Command string (optional if prompt provided)
-   * @param {string} [params.prompt] - Prompt text (optional if command provided)
+   * @param {string} params.command - Command string
    * @param {string} params.requestId - Request ID
    * @param {number} params.maxIterations - Maximum iterations (default: 25)
    * @returns {Promise<Object>} Execution result
@@ -217,50 +209,10 @@ export class CursorExecutionService {
     }
 
     // Prepare and execute initial command
-    logger.info('Preparing initial cursor command', {
-      requestId,
-      repository,
-      branchName,
-      command,
-      prompt,
-      cwd: fullRepositoryPath,
-    });
-
     const modifiedArgs = this.prepareCommand(command, prompt);
-
-    logger.info('Executing initial cursor command', {
-      requestId,
-      repository,
-      branchName,
-      args: modifiedArgs,
+    let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
       cwd: fullRepositoryPath,
     });
-
-    let lastResult;
-    try {
-      lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
-        cwd: fullRepositoryPath,
-      });
-
-      logger.info('Initial cursor command completed', {
-        requestId,
-        repository,
-        branchName,
-        success: lastResult.success,
-        exitCode: lastResult.exitCode,
-        stdoutLength: lastResult.stdout?.length || 0,
-        stderrLength: lastResult.stderr?.length || 0,
-      });
-    } catch (error) {
-      logger.error('Initial cursor command failed', {
-        requestId,
-        repository,
-        branchName,
-        error: error.message,
-        stack: error.stack,
-      });
-      throw error;
-    }
 
     let iteration = 1;
     let terminalOutput = null;
@@ -295,51 +247,39 @@ export class CursorExecutionService {
       // If terminal command is requested, execute it (even if code is marked complete,
       // as cursor might want to verify with tests, linting, etc.)
       if (reviewResult.execute_terminal_command && reviewResult.terminal_command_requested) {
-        if (this.enableTerminalCommands) {
-          logger.info('Executing terminal command', {
+        logger.info('Executing terminal command', {
+          requestId,
+          iteration,
+          command: reviewResult.terminal_command_requested,
+        });
+
+        try {
+          // Parse terminal command into command and args
+          const terminalCommandParts = this.commandParser.parseCommand(
+            reviewResult.terminal_command_requested
+          );
+          const terminalCommand = terminalCommandParts[0];
+          const terminalArgs = terminalCommandParts.slice(1);
+
+          const terminalResult = await this.terminalService.executeCommand(
+            terminalCommand,
+            terminalArgs,
+            { cwd: fullRepositoryPath }
+          );
+          terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
+          logger.info('Terminal command executed', {
             requestId,
             iteration,
-            command: reviewResult.terminal_command_requested,
+            exitCode: terminalResult.exitCode,
+            success: terminalResult.success,
           });
-
-          try {
-            // Parse terminal command into command and args
-            const terminalCommandParts = this.commandParser.parseCommand(
-              reviewResult.terminal_command_requested
-            );
-            const terminalCommand = terminalCommandParts[0];
-            const terminalArgs = terminalCommandParts.slice(1);
-
-            const terminalResult = await this.terminalService.executeCommand(
-              terminalCommand,
-              terminalArgs,
-              { cwd: fullRepositoryPath }
-            );
-            terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
-            logger.info('Terminal command executed', {
-              requestId,
-              iteration,
-              exitCode: terminalResult.exitCode,
-              success: terminalResult.success,
-            });
-          } catch (error) {
-            logger.error('Terminal command failed', {
-              requestId,
-              iteration,
-              error: error.message,
-            });
-            terminalOutput = `Error executing command: ${error.message}`;
-          }
-        } else {
-          logger.warn('Terminal command requested but execution is disabled', {
+        } catch (error) {
+          logger.error('Terminal command failed', {
             requestId,
             iteration,
-            command: reviewResult.terminal_command_requested,
-            note: 'Set ENABLE_TERMINAL_COMMANDS=true to enable',
+            error: error.message,
           });
-          terminalOutput =
-            'Terminal command execution is disabled. ' +
-            `Requested command: ${reviewResult.terminal_command_requested}`;
+          terminalOutput = `Error executing command: ${error.message}`;
         }
       }
 
@@ -382,6 +322,7 @@ export class CursorExecutionService {
     const responseBody = {
       success: lastResult.success !== false,
       requestId,
+      repository,
       iterations: iteration - 1,
       maxIterations,
       output: lastResult.stdout || '',
@@ -390,11 +331,6 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     };
-
-    // Include repository in response if provided
-    if (repository) {
-      responseBody.repository = repository;
-    }
 
     // Include branchName in response if provided
     if (branchName) {
