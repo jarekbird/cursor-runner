@@ -14,16 +14,29 @@ RUN apt-get update -qq && apt-get install -y \
 RUN curl -fsSL https://cursor.com/install | bash || true
 
 # Verify cursor-agent installation and create symlinks if needed
+# Also check common installation locations
 RUN if [ -f /usr/local/lib/cursor/cursor-agent ]; then \
       mkdir -p /usr/local/bin && \
       ln -sf /usr/local/lib/cursor/cursor-agent /usr/local/bin/cursor-agent && \
       ln -sf /usr/local/lib/cursor/cursor-agent /usr/local/bin/cursor && \
-      echo "cursor-agent symlinks created"; \
+      echo "cursor-agent symlinks created in /usr/local/bin"; \
+    elif [ -f /root/.local/bin/cursor-agent ]; then \
+      mkdir -p /usr/local/bin && \
+      ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent && \
+      ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor && \
+      echo "cursor-agent symlinks created from /root/.local/bin"; \
     elif command -v cursor-agent >/dev/null 2>&1; then \
-      echo "cursor-agent found in PATH"; \
+      CURSOR_PATH=$(command -v cursor-agent) && \
+      mkdir -p /usr/local/bin && \
+      ln -sf "$CURSOR_PATH" /usr/local/bin/cursor-agent && \
+      ln -sf "$CURSOR_PATH" /usr/local/bin/cursor && \
+      echo "cursor-agent symlinks created from found location: $CURSOR_PATH"; \
     else \
       echo "Warning: cursor-agent not found after installation - may need to be mounted or installed manually"; \
     fi
+
+# Ensure /usr/local/bin is in PATH (should be by default, but make it explicit)
+ENV PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
 
 # Verify cursor-agent is accessible (non-blocking - allows build to continue if not found)
 RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent verification skipped - ensure it's available at runtime"
