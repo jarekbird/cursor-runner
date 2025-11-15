@@ -102,8 +102,8 @@ describe('Server', () => {
 
       it('should return 400 if prompt is missing', async () => {
         const response = await request(app).post('/cursor/execute').send({
-          branchName: 'main',
           repository: 'test-repo',
+          branchName: 'main',
         });
 
         expect(response.status).toBe(400);
@@ -181,7 +181,11 @@ describe('Server', () => {
         expect(response.body.error).toContain('Repository not found locally');
       });
 
-      it('should append instructions to prompt with --print flag', async () => {
+      it('should append instructions to command with --prompt flag', async () => {
+        // Set terminal instructions to test that they are appended
+        server.cursorExecution.terminalInstructions =
+          '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+
         const mockResult = {
           success: true,
           exitCode: 0,
@@ -242,8 +246,8 @@ describe('Server', () => {
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
         expect(callArgs).toContain('--print');
         // The prompt argument will have instructions appended, so check that it contains the original text
-        const promptArg = callArgs[callArgs.indexOf('--print') + 1];
-        expect(promptArg).toContain('Create user service with authentication');
+        const printArg = callArgs[callArgs.indexOf('--print') + 1];
+        expect(printArg).toContain('Create user service with authentication');
       });
     });
 
@@ -287,9 +291,6 @@ describe('Server', () => {
       });
 
       it('should iterate when code is not complete', async () => {
-        // Enable terminal commands for this test
-        server.cursorExecution.enableTerminalCommands = true;
-
         const mockCursorResult1 = {
           success: true,
           exitCode: 0,
@@ -421,9 +422,6 @@ describe('Server', () => {
       });
 
       it('should handle terminal command execution errors', async () => {
-        // Enable terminal commands for this test
-        server.cursorExecution.enableTerminalCommands = true;
-
         const mockCursorResult = {
           success: true,
           exitCode: 0,
@@ -557,14 +555,11 @@ describe('Server', () => {
           prompt: 'test',
         });
 
-        expect(response.status).toBe(422); // Returns 422 when review agent fails
+        expect(response.status).toBe(422); // Returns 422 when review agent fails to parse
         expect(response.body.iterations).toBe(0); // Should break on review failure
       });
 
       it('should include terminal output in resume prompt', async () => {
-        // Enable terminal commands for this test
-        server.cursorExecution.enableTerminalCommands = true;
-
         const mockCursorResult1 = {
           success: true,
           exitCode: 0,

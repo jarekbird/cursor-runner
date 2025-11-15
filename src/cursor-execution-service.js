@@ -23,8 +23,9 @@ export class CursorExecutionService {
     this.commandParser = commandParser;
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
-    this.terminalInstructions =
-      '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
+    this.terminalInstructions = process.env.EXECUTE_TERMINAL_COMMANDS
+      ? '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.'
+      : '';
   }
 
   /**

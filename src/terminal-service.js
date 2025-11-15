@@ -11,7 +11,13 @@ export class TerminalService {
     this.timeout = parseInt(process.env.TERMINAL_COMMAND_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.TERMINAL_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
-    // Security validation disabled - no command restrictions
+    // Security: Allowed and blocked commands
+    this.allowedCommands = (
+      process.env.ALLOWED_TERMINAL_COMMANDS || 'git,cursor,npm,node,bundle,rails,rspec'
+    ).split(',');
+    this.blockedCommands = (
+      process.env.BLOCKED_TERMINAL_COMMANDS || 'rm,del,format,dd,sudo,su'
+    ).split(',');
   }
 
   /**
@@ -23,7 +29,8 @@ export class TerminalService {
    */
   async executeCommand(command, args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Security validation disabled - no command restrictions
+      // Validate command security
+      this.validateCommandSecurity(command, args);
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -93,5 +100,39 @@ export class TerminalService {
         reject(error);
       });
     });
+  }
+
+  /**
+   * Validate command security
+   * @param {string} command - Command to validate
+   * @param {Array<string>} args - Command arguments
+   */
+  validateCommandSecurity(command, args) {
+    const commandLower = command.toLowerCase();
+    const commandString = [command, ...args].join(' ').toLowerCase();
+
+    // Check for blocked commands
+    for (const blocked of this.blockedCommands) {
+      if (
+        commandLower.includes(blocked.toLowerCase()) ||
+        commandString.includes(blocked.toLowerCase())
+      ) {
+        throw new Error(`Blocked command detected: ${blocked}`);
+      }
+    }
+
+    // Check against allowed commands (if whitelist is enforced)
+    // For now, we only block dangerous commands, but you can enable strict whitelisting
+    if (process.env.ENFORCE_COMMAND_WHITELIST === 'true') {
+      const isAllowed = this.allowedCommands.some((allowed) =>
+        commandLower.includes(allowed.toLowerCase())
+      );
+
+      if (!isAllowed) {
+        throw new Error(`Command not in whitelist: ${command}`);
+      }
+    }
+
+    logger.debug('Command security validated', { command, args });
   }
 }
