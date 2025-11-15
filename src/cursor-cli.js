@@ -43,9 +43,6 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Validate command security
-      this.validateCommandSecurity(args);
-
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
 

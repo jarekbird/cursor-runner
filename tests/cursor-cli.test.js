@@ -116,6 +116,40 @@ describe.skip('CursorCLI', () => {
         cursorCLI.validateCommandSecurity(['test']);
       }).not.toThrow();
     });
+
+    it('should not be called during executeCommand', async () => {
+      // Validation is no longer called during executeCommand
+      const mockStdoutData = Buffer.from('Command output');
+      let stdoutOnData;
+      let closeHandler;
+
+      mockChild.stdout.on.mockImplementation((event, handler) => {
+        if (event === 'data') {
+          stdoutOnData = handler;
+        }
+      });
+
+      mockChild.on.mockImplementation((event, handler) => {
+        if (event === 'close') {
+          closeHandler = handler;
+        }
+      });
+
+      // This should not throw even with blocked commands
+      const promise = cursorCLI.executeCommand(['rm', '-rf', '/']);
+
+      if (stdoutOnData) {
+        stdoutOnData(mockStdoutData);
+      }
+
+      if (closeHandler) {
+        closeHandler(0);
+      }
+
+      const result = await promise;
+      expect(result.success).toBe(true);
+      expect(mockSpawn).toHaveBeenCalled();
+    });
   });
 
   describe('executeCommand', () => {
@@ -267,14 +301,6 @@ describe.skip('CursorCLI', () => {
       });
 
       await expect(cursorCLI.executeCommand(['test'])).rejects.toThrow('Command not found');
-    });
-
-    it('should validate command security before execution', async () => {
-      await expect(cursorCLI.executeCommand(['rm', '-rf', '/'])).rejects.toThrow(
-        'Blocked command detected'
-      );
-
-      expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
 
