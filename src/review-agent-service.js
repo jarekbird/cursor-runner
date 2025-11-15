@@ -15,7 +15,9 @@ export class ReviewAgentService {
    * @param {string} output - Output to review
    * @param {string} cwd - Working directory
    * @param {number} [timeout] - Optional timeout override
-   * @returns {Promise<Object|null>} Review result or null if parsing failed
+   * @returns {Promise<Object>} Review result with parsed result and raw output
+   *   - result: Parsed review result or null if parsing failed
+   *   - rawOutput: Raw output from review agent
    */
   async reviewOutput(output, cwd, timeout = null) {
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return ONLY a valid JSON object with no additional text, explanations, or formatting. 
@@ -71,7 +73,7 @@ ${output}`;
         logger.warn('No JSON object found in review output', {
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return null;
+        return { result: null, rawOutput: cleanedOutput };
       }
 
       // Find the matching closing brace
@@ -93,7 +95,7 @@ ${output}`;
         logger.warn('Incomplete JSON object in review output', {
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return null;
+        return { result: null, rawOutput: cleanedOutput };
       }
 
       // Extract the JSON substring
@@ -104,24 +106,25 @@ ${output}`;
         // Validate required fields
         if (typeof parsed.code_complete !== 'boolean') {
           logger.warn('Review JSON missing required fields', { parsed });
-          return null;
+          return { result: null, rawOutput: cleanedOutput };
         }
         // Set break_iteration default to false if not provided
         if (typeof parsed.break_iteration !== 'boolean') {
           parsed.break_iteration = false;
         }
-        return parsed;
+        return { result: parsed, rawOutput: cleanedOutput };
       } catch (parseError) {
         logger.warn('Failed to parse review JSON', {
           error: parseError.message,
           jsonString: jsonString.substring(0, 200),
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return null;
+        return { result: null, rawOutput: cleanedOutput };
       }
     } catch (error) {
       logger.error('Review agent failed', { error: error.message });
-      return null;
+      // Return error message as raw output
+      return { result: null, rawOutput: `Review agent error: ${error.message}` };
     }
   }
 }

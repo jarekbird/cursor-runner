@@ -44,10 +44,12 @@ Some output after JSON`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false);
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false);
+      expect(response.rawOutput).toContain('code_complete');
       expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
     });
 
@@ -64,11 +66,13 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(false);
-      expect(result.break_iteration).toBe(false);
-      expect(result.justification).toBe('Work in progress');
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(false);
+      expect(response.result.break_iteration).toBe(false);
+      expect(response.result.justification).toBe('Work in progress');
+      expect(response.rawOutput).toContain('Work in progress');
     });
 
     it('should handle valid JSON structure with break_iteration', async () => {
@@ -85,11 +89,13 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(false);
-      expect(result.break_iteration).toBe(true);
-      expect(result.justification).toBe('Permission issue detected');
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(false);
+      expect(response.result.break_iteration).toBe(true);
+      expect(response.result.justification).toBe('Permission issue detected');
+      expect(response.rawOutput).toContain('Permission issue detected');
     });
 
     it('should handle invalid JSON gracefully', async () => {
@@ -102,9 +108,10 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toBe(stdout.trim());
     });
 
     it('should handle missing JSON in output', async () => {
@@ -117,17 +124,20 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toBe(stdout.trim());
     });
 
     it('should handle cursor CLI execution errors', async () => {
       mockCursorCLI.executeCommand.mockRejectedValue(new Error('Cursor CLI failed'));
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toContain('Review agent error');
+      expect(response.rawOutput).toContain('Cursor CLI failed');
     });
 
     it('should handle cursor CLI non-zero exit code', async () => {
@@ -140,9 +150,10 @@ More log output`;
 
       // The method doesn't check exitCode, it just tries to parse stdout
       // So this will try to parse empty string and return null
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toBe('');
     });
 
     it('should handle different JSON structures', async () => {
@@ -160,12 +171,13 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(false);
-      expect(result.break_iteration).toBe(false);
-      expect(result.justification).toBe('Work in progress');
-      expect(result.notes).toBe('Additional review notes');
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(false);
+      expect(response.result.break_iteration).toBe(false);
+      expect(response.result.justification).toBe('Work in progress');
+      expect(response.result.notes).toBe('Additional review notes');
     });
 
     it('should handle JSON with escaped characters', async () => {
@@ -182,11 +194,12 @@ More log output`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false);
-      expect(result.justification).toBe('Review with "quotes" and \n newlines');
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false);
+      expect(response.result.justification).toBe('Review with "quotes" and \n newlines');
     });
 
     it('should handle multiple JSON objects in output', async () => {
@@ -202,12 +215,12 @@ Some text after`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
       // Should extract the JSON object
-      expect(result).not.toBeNull();
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false);
+      expect(response.result).not.toBeNull();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false);
     });
 
     it('should handle ANSI escape sequences in output', async () => {
@@ -226,11 +239,11 @@ Some text after`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).not.toBeNull();
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false);
+      expect(response.result).not.toBeNull();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false);
     });
 
     it('should handle output with carriage returns and newlines', async () => {
@@ -243,11 +256,11 @@ Some text after`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).not.toBeNull();
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false);
+      expect(response.result).not.toBeNull();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false);
     });
 
     it('should return null for JSON missing required fields', async () => {
@@ -263,9 +276,10 @@ Some text after`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toContain('break_iteration');
     });
 
     it('should return null for incomplete JSON (missing closing brace)', async () => {
@@ -280,9 +294,10 @@ Some text after (missing closing brace)`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result).toBeNull();
+      expect(response.result).toBeNull();
+      expect(response.rawOutput).toContain('code_complete');
     });
 
     it('should pass repository path to cursor CLI', async () => {
@@ -345,10 +360,11 @@ Some text after (missing closing brace)`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(true);
-      expect(result.break_iteration).toBe(false); // Should default to false
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(true);
+      expect(response.result.break_iteration).toBe(false); // Should default to false
     });
 
     it('should detect permission issues and set break_iteration to true', async () => {
@@ -365,11 +381,12 @@ Some text after (missing closing brace)`;
         stderr: '',
       });
 
-      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+      const response = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(false);
-      expect(result.break_iteration).toBe(true);
-      expect(result.justification).toContain('Workspace Trust Required');
+      expect(response.result).toBeDefined();
+      expect(response.result.code_complete).toBe(false);
+      expect(response.result.break_iteration).toBe(true);
+      expect(response.result.justification).toContain('Workspace Trust Required');
     });
   });
 });

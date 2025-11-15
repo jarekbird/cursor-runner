@@ -338,17 +338,43 @@ export class CursorExecutionService {
       // Store the original output before review (in case we need to break)
       originalOutput = lastResult.stdout || '';
 
-      const reviewResult = await this.reviewAgent.reviewOutput(
-        lastResult.stdout,
-        fullRepositoryPath,
-        iterateTimeout
-      );
+      let reviewResponse;
+      try {
+        reviewResponse = await this.reviewAgent.reviewOutput(
+          lastResult.stdout,
+          fullRepositoryPath,
+          iterateTimeout
+        );
+      } catch (reviewError) {
+        // If review agent throws an error, construct a review result from the error
+        logger.error('Review agent threw an error', {
+          requestId,
+          iteration,
+          error: reviewError.message,
+        });
+        reviewResponse = {
+          result: null,
+          rawOutput: `Review agent execution error: ${reviewError.message}`,
+        };
+      }
 
+      // If parsing failed, construct our own review result
+      let reviewResult = reviewResponse.result;
       if (!reviewResult) {
-        logger.warn('Failed to parse review result', { requestId, iteration });
-        iterationError =
-          'Failed to parse review agent output. This may indicate an authentication error or review agent failure.';
-        break;
+        logger.warn('Failed to parse review result, constructing fallback review result', {
+          requestId,
+          iteration,
+          originalOutputLength: originalOutput.length,
+          reviewAgentOutput: reviewResponse.rawOutput?.substring(0, 200),
+        });
+        // Construct a review result that breaks iteration with the review agent's output as justification
+        reviewResult = {
+          code_complete: false,
+          break_iteration: true,
+          justification:
+            reviewResponse.rawOutput ||
+            'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
+        };
       }
 
       logger.info('Review result', {
@@ -435,9 +461,15 @@ export class CursorExecutionService {
       responseBody.reviewJustification = reviewJustification;
     }
 
-    // Include original output whenever there's an iteration error (review failure or break_iteration)
-    if (iterationError && originalOutput) {
-      responseBody.originalOutput = originalOutput;
+    // Always include original output when there's an iteration error (review failure, review agent error, or break_iteration)
+    // This ensures the user can see what cursor produced even if the review agent fails
+    if (iterationError) {
+      if (originalOutput) {
+        responseBody.originalOutput = originalOutput;
+      } else {
+        // Fallback to lastResult.stdout if originalOutput wasn't captured
+        responseBody.originalOutput = lastResult.stdout || '';
+      }
     }
 
     // Include branchName in response if provided

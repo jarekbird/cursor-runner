@@ -125,8 +125,13 @@ export class WorkspaceTrustService {
         cliConfig.permissions = {};
       }
 
+      // Schema requires both 'allow' and 'deny' arrays
       if (!cliConfig.permissions.allow) {
         cliConfig.permissions.allow = [];
+      }
+
+      if (!cliConfig.permissions.deny) {
+        cliConfig.permissions.deny = [];
       }
 
       // Add git permissions if not already present
@@ -144,6 +149,13 @@ export class WorkspaceTrustService {
           cliConfig.permissions.allow.push(permission);
           permissionsUpdated = true;
         }
+      }
+
+      // Always ensure deny array exists (required by schema)
+      // We'll keep it empty to allow all other commands
+      if (!Array.isArray(cliConfig.permissions.deny)) {
+        cliConfig.permissions.deny = [];
+        permissionsUpdated = true;
       }
 
       if (permissionsUpdated || !this.filesystem.exists(cliConfigPath)) {

@@ -759,11 +759,65 @@ describe('Server', () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verify callback webhook was called with error and originalOutput
+        // When review agent fails to parse, we now construct a review result with break_iteration: true
+        // The justification will be the review agent's raw output
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
             success: false,
-            error: expect.stringContaining('Failed to parse review agent output'),
+            error: expect.stringContaining('Invalid JSON response'),
+            reviewJustification: 'Invalid JSON response',
+            originalOutput: originalOutput,
+            iterations: 0,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should include original output when review agent throws an error', async () => {
+        const originalOutput = 'Generated code with some output';
+
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: originalOutput,
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        // When review agent throws, the review agent service catches it and returns null
+        // So we simulate that by having the review agent command fail
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command
+          .mockRejectedValueOnce(new Error('Review agent execution failed')); // Review agent throws error
+
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'test',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with error and originalOutput
+        // Note: When review agent throws, it's caught by review agent service and returns null,
+        // which now constructs a review result with break_iteration: true
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: expect.stringContaining('Review agent error'),
+            reviewJustification: expect.stringContaining('Review agent error'),
             originalOutput: originalOutput,
             iterations: 0,
           }),
