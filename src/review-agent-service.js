@@ -15,9 +15,10 @@ export class ReviewAgentService {
    * Review output using cursor as a review agent
    * @param {string} output - Output to review
    * @param {string} cwd - Working directory
+   * @param {number} [timeout] - Optional timeout override
    * @returns {Promise<Object|null>} Review result or null if parsing failed
    */
-  async reviewOutput(output, cwd) {
+  async reviewOutput(output, cwd, timeout = null) {
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return a simple JSON parsable output with a simple structure defining whether the task was completed. Also evaluate whether a terminal command has been requested by the agent to be run. If a terminal request is being requested, mark the output as code_complete: false. If the output is not requesting a terminal request, but simply asking a question, set code_complete to true and execute_terminal_command to false. Return following the pattern of this shape:
 
 {
@@ -31,9 +32,11 @@ Previous agent output:
 ${output}`;
 
     try {
-      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], {
-        cwd,
-      });
+      const options = { cwd };
+      if (timeout) {
+        options.timeout = timeout;
+      }
+      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], options);
 
       // Try to extract JSON from output
       const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);

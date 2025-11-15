@@ -57,7 +57,7 @@ export class CursorExecutionService {
     const repositoryPath = this.gitService.repositoriesPath;
 
     // If no repository provided, use the repositories directory itself
-    if (!repository || repository.trim() === '') {
+    if (!repository || (typeof repository === 'string' && repository.trim() === '')) {
       return { fullRepositoryPath: repositoryPath };
     }
 
@@ -106,15 +106,15 @@ export class CursorExecutionService {
       return { ...validationError, requestId };
     }
 
-    // Construct command from prompt
-    const command = `--print "${prompt}"`;
-
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
+
+    // Construct command from prompt
+    const command = `--print "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -184,9 +184,6 @@ export class CursorExecutionService {
       return { ...validationError, requestId };
     }
 
-    // Construct command from prompt
-    const command = `--print "${prompt}"`;
-
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
@@ -195,9 +192,21 @@ export class CursorExecutionService {
     const { fullRepositoryPath } = repoValidation;
 
     // Prepare and execute initial command
+    // Use longer timeout for iterate operations
+    const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
+    const command = `--print "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
+
+    logger.info('Executing initial cursor command for iterate', {
+      requestId,
+      command: modifiedArgs,
+      cwd: fullRepositoryPath,
+      timeout: `${iterateTimeout}ms`,
+    });
+
     let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
       cwd: fullRepositoryPath,
+      timeout: iterateTimeout,
     });
 
     let iteration = 1;
@@ -214,9 +223,15 @@ export class CursorExecutionService {
       });
 
       // Review the output
+      logger.info('Reviewing output with review agent', {
+        requestId,
+        iteration,
+      });
+
       const reviewResult = await this.reviewAgent.reviewOutput(
         lastResult.stdout,
-        fullRepositoryPath
+        fullRepositoryPath,
+        iterateTimeout
       );
 
       if (!reviewResult) {
@@ -290,8 +305,17 @@ export class CursorExecutionService {
 
       // Execute cursor with --resume
       const resumeArgs = ['--resume', resumePrompt];
+      logger.info('Executing cursor resume command', {
+        requestId,
+        iteration,
+        command: resumeArgs,
+        cwd: fullRepositoryPath,
+        timeout: `${iterateTimeout}ms`,
+      });
+
       lastResult = await this.cursorCLI.executeCommand(resumeArgs, {
         cwd: fullRepositoryPath,
+        timeout: iterateTimeout,
       });
 
       iteration++;

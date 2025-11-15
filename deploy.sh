@@ -26,13 +26,40 @@ fi
 echo -e "${GREEN}✓${NC} Directory verified"
 echo ""
 
-# Step 2: Run CI tests
-echo -e "${GREEN}Step 2:${NC} Running CI tests..."
-if ! ./test-ci.sh; then
-  echo -e "${RED}✗ Error: CI tests failed. Deployment aborted.${NC}"
+# Step 2: Run all tests and linting
+echo -e "${GREEN}Step 2:${NC} Running linting for all files..."
+if ! npm run lint; then
+  echo -e "${RED}✗ Error: Linting failed. Deployment aborted.${NC}"
+  echo -e "${YELLOW}Tip: Run 'npm run lint:fix' to auto-fix some issues${NC}"
   exit 1
 fi
-echo -e "${GREEN}✓${NC} All CI tests passed"
+echo -e "${GREEN}✓${NC} Linting passed"
+echo ""
+
+echo -e "${GREEN}Step 2.5:${NC} Checking code formatting for all files..."
+if ! npm run format:check; then
+  echo -e "${RED}✗ Error: Code formatting check failed. Deployment aborted.${NC}"
+  echo -e "${YELLOW}Tip: Run 'npm run format' to auto-format code${NC}"
+  exit 1
+fi
+echo -e "${GREEN}✓${NC} Code formatting OK"
+echo ""
+
+echo -e "${GREEN}Step 2.6:${NC} Running all tests..."
+export NODE_OPTIONS=--experimental-vm-modules
+if ! npm test; then
+  echo -e "${RED}✗ Error: Tests failed. Deployment aborted.${NC}"
+  exit 1
+fi
+echo -e "${GREEN}✓${NC} All tests passed"
+echo ""
+
+echo -e "${GREEN}Step 2.7:${NC} Generating test coverage..."
+if ! npm run test:coverage; then
+  echo -e "${RED}✗ Error: Coverage generation failed. Deployment aborted.${NC}"
+  exit 1
+fi
+echo -e "${GREEN}✓${NC} Coverage generated"
 echo ""
 
 # Step 3: Check git status and commit changes
@@ -212,7 +239,10 @@ echo -e "${GREEN}✓ Deployment completed successfully!${NC}"
 echo "=========================================="
 echo ""
 echo "Summary:"
-echo "  ✓ CI tests passed"
+echo "  ✓ Linting passed (all files)"
+echo "  ✓ Code formatting OK (all files)"
+echo "  ✓ All tests passed"
+echo "  ✓ Coverage generated"
 if [ "$COMMITTED_CHANGES" = "true" ]; then
   echo "  ✓ Changes committed"
 fi

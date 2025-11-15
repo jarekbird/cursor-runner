@@ -43,6 +43,9 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
+      // Validate command security
+      this.validateCommandSecurity(args);
+
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
 
@@ -61,17 +64,63 @@ export class CursorCLI {
       let stdout = '';
       let stderr = '';
       let outputSize = 0;
+      let lastOutputTime = Date.now();
+      let hasReceivedOutput = false;
 
       // Set timeout
       const timeoutId = setTimeout(() => {
+        logger.error('cursor-cli command timeout', {
+          command: this.cursorPath,
+          args,
+          cwd,
+          timeout: `${timeout}ms`,
+          hasReceivedOutput,
+          stdoutLength: stdout.length,
+          stderrLength: stderr.length,
+          lastOutputTime: lastOutputTime ? new Date(lastOutputTime).toISOString() : null,
+        });
         child.kill('SIGTERM');
+        // Try SIGKILL if SIGTERM doesn't work after a short delay
+        setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch (e) {
+            // Process may already be dead
+          }
+        }, 1000);
         reject(new Error(`Command timeout after ${timeout}ms`));
       }, timeout);
 
-      // Collect stdout
+      // Log heartbeat every 30 seconds to show process is still running
+      const heartbeatInterval = setInterval(() => {
+        const timeSinceLastOutput = Date.now() - lastOutputTime;
+        logger.info('cursor-cli command heartbeat', {
+          command: this.cursorPath,
+          args,
+          hasReceivedOutput,
+          stdoutLength: stdout.length,
+          stderrLength: stderr.length,
+          timeSinceLastOutput: `${timeSinceLastOutput}ms`,
+          elapsed: `${Date.now() - (lastOutputTime || Date.now())}ms`,
+        });
+      }, 30000);
+
+      // Collect stdout with real-time logging
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
+        lastOutputTime = Date.now();
+        hasReceivedOutput = true;
+
+        // Log output chunks in real-time (truncate for logging)
+        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+        logger.info('cursor-cli stdout chunk', {
+          command: this.cursorPath,
+          args,
+          chunkLength: chunk.length,
+          chunkPreview: logChunk.replace(/\n/g, '\\n'),
+          totalStdoutLength: stdout.length + chunk.length,
+        });
 
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
@@ -82,14 +131,29 @@ export class CursorCLI {
         stdout += chunk;
       });
 
-      // Collect stderr
+      // Collect stderr with real-time logging
       child.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        lastOutputTime = Date.now();
+        hasReceivedOutput = true;
+
+        // Log stderr chunks in real-time
+        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+        logger.warn('cursor-cli stderr chunk', {
+          command: this.cursorPath,
+          args,
+          chunkLength: chunk.length,
+          chunkPreview: logChunk.replace(/\n/g, '\\n'),
+          totalStderrLength: stderr.length + chunk.length,
+        });
+
+        stderr += chunk;
       });
 
       // Handle process completion
       child.on('close', (code) => {
         clearTimeout(timeoutId);
+        clearInterval(heartbeatInterval);
 
         const result = {
           success: code === 0,
@@ -98,8 +162,16 @@ export class CursorCLI {
           stderr: stderr.trim(),
         };
 
+        logger.info('cursor-cli command process closed', {
+          args,
+          exitCode: code,
+          hasReceivedOutput,
+          stdoutLength: stdout.length,
+          stderrLength: stderr.length,
+        });
+
         if (code === 0) {
-          logger.debug('cursor-cli command completed successfully', { args });
+          logger.info('cursor-cli command completed successfully', { args });
         } else {
           logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
         }
@@ -111,7 +183,14 @@ export class CursorCLI {
       // Handle process errors
       child.on('error', (error) => {
         clearTimeout(timeoutId);
-        logger.error('cursor-cli command error', { args, error: error.message });
+        clearInterval(heartbeatInterval);
+        logger.error('cursor-cli command error', {
+          args,
+          error: error.message,
+          hasReceivedOutput,
+          stdoutLength: stdout.length,
+          stderrLength: stderr.length,
+        });
         reject(error);
       });
     });
@@ -147,7 +226,7 @@ export class CursorCLI {
 
     // Build cursor command to generate tests
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args = ['--print', prompt];
+    const args = ['generate', '--prompt', prompt, '--type', 'test'];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -178,7 +257,7 @@ export class CursorCLI {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args = ['--print', prompt];
+    const args = ['generate', '--prompt', prompt, '--type', 'implementation'];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -209,7 +288,7 @@ export class CursorCLI {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args = ['--print', prompt];
+    const args = ['refactor', '--prompt', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
