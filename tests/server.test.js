@@ -638,6 +638,70 @@ describe('Server', () => {
         });
 
         expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.iterations).toBe(25);
+        expect(response.body.maxIterations).toBe(25);
+      });
+
+      it('should return 422 when max iterations reached but last result failed', async () => {
+        const mockCursorResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Still working',
+          stderr: '',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            code_complete: false,
+            execute_terminal_command: false,
+            terminal_command_requested: null,
+            justification: 'Still in progress',
+          }),
+          stderr: '',
+        };
+
+        const mockFailedResult = {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Command failed at max iterations',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        // Set up mocks: initial command, then review, then 24 successful iterations,
+        // then one failed resume command
+        const mockCalls = [
+          mockCursorResult, // Initial command
+          mockReviewResult, // First review
+        ];
+
+        // Add 24 successful iterations (each iteration = resume + review)
+        for (let i = 0; i < 24; i++) {
+          mockCalls.push(mockCursorResult); // Resume
+          mockCalls.push(mockReviewResult); // Review
+        }
+
+        // Last iteration fails
+        mockCalls.push(mockFailedResult); // Failed resume
+
+        mockCursorCLI.executeCommand.mockImplementation(() => {
+          const result = mockCalls.shift();
+          return Promise.resolve(result || mockCursorResult);
+        });
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'test',
+        });
+
+        expect(response.status).toBe(422);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Command failed at max iterations');
         expect(response.body.iterations).toBe(25);
         expect(response.body.maxIterations).toBe(25);
       });
@@ -668,8 +732,79 @@ describe('Server', () => {
           prompt: 'test',
         });
 
-        expect(response.status).toBe(200);
+        expect(response.status).toBe(422);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Failed to parse review agent output');
         expect(response.body.iterations).toBe(0); // Should break on review failure
+      });
+
+      it('should return 422 when cursor command fails (e.g., authentication error)', async () => {
+        const mockCursorResult = {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr:
+            "Error: Authentication required. Please run 'cursor-agent login' first, or set CURSOR_API_KEY environment variable.",
+        };
+
+        // Review agent fails to parse (returns invalid JSON), so we get iteration error
+        // which takes precedence over the initial command error
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Invalid JSON response',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command fails
+          .mockResolvedValueOnce(mockReviewResult); // Review agent returns invalid JSON
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'test',
+        });
+
+        expect(response.status).toBe(422);
+        expect(response.body.success).toBe(false);
+        // When review parsing fails, iteration error takes precedence
+        expect(response.body.error).toContain('Failed to parse review agent output');
+        expect(response.body.iterations).toBe(0);
+      });
+
+      it('should return 422 when cursor command fails and review parsing also fails', async () => {
+        const mockCursorResult = {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Error: Authentication required.',
+        };
+
+        const mockReviewResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Invalid JSON response',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand
+          .mockResolvedValueOnce(mockCursorResult) // Initial command fails
+          .mockResolvedValueOnce(mockReviewResult); // Review agent returns invalid JSON
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'test',
+        });
+
+        expect(response.status).toBe(422);
+        expect(response.body.success).toBe(false);
+        // Should prefer iteration error (review parsing failure) over command error
+        expect(response.body.error).toContain('Failed to parse review agent output');
+        expect(response.body.iterations).toBe(0);
       });
 
       it('should include terminal output in resume prompt', async () => {

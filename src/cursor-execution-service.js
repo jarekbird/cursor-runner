@@ -202,6 +202,7 @@ export class CursorExecutionService {
 
     let iteration = 1;
     let terminalOutput = null;
+    let iterationError = null;
 
     // Iteration loop
     while (iteration <= maxIterations) {
@@ -220,6 +221,8 @@ export class CursorExecutionService {
 
       if (!reviewResult) {
         logger.warn('Failed to parse review result', { requestId, iteration });
+        iterationError =
+          'Failed to parse review agent output. This may indicate an authentication error or review agent failure.';
         break;
       }
 
@@ -296,23 +299,29 @@ export class CursorExecutionService {
 
     // Format response
     const duration = Date.now() - startTime;
+    // Consider it a failure if the last result failed OR if there was an iteration error
+    const isSuccess = lastResult.success !== false && !iterationError;
+
     logger.info('Cursor iterate completed', {
       requestId,
       repository,
       branchName,
       iterations: iteration - 1,
-      success: lastResult.success,
+      success: isSuccess,
       duration: `${duration}ms`,
     });
 
+    // Combine errors: prefer iteration error if present, otherwise use lastResult error
+    const errorMessage = iterationError || lastResult.stderr || null;
+
     const responseBody = {
-      success: lastResult.success !== false,
+      success: isSuccess,
       requestId,
       repository,
       iterations: iteration - 1,
       maxIterations,
       output: lastResult.stdout || '',
-      error: lastResult.stderr || null,
+      error: errorMessage,
       exitCode: lastResult.exitCode || 0,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
@@ -323,8 +332,11 @@ export class CursorExecutionService {
       responseBody.branchName = branchName;
     }
 
+    // Return appropriate status code based on success
+    // 422 Unprocessable Entity for failed operations (e.g., authentication errors, command failures)
+    // 200 OK for successful operations
     return {
-      status: 200,
+      status: isSuccess ? 200 : 422,
       body: responseBody,
     };
   }
