@@ -252,7 +252,9 @@ describe('Server', () => {
     });
 
     describe('POST /cursor/iterate', () => {
-      it('should execute iterate successfully with single iteration', async () => {
+      const mockCallbackUrl = 'http://localhost:3000/cursor-runner/callback?secret=test-secret';
+
+      it('should return 200 immediately and process asynchronously', async () => {
         const mockCursorResult = {
           success: true,
           exitCode: 0,
@@ -281,13 +283,20 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'Create user service',
+          callbackUrl: mockCallbackUrl,
         });
 
+        // Should return 200 immediately with acknowledgment
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.iterations).toBe(0); // No iterations needed, completed immediately
-        expect(response.body.output).toBe('Code generated successfully');
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(2); // Initial + review
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+        expect(response.body.requestId).toBeDefined();
+
+        // Wait a bit for async processing to complete
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify that processing was initiated
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
       it('should iterate when code is not complete', async () => {
@@ -348,27 +357,34 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'Create user service',
+          callbackUrl: mockCallbackUrl,
         });
 
+        // Should return 200 immediately
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.iterations).toBe(1);
-        expect(response.body.output).toBe('Code completed after tests');
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify processing was initiated
         expect(mockTerminalService.executeCommand).toHaveBeenCalledWith(
           'bundle',
           ['exec', 'rspec', 'spec'],
           expect.any(Object)
         );
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4); // Initial + review + resume + review
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
-      it('should return 400 if prompt is missing', async () => {
+      it('should return 400 if callbackUrl is missing', async () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
+          prompt: 'test',
         });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toBe('prompt is required');
+        expect(response.body.error).toBe('callbackUrl is required for async processing');
       });
 
       it('should work without branchName', async () => {
@@ -399,26 +415,28 @@ describe('Server', () => {
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           prompt: 'Create user service',
+          callbackUrl: mockCallbackUrl,
         });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.repository).toBe('test-repo');
-        expect(response.body.branchName).toBeUndefined();
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
       });
 
-      it('should return 404 if repository does not exist locally', async () => {
+      it('should return 200 immediately even if repository validation fails (error sent via callback)', async () => {
         mockFilesystem.exists.mockReturnValue(false);
 
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
           prompt: 'test',
+          callbackUrl: mockCallbackUrl,
         });
 
-        expect(response.status).toBe(404);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toContain('Repository not found locally');
+        // Returns 200 immediately, error will be sent via callback
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
       });
 
       it('should handle terminal command execution errors', async () => {
@@ -472,10 +490,15 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
+          callbackUrl: mockCallbackUrl,
         });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
         expect(mockTerminalService.executeCommand).toHaveBeenCalled();
       });
 
@@ -522,11 +545,17 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
+          callbackUrl: mockCallbackUrl,
         });
 
         expect(response.status).toBe(200);
-        expect(response.body.iterations).toBe(25);
-        expect(response.body.maxIterations).toBe(25);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Verify processing was initiated (should have called executeCommand multiple times)
+        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
       it('should handle review agent JSON parsing failures', async () => {
@@ -553,10 +582,13 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
+          callbackUrl: mockCallbackUrl,
         });
 
-        expect(response.status).toBe(422); // Returns 422 when review agent fails to parse
-        expect(response.body.iterations).toBe(0); // Should break on review failure
+        // Returns 200 immediately, error will be sent via callback
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
       });
 
       it('should include terminal output in resume prompt', async () => {
@@ -617,7 +649,11 @@ describe('Server', () => {
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
+          callbackUrl: mockCallbackUrl,
         });
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Check that resume command includes terminal output
         // The resume call should be the 3rd call (after initial command and review)

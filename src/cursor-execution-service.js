@@ -95,10 +95,11 @@ export class CursorExecutionService {
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
    * @param {string} params.prompt - Prompt string
    * @param {string} params.requestId - Request ID
+   * @param {string} [params.callbackUrl] - Optional callback URL to notify when complete
    * @returns {Promise<Object>} Execution result
    */
   async execute(params) {
-    const { repository, branchName, prompt, requestId } = params;
+    const { repository, branchName, prompt, requestId, callbackUrl } = params;
     const startTime = Date.now();
 
     // Validate request
@@ -159,6 +160,17 @@ export class CursorExecutionService {
       responseBody.branchName = branchName;
     }
 
+    // If callback URL is provided, call it asynchronously (don't wait)
+    if (callbackUrl) {
+      this.callbackWebhook(callbackUrl, responseBody, requestId).catch((error) => {
+        logger.error('Failed to call callback webhook', {
+          requestId,
+          callbackUrl,
+          error: error.message,
+        });
+      });
+    }
+
     return {
       status: 200,
       body: responseBody,
@@ -173,10 +185,11 @@ export class CursorExecutionService {
    * @param {string} params.prompt - Prompt string
    * @param {string} params.requestId - Request ID
    * @param {number} params.maxIterations - Maximum iterations (default: 25)
+   * @param {string} [params.callbackUrl] - Optional callback URL to notify when complete
    * @returns {Promise<Object>} Execution result
    */
   async iterate(params) {
-    const { repository, branchName, prompt, requestId, maxIterations = 25 } = params;
+    const { repository, branchName, prompt, requestId, maxIterations = 25, callbackUrl } = params;
     const startTime = Date.now();
 
     // Validate request
@@ -357,6 +370,17 @@ export class CursorExecutionService {
       responseBody.branchName = branchName;
     }
 
+    // If callback URL is provided, call it asynchronously (don't wait)
+    if (callbackUrl) {
+      this.callbackWebhook(callbackUrl, responseBody, requestId).catch((error) => {
+        logger.error('Failed to call callback webhook', {
+          requestId,
+          callbackUrl,
+          error: error.message,
+        });
+      });
+    }
+
     // Return appropriate status code based on success
     // 422 Unprocessable Entity for failed operations (e.g., authentication errors, command failures)
     // 200 OK for successful operations
@@ -364,5 +388,63 @@ export class CursorExecutionService {
       status: isSuccess ? 200 : 422,
       body: responseBody,
     };
+  }
+
+  /**
+   * Call webhook callback URL with result
+   * @param {string} callbackUrl - URL to call (may include secret in query string)
+   * @param {Object} result - Result to send
+   * @param {string} requestId - Request ID for logging
+   * @returns {Promise<void>}
+   */
+  async callbackWebhook(callbackUrl, result, requestId) {
+    try {
+      logger.info('Calling callback webhook', { requestId, callbackUrl });
+
+      // Extract secret from URL if present, and add to headers
+      const url = new URL(callbackUrl);
+      const secret = url.searchParams.get('secret');
+      const headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'cursor-runner/1.0',
+      };
+      if (secret) {
+        headers['X-Webhook-Secret'] = secret;
+        // Remove secret from URL for cleaner logging
+        url.searchParams.delete('secret');
+        callbackUrl = url.toString();
+      }
+
+      const response = await fetch(callbackUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(result),
+        // Set reasonable timeout for webhook calls
+        signal: AbortSignal.timeout(30000), // 30 seconds
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Webhook returned ${response.status}: ${errorText}`);
+      }
+
+      logger.info('Callback webhook called successfully', {
+        requestId,
+        callbackUrl,
+        status: response.status,
+      });
+    } catch (error) {
+      // Log error but don't throw - we don't want to fail the main operation
+      if (error.name === 'AbortError') {
+        logger.error('Callback webhook timeout', { requestId, callbackUrl });
+      } else {
+        logger.error('Callback webhook error', {
+          requestId,
+          callbackUrl,
+          error: error.message,
+        });
+      }
+      throw error; // Re-throw so caller can handle if needed
+    }
   }
 }

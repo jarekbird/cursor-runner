@@ -101,14 +101,65 @@ export class Server {
           userAgent: req.get('user-agent'),
         });
 
-        const result = await this.cursorExecution.execute({
-          repository: req.body.repository,
-          branchName: req.body.branchName,
-          prompt: req.body.prompt,
-          requestId,
-        });
+        // Check if callbackUrl is provided for async processing
+        const callbackUrl = req.body.callbackUrl || req.body.callback_url;
+        if (callbackUrl) {
+          // Return 200 OK immediately and process asynchronously
+          res.status(200).json({
+            success: true,
+            message: 'Request accepted, processing asynchronously',
+            requestId,
+            timestamp: new Date().toISOString(),
+          });
 
-        res.status(result.status).json(result.body);
+          // Process execution asynchronously
+          this.cursorExecution
+            .execute({
+              repository: req.body.repository,
+              branchName: req.body.branchName,
+              prompt: req.body.prompt,
+              requestId,
+              callbackUrl,
+            })
+            .catch((error) => {
+              logger.error('Cursor execution processing failed', {
+                requestId: requestId || 'unknown',
+                error: error.message,
+                stack: error.stack,
+                body: req.body,
+              });
+              // Try to notify about the error via callback
+              if (callbackUrl) {
+                this.cursorExecution
+                  .callbackWebhook(
+                    callbackUrl,
+                    {
+                      success: false,
+                      requestId,
+                      error: error.message,
+                      timestamp: new Date().toISOString(),
+                    },
+                    requestId
+                  )
+                  .catch((webhookError) => {
+                    logger.error('Failed to send error callback', {
+                      requestId,
+                      error: webhookError.message,
+                    });
+                  });
+              }
+            });
+        } else {
+          // No callback URL - process synchronously (backward compatibility)
+          const result = await this.cursorExecution.execute({
+            repository: req.body.repository,
+            branchName: req.body.branchName,
+            prompt: req.body.prompt,
+            requestId,
+          });
+
+          res.status(result.status).json(result.body);
+        }
       } catch (error) {
         logger.error('Cursor execution request failed', {
           requestId: requestId || 'unknown',
@@ -117,12 +168,15 @@ export class Server {
           body: req.body,
         });
 
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          requestId: requestId || 'unknown',
-          timestamp: new Date().toISOString(),
-        });
+        // If we haven't sent a response yet, send error
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: error.message,
+            requestId: requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
     });
 
@@ -144,29 +198,85 @@ export class Server {
           userAgent: req.get('user-agent'),
         });
 
-        const result = await this.cursorExecution.iterate({
-          repository: req.body.repository,
-          branchName: req.body.branchName,
-          prompt: req.body.prompt,
+        // Validate that callbackUrl is provided (required for async processing)
+        const callbackUrl = req.body.callbackUrl || req.body.callback_url;
+        if (!callbackUrl) {
+          logger.warn('Cursor iterate request missing callbackUrl', {
+            requestId,
+            body: req.body,
+          });
+          return res.status(400).json({
+            success: false,
+            error: 'callbackUrl is required for async processing',
+            requestId,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Return 200 OK immediately
+        res.status(200).json({
+          success: true,
+          message: 'Request accepted, processing asynchronously',
           requestId,
-          maxIterations: req.body.maxIterations || 25,
+          timestamp: new Date().toISOString(),
         });
 
-        res.status(result.status).json(result.body);
+        // Process iteration asynchronously (fire and forget)
+        // The callback webhook will be called when complete
+        this.cursorExecution
+          .iterate({
+            repository: req.body.repository,
+            branchName: req.body.branchName,
+            prompt: req.body.prompt,
+            requestId,
+            maxIterations: req.body.maxIterations || 25,
+            callbackUrl,
+          })
+          .catch((error) => {
+            logger.error('Cursor iterate processing failed', {
+              requestId: requestId || 'unknown',
+              error: error.message,
+              stack: error.stack,
+              body: req.body,
+            });
+            // If callback URL exists, try to notify about the error
+            if (callbackUrl) {
+              this.cursorExecution
+                .callbackWebhook(
+                  callbackUrl,
+                  {
+                    success: false,
+                    requestId,
+                    error: error.message,
+                    timestamp: new Date().toISOString(),
+                  },
+                  requestId
+                )
+                .catch((webhookError) => {
+                  logger.error('Failed to send error callback', {
+                    requestId,
+                    error: webhookError.message,
+                  });
+                });
+            }
+          });
       } catch (error) {
-        logger.error('Cursor iterate request failed', {
+        logger.error('Cursor iterate request setup failed', {
           requestId: requestId || 'unknown',
           error: error.message,
           stack: error.stack,
           body: req.body,
         });
 
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          requestId: requestId || 'unknown',
-          timestamp: new Date().toISOString(),
-        });
+        // If we haven't sent a response yet, send error
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: error.message,
+            requestId: requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
     });
 
