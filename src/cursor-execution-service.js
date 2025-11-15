@@ -155,8 +155,9 @@ export class CursorExecutionService {
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Construct command from prompt with --force to enable actual file operations
+    // --print runs in non-interactive mode (required for automation)
     // --resume maintains historical context, --force enables file modifications
-    const command = `--resume --force "${prompt}"`;
+    const command = `--print --resume --force "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -301,8 +302,9 @@ export class CursorExecutionService {
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
     const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
+    // --print runs in non-interactive mode (required for automation)
     // --resume maintains historical context, --force enables file modifications
-    const command = `--resume --force "${prompt}"`;
+    const command = `--print --resume --force "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -433,8 +435,8 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
-      // Execute cursor with --resume and --force to enable actual file operations
-      const resumeArgs = ['--resume', '--force', resumePrompt];
+      // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
+      const resumeArgs = ['--print', '--resume', '--force', resumePrompt];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
