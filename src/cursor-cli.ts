@@ -56,6 +56,11 @@ interface IPtyProcess {
 }
 
 /**
+ * Requirements for code generation (can be string or structured object)
+ */
+export type GenerationRequirements = string | Record<string, unknown>;
+
+/**
  * Generation result for TDD phases
  */
 export interface GenerationResult {
@@ -402,7 +407,10 @@ export class CursorCLI {
    * @param targetPath - Target application path
    * @returns Promise resolving to generation result
    */
-  async generateTests(requirements: unknown, targetPath: string): Promise<GenerationResult> {
+  async generateTests(
+    requirements: GenerationRequirements,
+    targetPath: string
+  ): Promise<GenerationResult> {
     logger.info('Generating tests (TDD Red phase)', { targetPath });
 
     // Build cursor command to generate tests
@@ -436,7 +444,7 @@ export class CursorCLI {
    * @returns Promise resolving to generation result
    */
   async generateImplementation(
-    requirements: unknown,
+    requirements: GenerationRequirements,
     targetPath: string
   ): Promise<GenerationResult> {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
@@ -470,7 +478,10 @@ export class CursorCLI {
    * @param targetPath - Target application path
    * @returns Promise resolving to refactoring result
    */
-  async refactorCode(requirements: unknown, targetPath: string): Promise<GenerationResult> {
+  async refactorCode(
+    requirements: GenerationRequirements,
+    targetPath: string
+  ): Promise<GenerationResult> {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;

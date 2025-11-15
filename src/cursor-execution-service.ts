@@ -112,6 +112,24 @@ interface ReviewResult {
 }
 
 /**
+ * Callback webhook payload - can be success or error response body
+ */
+type CallbackWebhookPayload =
+  | SuccessResponse['body']
+  | {
+      success: false;
+      requestId: string;
+      repository?: string | null;
+      error: string;
+      exitCode?: number;
+      duration?: string;
+      timestamp: string;
+      iterations?: number;
+      maxIterations?: number;
+      output?: string;
+    };
+
+/**
  * CursorExecutionService - Orchestrates cursor command execution
  *
  * Handles repository validation, command preparation,
@@ -526,7 +544,10 @@ export class CursorExecutionService {
       // Store the original output before review (in case we need to break)
       originalOutput = lastResult.stdout || '';
 
-      let reviewResponse;
+      let reviewResponse: {
+        result: ReviewResult | null;
+        rawOutput: string;
+      };
       try {
         reviewResponse = await this.reviewAgent.reviewOutput(
           lastResult.stdout,
@@ -719,7 +740,7 @@ export class CursorExecutionService {
    */
   async callbackWebhook(
     callbackUrl: string,
-    result: Record<string, unknown>,
+    result: CallbackWebhookPayload,
     requestId: string
   ): Promise<void> {
     try {

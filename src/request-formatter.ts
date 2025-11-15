@@ -200,8 +200,7 @@ export class RequestFormatter {
       return {
         ...requirements, // Spread first to include all fields
         // Then override with formatted values
-        description:
-          requirements.description || requirements.desc || requirements.description || '',
+        description: requirements.description || requirements.desc || '',
         type: requirements.type || 'general',
         testFramework, // Use the resolved value (prioritize snake_case)
         test_framework: testFramework, // Also include snake_case version
@@ -377,7 +376,7 @@ export class RequestFormatter {
       return { valid: false, errors };
     }
 
-    const req = request as Record<string, unknown>;
+    const req = request as Partial<RawRequest>;
 
     if (!req.phase) {
       errors.push('phase is required');

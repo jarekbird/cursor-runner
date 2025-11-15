@@ -7,9 +7,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
+ * Winston log levels
+ */
+type WinstonLogLevel = 'error' | 'warn' | 'info' | 'http' | 'verbose' | 'debug' | 'silly';
+
+/**
  * Configure Winston logger
  */
-const logLevel: string = process.env.LOG_LEVEL || 'info';
+const logLevel: WinstonLogLevel = (process.env.LOG_LEVEL as WinstonLogLevel) || 'info';
 const logFile: string = process.env.LOG_FILE || path.join(__dirname, '../logs/cursor-runner.log');
 
 // Ensure logs directory exists

@@ -44,6 +44,27 @@ interface TelegramUpdate {
 interface HttpError extends Error {
   status?: number;
   statusCode?: number;
+  name: string;
+}
+
+/**
+ * Command error with output properties (for cursor execution errors)
+ */
+interface CommandErrorWithOutput extends Error {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number | null;
+}
+
+/**
+ * Error response for callback webhooks
+ */
+interface ErrorCallbackResponse {
+  success: false;
+  requestId: string;
+  error: string;
+  timestamp: string;
+  output?: string;
 }
 
 /**
@@ -68,9 +89,8 @@ export class Server {
     this.gitService = new GitService();
     this.cursorCLI = new CursorCLI();
     this.commandParser = new CommandParserService();
-    // Type assertion needed because CursorCLI from JS doesn't match the TypeScript interface exactly
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.reviewAgent = new ReviewAgentService(this.cursorCLI as any);
+    // CursorCLI implements the CursorCLIInterface required by ReviewAgentService
+    this.reviewAgent = new ReviewAgentService(this.cursorCLI);
     this.filesystem = new FilesystemService();
     this.cursorExecution = new CursorExecutionService(
       this.gitService,
@@ -285,7 +305,7 @@ export class Server {
               maxIterations: body.maxIterations || 25,
               callbackUrl,
             })
-            .catch((error: Error & { stdout?: string; stderr?: string }) => {
+            .catch((error: CommandErrorWithOutput) => {
               logger.error('Cursor iterate processing failed', {
                 requestId: requestId || 'unknown',
                 error: error.message,
@@ -296,13 +316,7 @@ export class Server {
               // If callback URL exists, try to notify about the error
               if (callbackUrl) {
                 // Include any partial output from the error
-                const errorResponse: {
-                  success: false;
-                  requestId: string;
-                  error: string;
-                  timestamp: string;
-                  output?: string;
-                } = {
+                const errorResponse: ErrorCallbackResponse = {
                   success: false,
                   requestId,
                   error: error.message,

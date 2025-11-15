@@ -8,7 +8,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { logger } from './logger.js';
-import { CursorCLI } from './cursor-cli.js';
+import { CursorCLI, type GenerationRequirements } from './cursor-cli.js';
 import { TargetAppRunner } from './target-app.js';
 import { Server } from './server.js';
 import type { FormattedRequest } from './request-formatter.js';
@@ -141,34 +141,28 @@ class CursorRunner {
         case 'red':
           // Generate tests first (TDD Red phase)
           this.logger.debug('Starting Red phase: test generation', { requestId: request.id });
-          result = (await (
-            this.cursorCLI.generateTests as (
-              req: unknown,
-              path?: string
-            ) => Promise<CodeGenerationResult>
-          )(requirements, targetPath)) as CodeGenerationResult;
+          result = await this.cursorCLI.generateTests(
+            requirements as GenerationRequirements,
+            targetPath || ''
+          );
           break;
         case 'green':
           // Generate implementation (TDD Green phase)
           this.logger.debug('Starting Green phase: implementation generation', {
             requestId: request.id,
           });
-          result = (await (
-            this.cursorCLI.generateImplementation as (
-              req: unknown,
-              path?: string
-            ) => Promise<CodeGenerationResult>
-          )(requirements, targetPath)) as CodeGenerationResult;
+          result = await this.cursorCLI.generateImplementation(
+            requirements as GenerationRequirements,
+            targetPath || ''
+          );
           break;
         case 'refactor':
           // Refactor code (TDD Refactor phase)
           this.logger.debug('Starting Refactor phase: code refactoring', { requestId: request.id });
-          result = (await (
-            this.cursorCLI.refactorCode as (
-              req: unknown,
-              path?: string
-            ) => Promise<CodeGenerationResult>
-          )(requirements, targetPath)) as CodeGenerationResult;
+          result = await this.cursorCLI.refactorCode(
+            requirements as GenerationRequirements,
+            targetPath || ''
+          );
           break;
         case 'validate': {
           // Run tests and validate
