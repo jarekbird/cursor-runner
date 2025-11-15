@@ -167,6 +167,38 @@ describe('Server', () => {
         expect(response.body.error).toBe('prompt is required');
       });
 
+      it('should call callback webhook on validation error when callbackUrl is provided', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Should return 200 immediately for async processing
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing (validation error will be sent via callback)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with error details
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: 'prompt is required',
+            repository: 'test-repo',
+            exitCode: 1,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
+
       it('should return 404 if repository does not exist locally', async () => {
         mockFilesystem.exists.mockReturnValue(false);
 
@@ -179,6 +211,82 @@ describe('Server', () => {
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
         expect(response.body.error).toContain('Repository not found locally');
+      });
+
+      it('should call callback webhook on repository error when callbackUrl is provided', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        mockFilesystem.exists.mockReturnValue(false);
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'nonexistent-repo',
+          branchName: 'main',
+          prompt: 'test',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Should return 200 immediately for async processing
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with error details
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            repository: 'nonexistent-repo',
+            error: expect.stringContaining('Repository not found locally'),
+            exitCode: 1,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should call callback webhook on successful execution when callbackUrl is provided', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/execute').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          prompt: 'Create service',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Should return 200 immediately for async processing
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with success details
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: true,
+            repository: 'test-repo',
+            output: 'Generated code successfully',
+            exitCode: 0,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
       });
 
       it('should append instructions to command with --prompt flag', async () => {
@@ -253,6 +361,72 @@ describe('Server', () => {
 
     describe('POST /cursor/iterate', () => {
       const mockCallbackUrl = 'http://localhost:3000/cursor-runner/callback?secret=test-secret';
+
+      it('should call callback webhook on validation error when callbackUrl is provided', async () => {
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          branchName: 'main',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Returns 200 immediately, but validation error will be sent via callback
+        expect(response.status).toBe(200);
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with validation error
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: 'prompt is required',
+            repository: 'test-repo',
+            iterations: 0,
+            maxIterations: 25,
+            exitCode: 1,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should call callback webhook on repository error when callbackUrl is provided', async () => {
+        mockFilesystem.exists.mockReturnValue(false);
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'nonexistent-repo',
+          branchName: 'main',
+          prompt: 'test',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Returns 200 immediately, but error will be sent via callback
+        expect(response.status).toBe(200);
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with repository error
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            repository: 'nonexistent-repo',
+            error: expect.stringContaining('Repository not found locally'),
+            iterations: 0,
+            maxIterations: 25,
+            exitCode: 1,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
 
       it('should return 200 immediately and process asynchronously', async () => {
         const mockCursorResult = {

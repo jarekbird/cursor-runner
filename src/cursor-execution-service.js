@@ -105,12 +105,56 @@ export class CursorExecutionService {
     // Validate request
     const validationError = this.validateRequest({ prompt });
     if (validationError) {
+      // If callback URL is provided, notify about validation error
+      if (callbackUrl) {
+        this.callbackWebhook(
+          callbackUrl,
+          {
+            success: false,
+            requestId,
+            repository,
+            error: validationError.body?.error || 'Validation error',
+            exitCode: 1,
+            duration: '0ms',
+            timestamp: new Date().toISOString(),
+          },
+          requestId
+        ).catch((error) => {
+          logger.error('Failed to call callback webhook for validation error', {
+            requestId,
+            callbackUrl,
+            error: error.message,
+          });
+        });
+      }
       return { ...validationError, requestId };
     }
 
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
+      // If callback URL is provided, notify about repository validation error
+      if (callbackUrl) {
+        this.callbackWebhook(
+          callbackUrl,
+          {
+            success: false,
+            requestId,
+            repository,
+            error: repoValidation.body?.error || 'Repository validation error',
+            exitCode: 1,
+            duration: '0ms',
+            timestamp: new Date().toISOString(),
+          },
+          requestId
+        ).catch((error) => {
+          logger.error('Failed to call callback webhook for repository error', {
+            requestId,
+            callbackUrl,
+            error: error.message,
+          });
+        });
+      }
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
@@ -195,12 +239,62 @@ export class CursorExecutionService {
     // Validate request
     const validationError = this.validateRequest({ prompt });
     if (validationError) {
+      // If callback URL is provided, notify about validation error
+      if (callbackUrl) {
+        this.callbackWebhook(
+          callbackUrl,
+          {
+            success: false,
+            requestId,
+            repository,
+            iterations: 0,
+            maxIterations,
+            output: '',
+            error: validationError.body?.error || 'Validation error',
+            exitCode: 1,
+            duration: '0ms',
+            timestamp: new Date().toISOString(),
+          },
+          requestId
+        ).catch((error) => {
+          logger.error('Failed to call callback webhook for validation error', {
+            requestId,
+            callbackUrl,
+            error: error.message,
+          });
+        });
+      }
       return { ...validationError, requestId };
     }
 
     // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
+      // If callback URL is provided, notify about repository validation error
+      if (callbackUrl) {
+        this.callbackWebhook(
+          callbackUrl,
+          {
+            success: false,
+            requestId,
+            repository,
+            iterations: 0,
+            maxIterations,
+            output: '',
+            error: repoValidation.body?.error || 'Repository validation error',
+            exitCode: 1,
+            duration: '0ms',
+            timestamp: new Date().toISOString(),
+          },
+          requestId
+        ).catch((error) => {
+          logger.error('Failed to call callback webhook for repository error', {
+            requestId,
+            callbackUrl,
+            error: error.message,
+          });
+        });
+      }
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
