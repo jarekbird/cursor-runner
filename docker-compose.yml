@@ -14,7 +14,7 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3001
       # Cursor CLI Configuration
-      - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
+      - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor-agent}
       - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
       # Target Application (jarek-va) - mounted as volume
       # Note: Update this path to point to your jarek-va directory
