@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { logger } from './logger.js';
 
 /**
@@ -9,7 +9,8 @@ import { logger } from './logger.js';
  */
 export class CursorCLI {
   constructor() {
-    this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor-agent';
+    const defaultCommand = process.env.CURSOR_CLI_PATH || 'cursor-agent';
+    this.cursorPath = this.resolveCommandPath(defaultCommand);
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
@@ -18,6 +19,39 @@ export class CursorCLI {
       process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails'
     ).split(',');
     this.blockedCommands = (process.env.BLOCKED_COMMANDS || 'rm,del,format,dd').split(',');
+  }
+
+  /**
+   * Resolve the full path to a command
+   * @param {string} command - Command name
+   * @returns {string} Full path to command or original command if not found
+   */
+  resolveCommandPath(command) {
+    // If it's already an absolute path, return it
+    if (command.startsWith('/')) {
+      return command;
+    }
+
+    // Try to find the command using 'which'
+    try {
+      const path = execSync(`which ${command}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      if (path) {
+        logger.debug('Resolved command path', { command, path });
+        return path;
+      }
+    } catch (error) {
+      // Command not found, will try with original name
+      logger.debug('Could not resolve command path, using original', {
+        command,
+        error: error.message,
+      });
+    }
+
+    // Fall back to original command (might work if it's in PATH at runtime)
+    return command;
   }
 
   /**
