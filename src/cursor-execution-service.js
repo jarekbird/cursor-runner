@@ -106,12 +106,25 @@ export class CursorExecutionService {
     // Validate request
     const validationError = this.validateRequest({ repository, command });
     if (validationError) {
+      logger.error('Cursor execution request validation failed', {
+        requestId,
+        error: validationError.body.error,
+        status: validationError.status,
+        repository,
+        command,
+      });
       return { ...validationError, requestId };
     }
 
     // Validate repository exists
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
+      logger.error('Cursor execution repository validation failed', {
+        requestId,
+        error: repoValidation.body.error,
+        status: repoValidation.status,
+        repository,
+      });
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
@@ -181,12 +194,25 @@ export class CursorExecutionService {
     // Validate request
     const validationError = this.validateRequest({ repository, command });
     if (validationError) {
+      logger.error('Cursor iterate request validation failed', {
+        requestId,
+        error: validationError.body.error,
+        status: validationError.status,
+        repository,
+        command,
+      });
       return { ...validationError, requestId };
     }
 
     // Validate repository exists
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
+      logger.error('Cursor iterate repository validation failed', {
+        requestId,
+        error: repoValidation.body.error,
+        status: repoValidation.status,
+        repository,
+      });
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
