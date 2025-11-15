@@ -15,20 +15,6 @@ describe('CursorCLI', () => {
     });
   });
 
-  describe('validateCommandSecurity', () => {
-    it('should block dangerous commands', () => {
-      expect(() => {
-        cursorCLI.validateCommandSecurity(['rm', '-rf', '/']);
-      }).toThrow('Blocked command detected');
-    });
-
-    it('should allow safe commands', () => {
-      expect(() => {
-        cursorCLI.validateCommandSecurity(['test']);
-      }).not.toThrow();
-    });
-  });
-
   describe('extractFilesFromOutput', () => {
     it('should extract file paths from output', () => {
       const output = 'created: app/services/test.rb\nmodified: spec/services/test_spec.rb';

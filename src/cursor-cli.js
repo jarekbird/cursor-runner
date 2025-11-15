@@ -13,11 +13,7 @@ export class CursorCLI {
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
-    // Security: Allowed and blocked commands
-    this.allowedCommands = (
-      process.env.ALLOWED_COMMANDS || 'test,spec,rspec,bundle,rake,rails'
-    ).split(',');
-    this.blockedCommands = (process.env.BLOCKED_COMMANDS || 'rm,del,format,dd').split(',');
+    // Security validation disabled - cursor CLI handles its own security
   }
 
   /**
@@ -43,8 +39,7 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Validate command security
-      this.validateCommandSecurity(args);
+      // Security validation disabled - cursor CLI handles its own security
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -200,25 +195,6 @@ export class CursorCLI {
         reject(error);
       });
     });
-  }
-
-  /**
-   * Validate command security
-   * @param {Array<string>} args - Command arguments
-   */
-  validateCommandSecurity(args) {
-    const commandString = args.join(' ').toLowerCase();
-
-    // Check for blocked commands
-    for (const blocked of this.blockedCommands) {
-      if (commandString.includes(blocked.toLowerCase())) {
-        throw new Error(`Blocked command detected: ${blocked}`);
-      }
-    }
-
-    // For sensitive operations, validate against allowed commands
-    // This is a basic check - enhance as needed
-    logger.debug('Command security validated', { args });
   }
 
   /**
