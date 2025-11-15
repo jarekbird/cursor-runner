@@ -9,7 +9,6 @@ describe('Server', () => {
   let app;
   let mockGitService;
   let mockCursorCLI;
-  let mockTerminalService;
   let mockFilesystem;
 
   beforeEach(() => {
@@ -27,11 +26,6 @@ describe('Server', () => {
       validate: jest.fn(),
     };
 
-    // Create mock terminal service
-    mockTerminalService = {
-      executeCommand: jest.fn(),
-    };
-
     // Create mock filesystem service
     mockFilesystem = {
       exists: jest.fn().mockReturnValue(true), // Default: repository exists
@@ -44,12 +38,10 @@ describe('Server', () => {
     // Replace services with our mocks
     server.gitService = mockGitService;
     server.cursorCLI = mockCursorCLI;
-    server.terminalService = mockTerminalService;
     server.filesystem = mockFilesystem;
     // Update cursorExecution with all mocked services
     server.cursorExecution.gitService = mockGitService;
     server.cursorExecution.cursorCLI = mockCursorCLI;
-    server.cursorExecution.terminalService = mockTerminalService;
     server.cursorExecution.filesystem = mockFilesystem;
     // Update reviewAgent with mocked cursorCLI
     server.reviewAgent.cursorCLI = mockCursorCLI;
@@ -289,35 +281,6 @@ describe('Server', () => {
         callbackWebhookSpy.mockRestore();
       });
 
-      it('should append instructions to command with --prompt flag', async () => {
-        // Set terminal instructions to test that they are appended
-        server.cursorExecution.terminalInstructions =
-          '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
-
-        const mockResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Output',
-          stderr: '',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
-
-        await request(app).post('/cursor/execute').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'Create service',
-        });
-
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const printIndex = callArgs.findIndex((arg) => arg === '--print');
-        expect(printIndex).toBeGreaterThan(-1);
-        expect(callArgs[printIndex + 1]).toContain('Create service');
-        expect(callArgs[printIndex + 1]).toContain('If you need to run a terminal command');
-      });
-
       it('should handle command execution errors', async () => {
         mockFilesystem.exists.mockReturnValue(true);
         mockCursorCLI.executeCommand.mockRejectedValue(new Error('Command failed'));
@@ -441,8 +404,7 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'Task completed',
           }),
           stderr: '',
@@ -477,7 +439,7 @@ describe('Server', () => {
         const mockCursorResult1 = {
           success: true,
           exitCode: 0,
-          stdout: 'Generated code, but needs testing',
+          stdout: 'Generated code, but needs more work',
           stderr: '',
         };
 
@@ -486,24 +448,16 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: false,
-            execute_terminal_command: true,
-            terminal_command_requested: 'bundle exec rspec spec',
-            justification: 'Tests need to be run',
+            break_iteration: false,
+            justification: 'Work in progress',
           }),
-          stderr: '',
-        };
-
-        const mockTerminalResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Tests passed',
           stderr: '',
         };
 
         const mockCursorResult2 = {
           success: true,
           exitCode: 0,
-          stdout: 'Code completed after tests',
+          stdout: 'Code completed',
           stderr: '',
         };
 
@@ -512,15 +466,13 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'All done',
           }),
           stderr: '',
         };
 
         mockFilesystem.exists.mockReturnValue(true);
-        mockTerminalService.executeCommand.mockResolvedValue(mockTerminalResult);
         mockCursorCLI.executeCommand
           .mockResolvedValueOnce(mockCursorResult1) // Initial command
           .mockResolvedValueOnce(mockReviewResult1) // First review
@@ -543,11 +495,6 @@ describe('Server', () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verify processing was initiated
-        expect(mockTerminalService.executeCommand).toHaveBeenCalledWith(
-          'bundle',
-          ['exec', 'rspec', 'spec'],
-          expect.any(Object)
-        );
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
@@ -569,8 +516,7 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'Task completed',
           }),
           stderr: '',
@@ -628,8 +574,7 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'Task completed',
           }),
           stderr: '',
@@ -681,8 +626,7 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'Task completed',
           }),
           stderr: '',
@@ -720,69 +664,6 @@ describe('Server', () => {
         expect(response.body.message).toBe('Request accepted, processing asynchronously');
       });
 
-      it('should handle terminal command execution errors', async () => {
-        const mockCursorResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Generated code',
-          stderr: '',
-        };
-
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: false,
-            execute_terminal_command: true,
-            terminal_command_requested: 'bundle exec rspec spec',
-            justification: 'Need to run tests',
-          }),
-          stderr: '',
-        };
-
-        const mockResumeResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Continued after terminal error',
-          stderr: '',
-        };
-
-        const mockFinalReview = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
-            justification: 'Completed',
-          }),
-          stderr: '',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-        mockTerminalService.executeCommand.mockRejectedValue(new Error('Command not found'));
-        mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult)
-          .mockResolvedValueOnce(mockReviewResult)
-          .mockResolvedValueOnce(mockResumeResult)
-          .mockResolvedValueOnce(mockFinalReview);
-
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'test',
-          callbackUrl: mockCallbackUrl,
-        });
-
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.message).toBe('Request accepted, processing asynchronously');
-
-        // Wait for async processing
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        expect(mockTerminalService.executeCommand).toHaveBeenCalled();
-      });
-
       it('should stop after max iterations', async () => {
         const mockCursorResult = {
           success: true,
@@ -796,8 +677,7 @@ describe('Server', () => {
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: false,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
+            break_iteration: false,
             justification: 'Still in progress',
           }),
           stderr: '',
@@ -872,79 +752,58 @@ describe('Server', () => {
         expect(response.body.message).toBe('Request accepted, processing asynchronously');
       });
 
-      it('should include terminal output in resume prompt', async () => {
-        const mockCursorResult1 = {
+      it('should break iterations when break_iteration is true', async () => {
+        const mockCursorResult = {
           success: true,
           exitCode: 0,
-          stdout: 'Initial code',
+          stdout: 'Workspace Trust Required - cursor needs permissions',
           stderr: '',
         };
 
-        const mockReviewResult1 = {
+        const mockReviewResult = {
           success: true,
           exitCode: 0,
           stdout: JSON.stringify({
             code_complete: false,
-            execute_terminal_command: true,
-            terminal_command_requested: 'bundle exec rspec',
-            justification: 'Run tests',
-          }),
-          stderr: '',
-        };
-
-        const mockTerminalResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Test output: 10 examples, 0 failures',
-          stderr: '',
-        };
-
-        const mockCursorResult2 = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Continued work',
-          stderr: '',
-        };
-
-        const mockReviewResult2 = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
-            justification: 'Done',
+            break_iteration: true,
+            justification: 'Workspace Trust Required - cursor needs permissions',
           }),
           stderr: '',
         };
 
         mockFilesystem.exists.mockReturnValue(true);
-        mockTerminalService.executeCommand.mockResolvedValue(mockTerminalResult);
         mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult1)
-          .mockResolvedValueOnce(mockReviewResult1)
-          .mockResolvedValueOnce(mockCursorResult2)
-          .mockResolvedValueOnce(mockReviewResult2);
+          .mockResolvedValueOnce(mockCursorResult) // Initial command
+          .mockResolvedValueOnce(mockReviewResult); // Review agent
 
-        await request(app).post('/cursor/iterate').send({
+        const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
+
+        const response = await request(app).post('/cursor/iterate').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
           callbackUrl: mockCallbackUrl,
         });
 
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
         // Wait for async processing
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Check that resume command includes terminal output
-        // The resume call should be the 3rd call (after initial command and review)
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4);
-        const resumeCall = mockCursorCLI.executeCommand.mock.calls[2];
-        expect(resumeCall).toBeDefined();
-        expect(resumeCall[0]).toEqual([
-          '--resume',
-          expect.stringContaining('Test output: 10 examples, 0 failures'),
-        ]);
+        // Verify callback webhook was called with error
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: expect.stringContaining('Workspace Trust Required'),
+            iterations: 0, // Break happens before completing first iteration
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
       });
     });
   });

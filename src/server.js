@@ -1,7 +1,6 @@
 import express from 'express';
 import { logger } from './logger.js';
 import { GitService } from './git-service.js';
-import { TerminalService } from './terminal-service.js';
 import { CursorCLI } from './cursor-cli.js';
 import { CommandParserService } from './command-parser-service.js';
 import { ReviewAgentService } from './review-agent-service.js';
@@ -19,7 +18,6 @@ export class Server {
     this.app = express();
     this.port = parseInt(process.env.PORT || '3001', 10);
     this.gitService = new GitService();
-    this.terminalService = new TerminalService();
     this.cursorCLI = new CursorCLI();
     this.commandParser = new CommandParserService();
     this.reviewAgent = new ReviewAgentService(this.cursorCLI);
@@ -27,7 +25,6 @@ export class Server {
     this.cursorExecution = new CursorExecutionService(
       this.gitService,
       this.cursorCLI,
-      this.terminalService,
       this.commandParser,
       this.reviewAgent,
       this.filesystem

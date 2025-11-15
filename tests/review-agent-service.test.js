@@ -32,8 +32,8 @@ describe('ReviewAgentService', () => {
       const stdout = `Some output before JSON
 {
   "code_complete": true,
-  "execute_terminal_command": false,
-  "terminal_command_requested": null
+  "break_iteration": false,
+  "justification": "Task completed successfully"
 }
 Some output after JSON`;
 
@@ -47,14 +47,14 @@ Some output after JSON`;
       const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
       expect(result.code_complete).toBe(true);
-      expect(result.execute_terminal_command).toBe(false);
+      expect(result.break_iteration).toBe(false);
       expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
     });
 
     it('should extract JSON from mixed output', async () => {
       const stdout = `Log message
 Debug info
-{"code_complete": false, "execute_terminal_command": true, "terminal_command_requested": "npm test"}
+{"code_complete": false, "break_iteration": false, "justification": "Work in progress"}
 More log output`;
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -67,15 +67,15 @@ More log output`;
       const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
       expect(result.code_complete).toBe(false);
-      expect(result.execute_terminal_command).toBe(true);
-      expect(result.terminal_command_requested).toBe('npm test');
+      expect(result.break_iteration).toBe(false);
+      expect(result.justification).toBe('Work in progress');
     });
 
-    it('should handle valid JSON structure', async () => {
+    it('should handle valid JSON structure with break_iteration', async () => {
       const stdout = JSON.stringify({
-        code_complete: true,
-        execute_terminal_command: true,
-        terminal_command_requested: 'bundle exec rspec',
+        code_complete: false,
+        break_iteration: true,
+        justification: 'Permission issue detected',
       });
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -87,9 +87,9 @@ More log output`;
 
       const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
-      expect(result.code_complete).toBe(true);
-      expect(result.execute_terminal_command).toBe(true);
-      expect(result.terminal_command_requested).toBe('bundle exec rspec');
+      expect(result.code_complete).toBe(false);
+      expect(result.break_iteration).toBe(true);
+      expect(result.justification).toBe('Permission issue detected');
     });
 
     it('should handle invalid JSON gracefully', async () => {
@@ -148,8 +148,8 @@ More log output`;
     it('should handle different JSON structures', async () => {
       const stdout = JSON.stringify({
         code_complete: false,
-        execute_terminal_command: false,
-        terminal_command_requested: null,
+        break_iteration: false,
+        justification: 'Work in progress',
         notes: 'Additional review notes',
       });
 
@@ -163,17 +163,16 @@ More log output`;
       const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
       expect(result.code_complete).toBe(false);
-      expect(result.execute_terminal_command).toBe(false);
-      expect(result.terminal_command_requested).toBe(null);
+      expect(result.break_iteration).toBe(false);
+      expect(result.justification).toBe('Work in progress');
       expect(result.notes).toBe('Additional review notes');
     });
 
     it('should handle JSON with escaped characters', async () => {
       const stdout = JSON.stringify({
         code_complete: true,
-        execute_terminal_command: false,
-        terminal_command_requested: null,
-        message: 'Review with "quotes" and \n newlines',
+        break_iteration: false,
+        justification: 'Review with "quotes" and \n newlines',
       });
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -186,13 +185,14 @@ More log output`;
       const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
 
       expect(result.code_complete).toBe(true);
-      expect(result.message).toBe('Review with "quotes" and \n newlines');
+      expect(result.break_iteration).toBe(false);
+      expect(result.justification).toBe('Review with "quotes" and \n newlines');
     });
 
     it('should handle multiple JSON objects in output', async () => {
       // The implementation now uses brace matching to find the first complete JSON object
       const stdout = `Some text before
-{"code_complete": true, "execute_terminal_command": true, "terminal_command_requested": "test"}
+{"code_complete": true, "break_iteration": false, "justification": "Task completed"}
 Some text after`;
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -207,15 +207,15 @@ Some text after`;
       // Should extract the JSON object
       expect(result).not.toBeNull();
       expect(result.code_complete).toBe(true);
-      expect(result.execute_terminal_command).toBe(true);
+      expect(result.break_iteration).toBe(false);
     });
 
     it('should handle ANSI escape sequences in output', async () => {
       const stdout = `\u001b[?25hSome text before
 {\u001b[0m
   "code_complete": true,
-  "execute_terminal_command": false,
-  "terminal_command_requested": null
+  "break_iteration": false,
+  "justification": "Task completed"
 }\u001b[?25h
 Some text after`;
 
@@ -230,11 +230,11 @@ Some text after`;
 
       expect(result).not.toBeNull();
       expect(result.code_complete).toBe(true);
-      expect(result.execute_terminal_command).toBe(false);
+      expect(result.break_iteration).toBe(false);
     });
 
     it('should handle output with carriage returns and newlines', async () => {
-      const stdout = `\r\nSome text before\r\n{\r\n  "code_complete": true,\r\n  "execute_terminal_command": false\r\n}\r\nSome text after`;
+      const stdout = `\r\nSome text before\r\n{\r\n  "code_complete": true,\r\n  "break_iteration": false\r\n}\r\nSome text after`;
 
       mockCursorCLI.executeCommand.mockResolvedValue({
         success: true,
@@ -247,12 +247,12 @@ Some text after`;
 
       expect(result).not.toBeNull();
       expect(result.code_complete).toBe(true);
-      expect(result.execute_terminal_command).toBe(false);
+      expect(result.break_iteration).toBe(false);
     });
 
     it('should return null for JSON missing required fields', async () => {
       const stdout = JSON.stringify({
-        execute_terminal_command: false,
+        break_iteration: false,
         // Missing code_complete field
       });
 
@@ -270,7 +270,7 @@ Some text after`;
 
     it('should return null for incomplete JSON (missing closing brace)', async () => {
       const stdout = `Some text before
-{"code_complete": true, "execute_terminal_command": false
+{"code_complete": true, "break_iteration": false
 Some text after (missing closing brace)`;
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -288,8 +288,8 @@ Some text after (missing closing brace)`;
     it('should pass repository path to cursor CLI', async () => {
       const stdout = JSON.stringify({
         code_complete: true,
-        execute_terminal_command: false,
-        terminal_command_requested: null,
+        break_iteration: false,
+        justification: 'Task completed',
       });
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -310,8 +310,8 @@ Some text after (missing closing brace)`;
     it('should include output in review prompt', async () => {
       const stdout = JSON.stringify({
         code_complete: true,
-        execute_terminal_command: false,
-        terminal_command_requested: null,
+        break_iteration: false,
+        justification: 'Task completed',
       });
 
       mockCursorCLI.executeCommand.mockResolvedValue({
@@ -329,6 +329,47 @@ Some text after (missing closing brace)`;
       const args = callArgs[0];
       const promptArg = args[args.indexOf('--print') + 1];
       expect(promptArg).toContain(testOutput);
+    });
+
+    it('should default break_iteration to false if not provided', async () => {
+      const stdout = JSON.stringify({
+        code_complete: true,
+        // break_iteration not provided
+        justification: 'Task completed',
+      });
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result.code_complete).toBe(true);
+      expect(result.break_iteration).toBe(false); // Should default to false
+    });
+
+    it('should detect permission issues and set break_iteration to true', async () => {
+      const stdout = JSON.stringify({
+        code_complete: false,
+        break_iteration: true,
+        justification: 'Workspace Trust Required - cursor needs permissions',
+      });
+
+      mockCursorCLI.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+      });
+
+      const result = await reviewAgent.reviewOutput('test output', '/path/to/repo');
+
+      expect(result.code_complete).toBe(false);
+      expect(result.break_iteration).toBe(true);
+      expect(result.justification).toContain('Workspace Trust Required');
     });
   });
 });

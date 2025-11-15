@@ -3,8 +3,7 @@ import { logger } from './logger.js';
 /**
  * ReviewAgentService - Uses cursor as a review agent to evaluate code completion
  *
- * Analyzes cursor output to determine if code generation is complete
- * and if terminal commands need to be executed.
+ * Analyzes cursor output to determine if code generation is complete.
  */
 export class ReviewAgentService {
   constructor(cursorCLI) {
@@ -23,22 +22,28 @@ export class ReviewAgentService {
 
 CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
 
-Evaluate whether the task was completed and whether a terminal command has been requested by the agent to be run.
+Evaluate whether the task was completed and if there are permission issues that require breaking iterations.
 
 IMPORTANT COMPLETION RULES:
-- If the output is a simple text response (greeting, answer to a question, conversational reply), mark code_complete: true and execute_terminal_command: false
-- If the output is asking a question or requesting clarification, mark code_complete: true and execute_terminal_command: false
-- If the output contains code changes, file modifications, or requests to run terminal commands, mark code_complete: false
-- If a terminal command is explicitly requested (e.g., "run tests", "execute this command"), mark execute_terminal_command: true and include the command in terminal_command_requested
+- If the output is a simple text response (greeting, answer to a question, conversational reply), mark code_complete: true
+- If the output is asking a question or requesting clarification, mark code_complete: true
+- If the output contains code changes, file modifications, or indicates work is still in progress, mark code_complete: false
 - If the output is just informational, explanatory, or a direct response without code/commands, mark code_complete: true
+- If the output indicates the task is complete and no further work is needed, mark code_complete: true
+
+PERMISSION DETECTION RULES (CRITICAL):
+- If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
+- If the output says it doesn't have permissions, lacks permissions, or cannot run a command due to permissions, mark break_iteration: true
+- If the output mentions "Workspace Trust Required", "trust", "permission denied", "access denied", or similar permission-related errors, mark break_iteration: true
+- If the output indicates cursor is blocked from executing commands due to security/permission restrictions, mark break_iteration: true
+- Otherwise, mark break_iteration: false
 
 Return ONLY this JSON structure (no other text):
 
 {
   "code_complete": true,
-  "execute_terminal_command": true,
-  "terminal_command_requested": "bundle exec rspec spec",
-  "justification": "step 3 was skipped"
+  "break_iteration": false,
+  "justification": "Task completed successfully"
 }
 
 Previous agent output:
@@ -97,12 +102,13 @@ ${output}`;
       try {
         const parsed = JSON.parse(jsonString);
         // Validate required fields
-        if (
-          typeof parsed.code_complete !== 'boolean' ||
-          typeof parsed.execute_terminal_command !== 'boolean'
-        ) {
+        if (typeof parsed.code_complete !== 'boolean') {
           logger.warn('Review JSON missing required fields', { parsed });
           return null;
+        }
+        // Set break_iteration default to false if not provided
+        if (typeof parsed.break_iteration !== 'boolean') {
+          parsed.break_iteration = false;
         }
         return parsed;
       } catch (parseError) {

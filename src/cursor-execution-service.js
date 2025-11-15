@@ -10,23 +10,12 @@ import { getWebhookSecret } from './callback-url-builder.js';
  * and execution coordination for both single and iterative cursor commands.
  */
 export class CursorExecutionService {
-  constructor(
-    gitService,
-    cursorCLI,
-    terminalService,
-    commandParser,
-    reviewAgent,
-    filesystem = null
-  ) {
+  constructor(gitService, cursorCLI, commandParser, reviewAgent, filesystem = null) {
     this.gitService = gitService;
     this.cursorCLI = cursorCLI;
-    this.terminalService = terminalService;
     this.commandParser = commandParser;
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
-    this.terminalInstructions = process.env.EXECUTE_TERMINAL_COMMANDS
-      ? '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.'
-      : '';
   }
 
   /**
@@ -86,7 +75,7 @@ export class CursorExecutionService {
    */
   prepareCommand(command) {
     const commandArgs = this.commandParser.parseCommand(command);
-    return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
+    return commandArgs;
   }
 
   /**
@@ -319,7 +308,6 @@ export class CursorExecutionService {
     });
 
     let iteration = 1;
-    let terminalOutput = null;
     let iterationError = null;
 
     // Iteration loop
@@ -354,63 +342,31 @@ export class CursorExecutionService {
         requestId,
         iteration,
         code_complete: reviewResult.code_complete,
-        execute_terminal_command: reviewResult.execute_terminal_command,
+        break_iteration: reviewResult.break_iteration,
       });
 
-      // If terminal command is requested, execute it (even if code is marked complete,
-      // as cursor might want to verify with tests, linting, etc.)
-      if (reviewResult.execute_terminal_command && reviewResult.terminal_command_requested) {
-        logger.info('Executing terminal command', {
+      // If break_iteration is true, throw an error to stop iterations
+      if (reviewResult.break_iteration) {
+        logger.error('Review agent detected permission issue, breaking iterations', {
           requestId,
           iteration,
-          command: reviewResult.terminal_command_requested,
+          justification: reviewResult.justification || 'Permission issue detected',
         });
-
-        try {
-          // Parse terminal command into command and args
-          const terminalCommandParts = this.commandParser.parseCommand(
-            reviewResult.terminal_command_requested
-          );
-          const terminalCommand = terminalCommandParts[0];
-          const terminalArgs = terminalCommandParts.slice(1);
-
-          const terminalResult = await this.terminalService.executeCommand(
-            terminalCommand,
-            terminalArgs,
-            { cwd: fullRepositoryPath }
-          );
-          terminalOutput = terminalResult.stdout || terminalResult.stderr || '';
-          logger.info('Terminal command executed', {
-            requestId,
-            iteration,
-            exitCode: terminalResult.exitCode,
-            success: terminalResult.success,
-          });
-        } catch (error) {
-          logger.error('Terminal command failed', {
-            requestId,
-            iteration,
-            error: error.message,
-          });
-          terminalOutput = `Error executing command: ${error.message}`;
-        }
+        iterationError =
+          reviewResult.justification ||
+          'Cursor is requesting permissions or indicating it lacks permissions to execute commands. This requires manual intervention.';
+        break;
       }
 
-      // If code is complete and no terminal command was requested, break
-      // If code is complete but terminal command was executed, continue to resume
-      // so cursor can see the terminal output and make final decisions
-      if (reviewResult.code_complete && !reviewResult.execute_terminal_command) {
+      // If code is complete, break
+      if (reviewResult.code_complete) {
         logger.info('Code marked as complete', { requestId, iteration });
         break;
       }
 
       // Prepare resume prompt
-      let resumePrompt =
+      const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
-
-      if (terminalOutput) {
-        resumePrompt += `\n\nIf you requested a terminal command, here is the output from the latest terminal command:\n${terminalOutput}`;
-      }
 
       // Execute cursor with --resume
       const resumeArgs = ['--resume', resumePrompt];
