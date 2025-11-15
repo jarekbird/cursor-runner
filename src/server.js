@@ -233,20 +233,28 @@ export class Server {
               error: error.message,
               stack: error.stack,
               body: req.body,
+              hasPartialOutput: !!(error.stdout || error.stderr),
             });
             // If callback URL exists, try to notify about the error
             if (callbackUrl) {
+              // Include any partial output from the error
+              const errorResponse = {
+                success: false,
+                requestId,
+                error: error.message,
+                timestamp: new Date().toISOString(),
+              };
+
+              // Include partial output if available (e.g., from timeout)
+              if (error.stdout) {
+                errorResponse.output = error.stdout;
+              }
+              if (error.stderr) {
+                errorResponse.error = error.stderr || error.message;
+              }
+
               this.cursorExecution
-                .callbackWebhook(
-                  callbackUrl,
-                  {
-                    success: false,
-                    requestId,
-                    error: error.message,
-                    timestamp: new Date().toISOString(),
-                  },
-                  requestId
-                )
+                .callbackWebhook(callbackUrl, errorResponse, requestId)
                 .catch((webhookError) => {
                   logger.error('Failed to send error callback', {
                     requestId,

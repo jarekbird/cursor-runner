@@ -143,7 +143,12 @@ export class CursorCLI {
         }
 
         completed = true;
-        reject(new Error(`Command timeout after ${timeout}ms`));
+        const timeoutError = new Error(`Command timeout after ${timeout}ms`);
+        // Attach partial output to error so it can be retrieved by caller
+        timeoutError.stdout = stdout;
+        timeoutError.stderr = stderr;
+        timeoutError.exitCode = null;
+        reject(timeoutError);
       }, timeout);
 
       // Log heartbeat every 30 seconds to show process is still running
@@ -183,7 +188,12 @@ export class CursorCLI {
           completed = true;
           clearTimeout(timeoutId);
           clearInterval(heartbeatInterval);
-          reject(new Error(`No output from cursor-cli for ${idleTimeout}ms`));
+          const idleError = new Error(`No output from cursor-cli for ${idleTimeout}ms`);
+          // Attach partial output to error so it can be retrieved by caller
+          idleError.stdout = stdout;
+          idleError.stderr = stderr;
+          idleError.exitCode = null;
+          reject(idleError);
         }
       }, 30000);
 

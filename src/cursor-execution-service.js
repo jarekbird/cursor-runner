@@ -312,10 +312,33 @@ export class CursorExecutionService {
       timeout: `${iterateTimeout}ms`,
     });
 
-    let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
-      cwd: fullRepositoryPath,
-      timeout: iterateTimeout,
-    });
+    let lastResult;
+    try {
+      lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
+        cwd: fullRepositoryPath,
+        timeout: iterateTimeout,
+      });
+    } catch (error) {
+      // If command failed (e.g., timeout), extract partial output from error if available
+      logger.error('Initial cursor command failed', {
+        requestId,
+        error: error.message,
+        hasPartialOutput: !!(error.stdout || error.stderr),
+      });
+
+      // Create a result object from the error with any partial output
+      lastResult = {
+        success: false,
+        exitCode: error.exitCode || 1,
+        stdout: error.stdout || '',
+        stderr: error.stderr || error.message || '',
+      };
+
+      // If we have partial output, continue to review it; otherwise, throw to trigger error callback
+      if (!error.stdout && !error.stderr) {
+        throw error;
+      }
+    }
 
     let iteration = 1;
     let iterationError = null;
@@ -420,10 +443,33 @@ export class CursorExecutionService {
         timeout: `${iterateTimeout}ms`,
       });
 
-      lastResult = await this.cursorCLI.executeCommand(resumeArgs, {
-        cwd: fullRepositoryPath,
-        timeout: iterateTimeout,
-      });
+      try {
+        lastResult = await this.cursorCLI.executeCommand(resumeArgs, {
+          cwd: fullRepositoryPath,
+          timeout: iterateTimeout,
+        });
+      } catch (error) {
+        // If command failed (e.g., timeout), extract partial output from error if available
+        logger.error('Cursor resume command failed', {
+          requestId,
+          iteration,
+          error: error.message,
+          hasPartialOutput: !!(error.stdout || error.stderr),
+        });
+
+        // Create a result object from the error with any partial output
+        lastResult = {
+          success: false,
+          exitCode: error.exitCode || 1,
+          stdout: error.stdout || '',
+          stderr: error.stderr || error.message || '',
+        };
+
+        // If we have no partial output, throw to break iteration
+        if (!error.stdout && !error.stderr) {
+          throw error;
+        }
+      }
 
       iteration++;
     }
