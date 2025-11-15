@@ -33,24 +33,14 @@ export class CursorExecutionService {
    * @returns {Object|null} Error response or null if valid
    */
   validateRequest(params) {
-    const { repository, command } = params;
+    const { prompt } = params;
 
-    if (!repository) {
+    if (!prompt) {
       return {
         status: 400,
         body: {
           success: false,
-          error: 'repository is required',
-        },
-      };
-    }
-
-    if (!command) {
-      return {
-        status: 400,
-        body: {
-          success: false,
-          error: 'command is required',
+          error: 'prompt is required',
         },
       };
     }
@@ -59,12 +49,19 @@ export class CursorExecutionService {
   }
 
   /**
-   * Validate repository exists locally
-   * @param {string} repository - Repository name
-   * @returns {Object|null} Error response or null if valid
+   * Validate repository exists locally or return repositories directory
+   * @param {string|null|undefined} repository - Repository name (optional)
+   * @returns {Object|null} Error response or { fullRepositoryPath } if valid
    */
   validateRepository(repository) {
     const repositoryPath = this.gitService.repositoriesPath;
+
+    // If no repository provided, use the repositories directory itself
+    if (!repository || repository.trim() === '') {
+      return { fullRepositoryPath: repositoryPath };
+    }
+
+    // If repository provided, validate it exists
     const fullRepositoryPath = path.join(repositoryPath, repository);
 
     if (!this.filesystem.exists(fullRepositoryPath)) {
@@ -93,38 +90,28 @@ export class CursorExecutionService {
   /**
    * Execute a single cursor command
    * @param {Object} params - Execution parameters
-   * @param {string} params.repository - Repository name
+   * @param {string} [params.repository] - Repository name (optional, uses repositories directory if not provided)
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.command - Command string
+   * @param {string} params.prompt - Prompt string
    * @param {string} params.requestId - Request ID
    * @returns {Promise<Object>} Execution result
    */
   async execute(params) {
-    const { repository, branchName, command, requestId } = params;
+    const { repository, branchName, prompt, requestId } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, command });
+    const validationError = this.validateRequest({ prompt });
     if (validationError) {
-      logger.error('Cursor execution request validation failed', {
-        requestId,
-        error: validationError.body.error,
-        status: validationError.status,
-        repository,
-        command,
-      });
       return { ...validationError, requestId };
     }
 
-    // Validate repository exists
+    // Construct command from prompt
+    const command = `--prompt "${prompt}"`;
+
+    // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
-      logger.error('Cursor execution repository validation failed', {
-        requestId,
-        error: repoValidation.body.error,
-        status: repoValidation.status,
-        repository,
-      });
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;
@@ -180,39 +167,29 @@ export class CursorExecutionService {
   /**
    * Execute cursor command iteratively until completion
    * @param {Object} params - Execution parameters
-   * @param {string} params.repository - Repository name
+   * @param {string} [params.repository] - Repository name (optional, uses repositories directory if not provided)
    * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.command - Command string
+   * @param {string} params.prompt - Prompt string
    * @param {string} params.requestId - Request ID
    * @param {number} params.maxIterations - Maximum iterations (default: 25)
    * @returns {Promise<Object>} Execution result
    */
   async iterate(params) {
-    const { repository, branchName, command, requestId, maxIterations = 25 } = params;
+    const { repository, branchName, prompt, requestId, maxIterations = 25 } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ repository, command });
+    const validationError = this.validateRequest({ prompt });
     if (validationError) {
-      logger.error('Cursor iterate request validation failed', {
-        requestId,
-        error: validationError.body.error,
-        status: validationError.status,
-        repository,
-        command,
-      });
       return { ...validationError, requestId };
     }
 
-    // Validate repository exists
+    // Construct command from prompt
+    const command = `--prompt "${prompt}"`;
+
+    // Validate repository exists or use repositories directory
     const repoValidation = this.validateRepository(repository);
     if (repoValidation.status) {
-      logger.error('Cursor iterate repository validation failed', {
-        requestId,
-        error: repoValidation.body.error,
-        status: repoValidation.status,
-        repository,
-      });
       return { ...repoValidation, requestId };
     }
     const { fullRepositoryPath } = repoValidation;

@@ -86,9 +86,9 @@ export class Server {
     /**
      * POST /cursor/execute
      * Execute cursor-cli command in a repository or repositories directory
-     * Body: { repository?: string, branchName?: string, command?: string, prompt?: string }
+     * Body: { repository?: string, branchName?: string, prompt: string }
      * If repository is not provided, uses the repositories directory as working directory
-     * Either command or prompt must be provided. If prompt is provided, constructs command internally.
+     * Prompt is required and will be used to construct the cursor command internally.
      */
     router.post('/execute', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -104,7 +104,6 @@ export class Server {
         const result = await this.cursorExecution.execute({
           repository: req.body.repository,
           branchName: req.body.branchName,
-          command: req.body.command,
           prompt: req.body.prompt,
           requestId,
         });
@@ -130,9 +129,9 @@ export class Server {
     /**
      * POST /cursor/iterate
      * Execute cursor-cli command iteratively until completion
-     * Body: { repository?: string, branchName?: string, command?: string, prompt?: string }
+     * Body: { repository?: string, branchName?: string, prompt: string }
      * If repository is not provided, uses the repositories directory as working directory
-     * Either command or prompt must be provided. If prompt is provided, constructs command internally.
+     * Prompt is required and will be used to construct the cursor command internally.
      */
     router.post('/iterate', async (req, res) => {
       let requestId = req.body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -148,7 +147,6 @@ export class Server {
         const result = await this.cursorExecution.iterate({
           repository: req.body.repository,
           branchName: req.body.branchName,
-          command: req.body.command,
           prompt: req.body.prompt,
           requestId,
           maxIterations: req.body.maxIterations || 25,
