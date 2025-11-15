@@ -1,6 +1,122 @@
 import { logger } from './logger.js';
 
 /**
+ * TDD Phase type
+ */
+type Phase = 'red' | 'green' | 'refactor' | 'validate';
+
+/**
+ * Raw request from jarek-va
+ */
+interface RawRequest {
+  id?: string;
+  phase: string;
+  requirements: string | RequirementsObject;
+  targetPath?: string;
+  source?: string;
+  conversation_id?: string;
+  conversationId?: string;
+}
+
+/**
+ * Requirements object structure
+ */
+interface RequirementsObject {
+  description?: string;
+  desc?: string;
+  type?: string;
+  test_framework?: string;
+  testFramework?: string;
+  language?: string;
+  framework?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Formatted requirements
+ */
+interface FormattedRequirements {
+  description: string;
+  type: string;
+  testFramework: string;
+  test_framework: string;
+  language: string;
+  framework: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Formatted request for cursor-cli
+ */
+export interface FormattedRequest {
+  id: string;
+  phase: Phase;
+  requirements: FormattedRequirements;
+  targetPath?: string;
+  metadata: {
+    timestamp: string;
+    source: string;
+    conversationId?: string;
+  };
+}
+
+/**
+ * Partial request (for responses that only need id and phase)
+ */
+interface PartialRequest {
+  id: string;
+  phase: Phase | string;
+}
+
+/**
+ * Test results structure
+ */
+interface TestResults {
+  total: number;
+  passed: number;
+  failed?: number;
+}
+
+/**
+ * Result from cursor-cli execution
+ */
+interface ExecutionResult {
+  success?: boolean;
+  phase?: Phase | string;
+  output?: string;
+  files?: string[];
+  error?: string;
+  passed?: TestResults;
+}
+
+/**
+ * Formatted response for jarek-va
+ */
+interface FormattedResponse {
+  success: boolean;
+  requestId: string;
+  phase: Phase | string;
+  timestamp: string;
+  message?: string;
+  error?: string;
+  data?: {
+    output?: string;
+    files?: string[];
+    phase?: Phase | string;
+    testResults?: TestResults;
+  };
+  stack?: string;
+}
+
+/**
+ * Validation result
+ */
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+/**
  * RequestFormatter - Formats requests and responses for cursor-cli commands
  *
  * Provides standardized request/response formatting for communication
@@ -9,10 +125,10 @@ import { logger } from './logger.js';
 export class RequestFormatter {
   /**
    * Format code generation request from jarek-va
-   * @param {Object} rawRequest - Raw request from jarek-va
-   * @returns {Object} Formatted request for cursor-cli
+   * @param rawRequest - Raw request from jarek-va
+   * @returns Formatted request for cursor-cli
    */
-  static formatCodeGenerationRequest(rawRequest) {
+  static formatCodeGenerationRequest(rawRequest: RawRequest): FormattedRequest {
     try {
       // Validate required fields
       if (!rawRequest.phase) {
@@ -24,9 +140,9 @@ export class RequestFormatter {
       }
 
       // Format request
-      const formatted = {
+      const formatted: FormattedRequest = {
         id: rawRequest.id || this.generateRequestId(),
-        phase: rawRequest.phase.toLowerCase(),
+        phase: rawRequest.phase.toLowerCase() as Phase,
         requirements: this.formatRequirements(rawRequest.requirements),
         targetPath: rawRequest.targetPath || process.env.TARGET_APP_PATH,
         metadata: {
@@ -37,7 +153,7 @@ export class RequestFormatter {
       };
 
       // Validate phase
-      const validPhases = ['red', 'green', 'refactor', 'validate'];
+      const validPhases: Phase[] = ['red', 'green', 'refactor', 'validate'];
       if (!validPhases.includes(formatted.phase)) {
         throw new Error(
           `Invalid phase: ${formatted.phase}. Must be one of: ${validPhases.join(', ')}`
@@ -51,8 +167,9 @@ export class RequestFormatter {
 
       return formatted;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('Failed to format code generation request', {
-        error: error.message,
+        error: errorMessage,
         rawRequest,
       });
       throw error;
@@ -61,14 +178,18 @@ export class RequestFormatter {
 
   /**
    * Format requirements object
-   * @param {Object|string} requirements - Requirements from request
-   * @returns {Object} Formatted requirements
+   * @param requirements - Requirements from request
+   * @returns Formatted requirements
    */
-  static formatRequirements(requirements) {
+  static formatRequirements(requirements: string | RequirementsObject): FormattedRequirements {
     if (typeof requirements === 'string') {
       return {
         description: requirements,
         type: 'general',
+        testFramework: 'rspec',
+        test_framework: 'rspec',
+        language: 'ruby',
+        framework: 'rails',
       };
     }
 
@@ -86,7 +207,7 @@ export class RequestFormatter {
         test_framework: testFramework, // Also include snake_case version
         language: requirements.language || 'ruby',
         framework: requirements.framework || 'rails',
-      };
+      } as FormattedRequirements;
     }
 
     throw new Error('Invalid requirements format');
@@ -94,13 +215,16 @@ export class RequestFormatter {
 
   /**
    * Format code generation response for jarek-va
-   * @param {Object} result - Result from cursor-cli execution
-   * @param {Object} request - Original request
-   * @returns {Object} Formatted response
+   * @param result - Result from cursor-cli execution
+   * @param request - Original request
+   * @returns Formatted response
    */
-  static formatCodeGenerationResponse(result, request) {
+  static formatCodeGenerationResponse(
+    result: ExecutionResult,
+    request: FormattedRequest | PartialRequest
+  ): FormattedResponse {
     try {
-      const response = {
+      const response: FormattedResponse = {
         success: result.success !== false,
         requestId: request.id,
         phase: request.phase,
@@ -121,7 +245,10 @@ export class RequestFormatter {
         }
       } else {
         response.error = result.error || 'Unknown error occurred';
-        response.message = this.generateErrorMessage(result.error, request.phase);
+        response.message = this.generateErrorMessage(
+          result.error || 'Unknown error',
+          request.phase
+        );
         response.data = {
           phase: request.phase,
         };
@@ -135,8 +262,9 @@ export class RequestFormatter {
 
       return response;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('Failed to format code generation response', {
-        error: error.message,
+        error: errorMessage,
         result,
         request,
       });
@@ -155,18 +283,21 @@ export class RequestFormatter {
 
   /**
    * Format error response for jarek-va
-   * @param {Error} error - Error object
-   * @param {Object} request - Original request (optional)
-   * @returns {Object} Formatted error response
+   * @param error - Error object
+   * @param request - Original request (optional)
+   * @returns Formatted error response
    */
-  static formatErrorResponse(error, request = null) {
-    const response = {
+  static formatErrorResponse(
+    error: Error,
+    request: FormattedRequest | PartialRequest | null = null
+  ): FormattedResponse {
+    const response: FormattedResponse = {
       success: false,
       requestId: request?.id || 'unknown',
       phase: request?.phase || 'unknown',
       timestamp: new Date().toISOString(),
       error: error.message || 'Unknown error',
-      message: this.generateErrorMessage(error.message, request?.phase),
+      message: this.generateErrorMessage(error.message || 'Unknown error', request?.phase),
     };
 
     // Add stack trace in development
@@ -184,12 +315,12 @@ export class RequestFormatter {
 
   /**
    * Generate success message based on phase
-   * @param {Object} result - Result object
-   * @param {string} phase - TDD phase
-   * @returns {string} Success message
+   * @param result - Result object
+   * @param phase - TDD phase
+   * @returns Success message
    */
-  static generateSuccessMessage(result, phase) {
-    const messages = {
+  static generateSuccessMessage(result: ExecutionResult, phase: Phase | string): string {
+    const messages: Record<string, string> = {
       red: `Successfully generated test cases. ${result.files?.length || 0} file(s) created.`,
       green: `Successfully generated implementation code. ${result.files?.length || 0} file(s) created.`,
       refactor: `Successfully refactored code. ${result.files?.length || 0} file(s) modified.`,
@@ -203,54 +334,64 @@ export class RequestFormatter {
 
   /**
    * Generate error message based on phase
-   * @param {string} error - Error message
-   * @param {string} phase - TDD phase
-   * @returns {string} Error message
+   * @param error - Error message
+   * @param phase - TDD phase
+   * @returns Error message
    */
-  static generateErrorMessage(error, phase) {
-    const phaseNames = {
+  static generateErrorMessage(error: string, phase?: Phase | string): string {
+    const phaseNames: Record<string, string> = {
       red: 'test generation',
       green: 'implementation generation',
       refactor: 'refactoring',
       validate: 'test validation',
     };
 
-    const phaseName = phaseNames[phase] || 'operation';
+    const phaseName = phase ? phaseNames[phase] || 'operation' : 'operation';
 
     return `Failed during ${phaseName}: ${error}`;
   }
 
   /**
    * Generate unique request ID
-   * @returns {string} Request ID
+   * @returns Request ID
    */
-  static generateRequestId() {
+  static generateRequestId(): string {
     return `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
    * Validate request structure
-   * @param {Object} request - Request to validate
-   * @returns {Object} Validation result
+   * @param request - Request to validate
+   * @returns Validation result
    */
-  static validateRequest(request) {
-    const errors = [];
+  static validateRequest(request: unknown): ValidationResult {
+    const errors: string[] = [];
 
     if (!request) {
       errors.push('Request is required');
       return { valid: false, errors };
     }
 
-    if (!request.phase) {
+    if (typeof request !== 'object') {
+      errors.push('Request must be an object');
+      return { valid: false, errors };
+    }
+
+    const req = request as Record<string, unknown>;
+
+    if (!req.phase) {
       errors.push('phase is required');
     } else {
-      const validPhases = ['red', 'green', 'refactor', 'validate'];
-      if (!validPhases.includes(request.phase.toLowerCase())) {
-        errors.push(`Invalid phase: ${request.phase}. Must be one of: ${validPhases.join(', ')}`);
+      const validPhases: Phase[] = ['red', 'green', 'refactor', 'validate'];
+      if (
+        typeof req.phase === 'string' &&
+        !validPhases.includes(req.phase.toLowerCase() as Phase)
+      ) {
+        errors.push(`Invalid phase: ${req.phase}. Must be one of: ${validPhases.join(', ')}`);
       }
     }
 
-    if (!request.requirements) {
+    if (!req.requirements) {
       errors.push('requirements is required');
     }
 

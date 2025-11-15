@@ -1,13 +1,31 @@
 // eslint-disable-next-line node/no-unpublished-import
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { CursorRunner } from '../src/index.js';
+import type { FormattedRequest } from '../src/request-formatter.js';
 
 describe('CursorRunner', () => {
   let cursorRunner: CursorRunner;
   let originalEnv: NodeJS.ProcessEnv;
-  let mockCursorCLI: any;
-  let mockTargetAppRunner: any;
-  let mockServer: any;
+  let mockCursorCLI: {
+    validate: jest.MockedFunction<() => Promise<boolean>>;
+    generateTests: jest.MockedFunction<
+      (requirements: unknown, targetPath?: string) => Promise<unknown>
+    >;
+    generateImplementation: jest.MockedFunction<
+      (requirements: unknown, targetPath?: string) => Promise<unknown>
+    >;
+    refactorCode: jest.MockedFunction<
+      (requirements: unknown, targetPath?: string) => Promise<unknown>
+    >;
+  };
+  let mockTargetAppRunner: {
+    runTests: jest.MockedFunction<(targetPath: string | null) => Promise<unknown>>;
+  };
+  let mockServer: {
+    start: jest.MockedFunction<() => Promise<void>>;
+    stop: jest.MockedFunction<() => Promise<void>>;
+    port: number;
+  };
 
   beforeEach(() => {
     originalEnv = { ...process.env };
@@ -20,26 +38,34 @@ describe('CursorRunner', () => {
 
     // Create mock instances using dependency injection
     mockCursorCLI = {
-      validate: (jest.fn() as any).mockResolvedValue(true),
-      generateTests: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
-      generateImplementation: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
-      refactorCode: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
-    } as any;
+      validate: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
+      generateTests: jest
+        .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+        .mockResolvedValue({ success: true, files: [] }),
+      generateImplementation: jest
+        .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+        .mockResolvedValue({ success: true, files: [] }),
+      refactorCode: jest
+        .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+        .mockResolvedValue({ success: true, files: [] }),
+    };
 
     mockTargetAppRunner = {
-      runTests: (jest.fn() as any).mockResolvedValue({ success: true, output: 'Tests passed' }),
-    } as any;
+      runTests: jest
+        .fn<(targetPath: string | null) => Promise<unknown>>()
+        .mockResolvedValue({ success: true, output: 'Tests passed' }),
+    };
 
     mockServer = {
-      start: (jest.fn() as any).mockResolvedValue(undefined),
-      stop: (jest.fn() as any).mockResolvedValue(undefined),
+      start: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      stop: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
       port: 3001,
-    } as any;
+    };
 
     cursorRunner = new CursorRunner({
-      cursorCLI: mockCursorCLI,
-      targetAppRunner: mockTargetAppRunner,
-      server: mockServer,
+      cursorCLI: mockCursorCLI as any,
+      targetAppRunner: mockTargetAppRunner as any,
+      server: mockServer as any,
     });
   });
 
@@ -61,9 +87,9 @@ describe('CursorRunner', () => {
     it('should throw error when CURSOR_CLI_PATH is missing', () => {
       delete process.env.CURSOR_CLI_PATH;
       const runner = new CursorRunner({
-        cursorCLI: mockCursorCLI,
-        targetAppRunner: mockTargetAppRunner,
-        server: mockServer,
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
       });
 
       expect(() => {
@@ -74,9 +100,9 @@ describe('CursorRunner', () => {
     it('should throw error when TARGET_APP_PATH is missing', () => {
       delete process.env.TARGET_APP_PATH;
       const runner = new CursorRunner({
-        cursorCLI: mockCursorCLI,
-        targetAppRunner: mockTargetAppRunner,
-        server: mockServer,
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
       });
 
       expect(() => {
@@ -88,9 +114,9 @@ describe('CursorRunner', () => {
       delete process.env.CURSOR_CLI_PATH;
       delete process.env.TARGET_APP_PATH;
       const runner = new CursorRunner({
-        cursorCLI: mockCursorCLI,
-        targetAppRunner: mockTargetAppRunner,
-        server: mockServer,
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
       });
 
       expect(() => {
@@ -102,9 +128,9 @@ describe('CursorRunner', () => {
       process.env.CURSOR_CLI_PATH = 'cursor';
       process.env.TARGET_APP_PATH = '/path/to/app';
       const runner = new CursorRunner({
-        cursorCLI: mockCursorCLI,
-        targetAppRunner: mockTargetAppRunner,
-        server: mockServer,
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
       });
 
       expect(() => {
@@ -122,13 +148,13 @@ describe('CursorRunner', () => {
     });
 
     it('should throw error when cursor CLI validation fails', async () => {
-      cursorRunner.cursorCLI.validate.mockRejectedValue(new Error('Cursor CLI not found'));
+      mockCursorCLI.validate.mockRejectedValue(new Error('Cursor CLI not found'));
 
       await expect(cursorRunner.initialize()).rejects.toThrow('Cursor CLI not found');
     });
 
     it('should throw error when server start fails', async () => {
-      cursorRunner.server.start.mockRejectedValue(new Error('Port already in use'));
+      mockServer.start.mockRejectedValue(new Error('Port already in use'));
 
       await expect(cursorRunner.initialize()).rejects.toThrow('Port already in use');
     });
@@ -136,9 +162,9 @@ describe('CursorRunner', () => {
     it('should throw error when config validation fails', async () => {
       delete process.env.CURSOR_CLI_PATH;
       const runner = new CursorRunner({
-        cursorCLI: mockCursorCLI,
-        targetAppRunner: mockTargetAppRunner,
-        server: mockServer,
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
       });
 
       await expect(runner.initialize()).rejects.toThrow('Missing required environment variables');
@@ -153,7 +179,7 @@ describe('CursorRunner', () => {
     });
 
     it('should handle shutdown errors gracefully', async () => {
-      cursorRunner.server.stop.mockRejectedValue(new Error('Shutdown error'));
+      mockServer.stop.mockRejectedValue(new Error('Shutdown error'));
 
       // Should not throw
       await expect(cursorRunner.shutdown()).resolves.not.toThrow();
@@ -162,67 +188,113 @@ describe('CursorRunner', () => {
 
   describe('executeCodeGeneration', () => {
     it('should execute red phase (test generation)', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'red' as const,
-        requirements: { description: 'Test feature' },
+        requirements: {
+          description: 'Test feature',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
       const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.generateTests).toHaveBeenCalledWith(
         request.requirements,
-        request.targetPath
+        request.targetPath!
       );
       expect(result.success).toBe(true);
     });
 
     it('should execute green phase (implementation generation)', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'green' as const,
-        requirements: { description: 'Test feature' },
+        requirements: {
+          description: 'Test feature',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
       const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.generateImplementation).toHaveBeenCalledWith(
         request.requirements,
-        request.targetPath
+        request.targetPath!
       );
       expect(result.success).toBe(true);
     });
 
     it('should execute refactor phase', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'refactor' as const,
-        requirements: { description: 'Refactor code' },
+        requirements: {
+          description: 'Refactor code',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
       const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.refactorCode).toHaveBeenCalledWith(
         request.requirements,
-        request.targetPath
+        request.targetPath!
       );
       expect(result.success).toBe(true);
     });
 
     it('should execute validate phase (test execution)', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'validate' as const,
-        requirements: { description: 'Validate code' },
+        requirements: {
+          description: 'Validate code',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
       const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
-      expect(cursorRunner.targetAppRunner.runTests).toHaveBeenCalledWith(request.targetPath);
+      expect(cursorRunner.targetAppRunner.runTests).toHaveBeenCalledWith(
+        request.targetPath || null
+      );
       expect(result.success).toBe(true);
     });
 
@@ -230,9 +302,20 @@ describe('CursorRunner', () => {
       const request = {
         id: 'test-123',
         phase: 'unknown' as any,
-        requirements: { description: 'Test' },
+        requirements: {
+          description: 'Test',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
-      };
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
+      } as FormattedRequest;
 
       await expect(cursorRunner.executeCodeGeneration(request)).rejects.toThrow(
         'Unknown phase: unknown'
@@ -240,14 +323,25 @@ describe('CursorRunner', () => {
     });
 
     it('should handle errors during code generation', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'red' as const,
-        requirements: { description: 'Test feature' },
+        requirements: {
+          description: 'Test feature',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
-      cursorRunner.cursorCLI.generateTests.mockRejectedValue(new Error('Generation failed'));
+      mockCursorCLI.generateTests.mockRejectedValue(new Error('Generation failed'));
 
       await expect(cursorRunner.executeCodeGeneration(request)).rejects.toThrow(
         'Generation failed'
@@ -255,14 +349,25 @@ describe('CursorRunner', () => {
     });
 
     it('should include duration and files count in result', async () => {
-      const request = {
+      const request: FormattedRequest = {
         id: 'test-123',
         phase: 'red' as const,
-        requirements: { description: 'Test feature' },
+        requirements: {
+          description: 'Test feature',
+          type: 'general',
+          testFramework: 'rspec',
+          test_framework: 'rspec',
+          language: 'ruby',
+          framework: 'rails',
+        },
         targetPath: '/path/to/app',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
       };
 
-      cursorRunner.cursorCLI.generateTests.mockResolvedValue({
+      mockCursorCLI.generateTests.mockResolvedValue({
         success: true,
         files: ['file1.js', 'file2.js'],
       });
