@@ -18,6 +18,17 @@ export class ReviewAgentService {
    * @returns {Promise<Object|null>} Review result or null if parsing failed
    */
   async reviewOutput(output, cwd) {
+    // Quick check: if output is empty, it's likely incomplete
+    if (!output || output.trim().length === 0) {
+      logger.debug('Output is empty, marking as incomplete', { cwd });
+      return {
+        code_complete: false,
+        execute_terminal_command: false,
+        terminal_command_requested: null,
+        justification: 'Output is empty',
+      };
+    }
+
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return a simple JSON parsable output with a simple structure defining whether the task was completed. Also evaluate whether a terminal command has been requested by the agent to be run. If a terminal request is being requested, mark the output as code_complete: false. If the output is not requesting a terminal request, but simply asking a question, set code_complete to true and execute_terminal_command to false. Return following the pattern of this shape:
 
 {
@@ -35,8 +46,7 @@ ${output}`;
         cwd,
       });
 
-      // Try to extract JSON from output
-      // Find all JSON objects by matching balanced braces
+      // Extract all JSON objects by matching balanced braces
       const jsonMatches = [];
       let depth = 0;
       let start = -1;
@@ -62,7 +72,6 @@ ${output}`;
         }
       }
 
-      // Return the last valid JSON object found
       if (jsonMatches.length > 0) {
         return jsonMatches[jsonMatches.length - 1];
       }

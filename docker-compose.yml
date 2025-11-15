@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # cursor-runner Node.js application service
   cursor-runner:
@@ -12,9 +14,8 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3001
       # Cursor CLI Configuration
-      - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor-agent}
+      - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
       - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
-      - CURSOR_API_KEY=${CURSOR_API_KEY:-}
       # Target Application (jarek-va) - mounted as volume
       # Note: Update this path to point to your jarek-va directory
       - TARGET_APP_PATH=/app/target/jarek-va
@@ -39,7 +40,8 @@ services:
       - cursor_runner_repositories:/app/repositories
       # Mount logs for debugging
       - ./logs:/app/logs
-      # Note: cursor-cli is now installed in the Docker container via Dockerfile
+      # Mount cursor-cli if available on host (optional)
+      # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:
       - virtual-assistant-network
     healthcheck:

@@ -9,7 +9,7 @@ import { logger } from './logger.js';
  */
 export class CursorCLI {
   constructor() {
-    this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor-agent';
+    this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
@@ -74,16 +74,7 @@ export class CursorCLI {
       }
 
       // Build full command string for logging
-      const fullCommand = [this.cursorPath, ...args]
-        .map((arg) => {
-          // Quote arguments that contain spaces or special characters
-          if (arg.includes(' ') || arg.includes('\n') || arg.includes('"')) {
-            return `"${arg.replace(/"/g, '\\"')}"`;
-          }
-          return arg;
-        })
-        .join(' ');
-
+      const fullCommand = `${this.cursorPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`;
       logger.info('Full cursor-cli command being executed', {
         fullCommand,
         command: this.cursorPath,
@@ -98,20 +89,52 @@ export class CursorCLI {
         env,
       });
 
+      logger.info('cursor-cli process spawned', {
+        pid: child.pid,
+        command: this.cursorPath,
+        args,
+        cwd,
+      });
+
       let stdout = '';
       let stderr = '';
       let outputSize = 0;
+      let hasOutput = false;
+      let processCompleted = false;
 
       // Set timeout
       const timeoutId = setTimeout(() => {
+        logger.error('cursor-cli command timeout', {
+          pid: child.pid,
+          args,
+          timeout: `${timeout}ms`,
+          hasOutput,
+          stdoutLength: stdout.length,
+          stderrLength: stderr.length,
+        });
         child.kill('SIGTERM');
         reject(new Error(`Command timeout after ${timeout}ms`));
       }, timeout);
 
-      // Collect stdout and log immediately
+      // Warning timeout - log if command is still running after 10 seconds
+      const warningTimeoutId = setTimeout(() => {
+        if (!processCompleted) {
+          logger.warn('cursor-cli command still running after 10 seconds', {
+            pid: child.pid,
+            args,
+            cwd,
+            hasOutput,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+          });
+        }
+      }, 10000);
+
+      // Collect stdout
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         outputSize += Buffer.byteLength(chunk);
+        hasOutput = true;
 
         if (outputSize > this.maxOutputSize) {
           child.kill('SIGTERM');
@@ -120,7 +143,6 @@ export class CursorCLI {
         }
 
         stdout += chunk;
-        // Log stdout immediately to help diagnose issues (like authentication prompts)
         logger.info('cursor-cli stdout', {
           pid: child.pid,
           chunk: chunk,
@@ -128,11 +150,11 @@ export class CursorCLI {
         });
       });
 
-      // Collect stderr and log immediately
+      // Collect stderr
       child.stderr.on('data', (data) => {
         const chunk = data.toString();
         stderr += chunk;
-        // Log stderr immediately to help diagnose issues (like authentication errors)
+        hasOutput = true;
         logger.warn('cursor-cli stderr', {
           pid: child.pid,
           chunk: chunk,
@@ -142,7 +164,9 @@ export class CursorCLI {
 
       // Handle process completion
       child.on('close', (code) => {
+        processCompleted = true;
         clearTimeout(timeoutId);
+        clearTimeout(warningTimeoutId);
 
         const result = {
           success: code === 0,
@@ -152,9 +176,20 @@ export class CursorCLI {
         };
 
         if (code === 0) {
-          logger.debug('cursor-cli command completed successfully', { args });
+          logger.info('cursor-cli command completed successfully', {
+            pid: child.pid,
+            args,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+          });
         } else {
-          logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
+          logger.warn('cursor-cli command failed', {
+            pid: child.pid,
+            args,
+            exitCode: code,
+            stderr: stderr || '(no stderr output)',
+            stdout: stdout || '(no stdout output)',
+          });
         }
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
@@ -163,8 +198,16 @@ export class CursorCLI {
 
       // Handle process errors
       child.on('error', (error) => {
+        processCompleted = true;
         clearTimeout(timeoutId);
-        logger.error('cursor-cli command error', { args, error: error.message });
+        clearTimeout(warningTimeoutId);
+        logger.error('cursor-cli command error', {
+          pid: child.pid,
+          args,
+          cwd,
+          error: error.message,
+          stack: error.stack,
+        });
         reject(error);
       });
     });
@@ -177,13 +220,9 @@ export class CursorCLI {
   validateCommandSecurity(args) {
     const commandString = args.join(' ').toLowerCase();
 
-    // Check for blocked commands (as whole words, not substrings)
+    // Check for blocked commands
     for (const blocked of this.blockedCommands) {
-      const blockedLower = blocked.toLowerCase();
-      // Use word boundary regex to match whole words only
-      // This prevents false positives like "terminal" matching "rm"
-      const regex = new RegExp(`\\b${blockedLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      if (regex.test(commandString)) {
+      if (commandString.includes(blocked.toLowerCase())) {
         throw new Error(`Blocked command detected: ${blocked}`);
       }
     }

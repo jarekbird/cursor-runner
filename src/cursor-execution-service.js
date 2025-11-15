@@ -33,15 +33,24 @@ export class CursorExecutionService {
    * @returns {Object|null} Error response or null if valid
    */
   validateRequest(params) {
-    const { command, prompt } = params;
+    const { repository, command } = params;
 
-    // Either command or prompt must be provided
-    if (!command && !prompt) {
+    if (!repository) {
       return {
         status: 400,
         body: {
           success: false,
-          error: 'command or prompt is required',
+          error: 'repository is required',
+        },
+      };
+    }
+
+    if (!command) {
+      return {
+        status: 400,
+        body: {
+          success: false,
+          error: 'command is required',
         },
       };
     }
@@ -73,32 +82,12 @@ export class CursorExecutionService {
 
   /**
    * Prepare command with instructions
-   * @param {string} command - Original command string (optional)
-   * @param {string} prompt - Prompt text (optional, used if command not provided)
-   * @param {boolean} includeTerminalInstructions - Whether to include terminal instructions (default: false)
+   * @param {string} command - Original command string
    * @returns {Array<string>} Prepared command arguments
    */
-  prepareCommand(command, prompt = null, includeTerminalInstructions = false) {
-    let commandArgs;
-
-    if (command) {
-      // Parse existing command
-      commandArgs = this.commandParser.parseCommand(command);
-      // Remove "cursor" from the beginning if present, since we use cursor-agent as the executable
-      if (commandArgs[0] === 'cursor') {
-        commandArgs = commandArgs.slice(1);
-      }
-    } else if (prompt) {
-      // Construct command from prompt
-      commandArgs = ['generate', '--print', prompt];
-    } else {
-      throw new Error('Either command or prompt must be provided');
-    }
-
-    if (includeTerminalInstructions) {
-      return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
-    }
-    return commandArgs;
+  prepareCommand(command) {
+    const commandArgs = this.commandParser.parseCommand(command);
+    return this.commandParser.appendInstructions(commandArgs, this.terminalInstructions);
   }
 
   /**
@@ -111,31 +100,24 @@ export class CursorExecutionService {
    * @returns {Promise<Object>} Execution result
    */
   async execute(params) {
-    const { repository, branchName, command, prompt, requestId } = params;
+    const { repository, branchName, command, requestId } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ command, prompt });
+    const validationError = this.validateRequest({ repository, command });
     if (validationError) {
       return { ...validationError, requestId };
     }
 
-    // Determine working directory
-    // If repository is provided, validate and use it; otherwise use repositories directory
-    let fullRepositoryPath;
-    if (repository) {
-      const repoValidation = this.validateRepository(repository);
-      if (repoValidation.status) {
-        return { ...repoValidation, requestId };
-      }
-      fullRepositoryPath = repoValidation.fullRepositoryPath;
-    } else {
-      // Use repositories directory when no repository is specified
-      fullRepositoryPath = this.gitService.repositoriesPath;
+    // Validate repository exists
+    const repoValidation = this.validateRepository(repository);
+    if (repoValidation.status) {
+      return { ...repoValidation, requestId };
     }
+    const { fullRepositoryPath } = repoValidation;
 
     // Prepare command
-    const modifiedArgs = this.prepareCommand(command, prompt);
+    const modifiedArgs = this.prepareCommand(command);
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -193,70 +175,27 @@ export class CursorExecutionService {
    * @returns {Promise<Object>} Execution result
    */
   async iterate(params) {
-    const { repository, branchName, command, prompt, requestId, maxIterations = 25 } = params;
+    const { repository, branchName, command, requestId, maxIterations = 25 } = params;
     const startTime = Date.now();
 
     // Validate request
-    const validationError = this.validateRequest({ command, prompt });
+    const validationError = this.validateRequest({ repository, command });
     if (validationError) {
       return { ...validationError, requestId };
     }
 
-    // Determine working directory
-    // If repository is provided, validate and use it; otherwise use repositories directory
-    let fullRepositoryPath;
-    if (repository) {
-      const repoValidation = this.validateRepository(repository);
-      if (repoValidation.status) {
-        return { ...repoValidation, requestId };
-      }
-      fullRepositoryPath = repoValidation.fullRepositoryPath;
-    } else {
-      // Use repositories directory when no repository is specified
-      fullRepositoryPath = this.gitService.repositoriesPath;
+    // Validate repository exists
+    const repoValidation = this.validateRepository(repository);
+    if (repoValidation.status) {
+      return { ...repoValidation, requestId };
     }
+    const { fullRepositoryPath } = repoValidation;
 
     // Prepare and execute initial command
-    logger.info('Preparing initial cursor command', {
-      requestId,
-      repository,
-      branchName,
-      command,
-      prompt,
+    const modifiedArgs = this.prepareCommand(command);
+    let lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
       cwd: fullRepositoryPath,
     });
-    const modifiedArgs = this.prepareCommand(command, prompt);
-    logger.info('Executing initial cursor command', {
-      requestId,
-      repository,
-      branchName,
-      args: modifiedArgs,
-      cwd: fullRepositoryPath,
-    });
-    let lastResult;
-    try {
-      lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
-        cwd: fullRepositoryPath,
-      });
-      logger.info('Initial cursor command completed', {
-        requestId,
-        repository,
-        branchName,
-        success: lastResult.success,
-        exitCode: lastResult.exitCode,
-        stdoutLength: lastResult.stdout?.length || 0,
-        stderrLength: lastResult.stderr?.length || 0,
-      });
-    } catch (error) {
-      logger.error('Initial cursor command failed', {
-        requestId,
-        repository,
-        branchName,
-        error: error.message,
-        stack: error.stack,
-      });
-      throw error;
-    }
 
     let iteration = 1;
     let terminalOutput = null;
@@ -341,8 +280,6 @@ export class CursorExecutionService {
 
       if (terminalOutput) {
         resumePrompt += `\n\nIf you requested a terminal command, here is the output from the latest terminal command:\n${terminalOutput}`;
-        // Only include terminal instructions if a terminal command was actually executed
-        resumePrompt += this.terminalInstructions;
       }
 
       // Execute cursor with --resume

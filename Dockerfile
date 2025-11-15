@@ -7,29 +7,11 @@ RUN apt-get update -qq && apt-get install -y \
     curl \
     git \
     ca-certificates \
-    bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Cursor CLI using official installer
-# See: https://cursor.com/docs/cli/overview
-RUN curl https://cursor.com/install -fsS | bash && \
-    CURSOR_DIR=$(find /root /home -name cursor-agent -type f 2>/dev/null | head -1 | xargs dirname) && \
-    if [ -n "$CURSOR_DIR" ] && [ -d "$CURSOR_DIR" ]; then \
-        mkdir -p /usr/local/lib/cursor && \
-        cp -r "$CURSOR_DIR"/* /usr/local/lib/cursor/ && \
-        mkdir -p /usr/local/bin && \
-        ln -sf /usr/local/lib/cursor/cursor-agent /usr/local/bin/cursor-agent && \
-        ln -sf /usr/local/bin/cursor-agent /usr/local/bin/cursor; \
-    else \
-        echo "ERROR: cursor-agent directory not found after installation" && \
-        echo "Searching for cursor-agent..." && \
-        find /root /home -name cursor-agent -type f 2>/dev/null || true && \
-        exit 1; \
-    fi
-
-# Verify cursor-agent CLI is accessible and fail build if not found
-RUN which cursor-agent || (echo "ERROR: cursor-agent command not found in PATH" && exit 1) && \
-    cursor-agent --version || (echo "ERROR: cursor-agent --version failed" && exit 1)
+# Note: cursor-cli should be installed separately or mounted as a volume
+# For now, we assume it's available in the host system and will be mounted
+# or installed via a volume mount
 
 # Set working directory
 WORKDIR /app
