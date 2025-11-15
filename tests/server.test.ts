@@ -3,6 +3,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 // eslint-disable-next-line node/no-unpublished-import
 import request from 'supertest';
 import { Server } from '../src/server.js';
+import { ReviewAgentService } from '../src/review-agent-service.js';
 
 describe('Server', () => {
   let server: Server;
@@ -39,12 +40,13 @@ describe('Server', () => {
     server.gitService = mockGitService;
     server.cursorCLI = mockCursorCLI;
     server.filesystem = mockFilesystem;
+    // Create new reviewAgent with mocked cursorCLI
+    server.reviewAgent = new ReviewAgentService(mockCursorCLI);
     // Update cursorExecution with all mocked services
     server.cursorExecution.gitService = mockGitService;
     server.cursorExecution.cursorCLI = mockCursorCLI;
     server.cursorExecution.filesystem = mockFilesystem;
-    // Update reviewAgent with mocked cursorCLI
-    server.reviewAgent.cursorCLI = mockCursorCLI;
+    server.cursorExecution.reviewAgent = server.reviewAgent;
   });
 
   afterEach(async () => {
@@ -741,6 +743,8 @@ describe('Server', () => {
         };
 
         mockFilesystem.exists.mockReturnValue(true);
+        // Reset and set up mocks - first call is the initial cursor command, second is review agent
+        mockCursorCLI.executeCommand.mockReset();
         mockCursorCLI.executeCommand
           .mockResolvedValueOnce(mockCursorResult)
           .mockResolvedValueOnce(mockReviewResult);
@@ -854,6 +858,8 @@ describe('Server', () => {
         };
 
         mockFilesystem.exists.mockReturnValue(true);
+        // Reset and set up mocks - first call is the initial cursor command, second is review agent
+        mockCursorCLI.executeCommand.mockReset();
         mockCursorCLI.executeCommand
           .mockResolvedValueOnce(mockCursorResult) // Initial command
           .mockResolvedValueOnce(mockReviewResult); // Review agent

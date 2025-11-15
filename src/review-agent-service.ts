@@ -1,25 +1,73 @@
 import { logger } from './logger.js';
 
 /**
+ * Review result structure returned by the review agent
+ */
+interface ReviewResult {
+  code_complete: boolean;
+  break_iteration: boolean;
+  justification: string;
+}
+
+/**
+ * Result of reviewOutput method
+ */
+interface ReviewOutputResult {
+  result: ReviewResult | null;
+  rawOutput: string;
+}
+
+/**
+ * Options for executeCommand method
+ */
+interface ExecuteCommandOptions {
+  cwd?: string;
+  timeout?: number;
+}
+
+/**
+ * Result of executeCommand method
+ */
+interface ExecuteCommandResult {
+  success: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Interface for CursorCLI instance
+ */
+interface CursorCLIInterface {
+  executeCommand(args: string[], options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>;
+}
+
+/**
  * ReviewAgentService - Uses cursor as a review agent to evaluate code completion
  *
  * Analyzes cursor output to determine if code generation is complete.
  */
 export class ReviewAgentService {
-  constructor(cursorCLI) {
+  protected cursorCLI: CursorCLIInterface;
+
+  constructor(cursorCLI: CursorCLIInterface) {
     this.cursorCLI = cursorCLI;
   }
 
   /**
    * Review output using cursor as a review agent
-   * @param {string} output - Output to review
-   * @param {string} cwd - Working directory
-   * @param {number} [timeout] - Optional timeout override
-   * @returns {Promise<Object>} Review result with parsed result and raw output
+   * @param output - Output to review
+   * @param cwd - Working directory
+   * @param timeout - Optional timeout override
+   * @returns Review result with parsed result and raw output
    *   - result: Parsed review result or null if parsing failed
    *   - rawOutput: Raw output from review agent
    */
-  async reviewOutput(output, cwd, timeout = null) {
+  async reviewOutput(
+    output: string,
+    cwd: string,
+    timeout: number | null = null
+  ): Promise<ReviewOutputResult> {
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return ONLY a valid JSON object with no additional text, explanations, or formatting. 
 
 CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
@@ -52,7 +100,7 @@ Previous agent output:
 ${output}`;
 
     try {
-      const options = { cwd };
+      const options: ExecuteCommandOptions = { cwd };
       if (timeout) {
         options.timeout = timeout;
       }
@@ -64,14 +112,14 @@ ${output}`;
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex
       const ansiEscapeRegex = /\u001b\[[0-9;]*[a-zA-Z]/g;
-      let cleanedOutput = result.stdout
+      const cleanedOutput = result.stdout
         .replace(ansiEscapeRegex, '') // Remove ANSI escape codes
         .replace(/\r\n/g, '\n') // Normalize line endings
         .trim();
 
       // Try to find JSON object in the output
       // First, try to find a complete JSON object by matching braces
-      let jsonStart = cleanedOutput.indexOf('{');
+      const jsonStart = cleanedOutput.indexOf('{');
       if (jsonStart === -1) {
         logger.warn('No JSON object found in review output', {
           outputPreview: cleanedOutput.substring(0, 200),
@@ -105,7 +153,7 @@ ${output}`;
       const jsonString = cleanedOutput.substring(jsonStart, jsonEnd);
 
       try {
-        const parsed = JSON.parse(jsonString);
+        const parsed = JSON.parse(jsonString) as Partial<ReviewResult>;
         // Validate required fields
         if (typeof parsed.code_complete !== 'boolean') {
           logger.warn('Review JSON missing required fields', { parsed });
@@ -115,19 +163,27 @@ ${output}`;
         if (typeof parsed.break_iteration !== 'boolean') {
           parsed.break_iteration = false;
         }
-        return { result: parsed, rawOutput: cleanedOutput };
+        return {
+          result: parsed as ReviewResult,
+          rawOutput: cleanedOutput,
+        };
       } catch (parseError) {
+        const error = parseError instanceof Error ? parseError : new Error(String(parseError));
         logger.warn('Failed to parse review JSON', {
-          error: parseError.message,
+          error: error.message,
           jsonString: jsonString.substring(0, 200),
           outputPreview: cleanedOutput.substring(0, 200),
         });
         return { result: null, rawOutput: cleanedOutput };
       }
     } catch (error) {
-      logger.error('Review agent failed', { error: error.message });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Review agent failed', { error: errorMessage });
       // Return error message as raw output
-      return { result: null, rawOutput: `Review agent error: ${error.message}` };
+      return {
+        result: null,
+        rawOutput: `Review agent error: ${errorMessage}`,
+      };
     }
   }
 }
