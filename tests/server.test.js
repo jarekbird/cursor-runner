@@ -316,9 +316,12 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
         expect(callArgs).toContain('--print');
-        // The prompt argument will have instructions appended, so check that it contains the original text
-        const printArg = callArgs[callArgs.indexOf('--print') + 1];
-        expect(printArg).toContain('Create user service with authentication');
+        expect(callArgs).toContain('--force');
+        // The prompt argument comes after --force, and will have instructions appended
+        // Find the index of --force and get the next argument (the prompt)
+        const forceIndex = callArgs.indexOf('--force');
+        const promptArg = callArgs[forceIndex + 1];
+        expect(promptArg).toContain('Create user service with authentication');
       });
     });
 

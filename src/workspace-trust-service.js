@@ -9,9 +9,12 @@ import { FilesystemService } from './filesystem-service.js';
  * Creates:
  * - .vscode/settings.json with workspace trust enabled
  * - .cursor/settings.json with cursor workspace trust settings
- * - .cursor/cli.json with cursor-cli permissions to allow shell commands like git
+ * - .cursor/cli.json with cursor-cli permissions to allow shell commands and file operations
  *
- * This is required for cursor-cli to execute commands without security restrictions.
+ * This is required for cursor-cli to execute commands and file operations (like deletions)
+ * without security restrictions. The permissions include:
+ * - Shell commands (git, bash, rm, mv, cp, etc.)
+ * - File system operations (delete, write, read)
  */
 export class WorkspaceTrustService {
   constructor(filesystem = null) {
@@ -139,13 +142,20 @@ export class WorkspaceTrustService {
         permissionsUpdated = true; // Mark as updated so we write the file
       }
 
-      // Add git permissions if not already present
+      // Add git and file operation permissions if not already present
       const requiredPermissions = [
         'Shell(git)',
         'Shell(bash)',
         'Shell(sh)',
         'Shell(chmod)',
         'Shell(echo)',
+        'Shell(rm)',
+        'Shell(rmdir)',
+        'Shell(mv)',
+        'Shell(cp)',
+        'FileSystem(delete)',
+        'FileSystem(write)',
+        'FileSystem(read)',
       ];
 
       for (const permission of requiredPermissions) {

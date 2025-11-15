@@ -57,20 +57,31 @@ export class CommandParserService {
     const modifiedArgs = [...commandArgs];
     let foundPromptFlag = false;
 
+    // Flags that might appear between the prompt flag and the actual prompt text
+    const skipFlags = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'];
+
     for (let i = 0; i < modifiedArgs.length; i++) {
       // Common prompt flags: --print, --prompt, -p, --instruction, --message, etc.
       if (
-        (modifiedArgs[i] === '--print' ||
-          modifiedArgs[i] === '--prompt' ||
-          modifiedArgs[i] === '-p' ||
-          modifiedArgs[i] === '--instruction' ||
-          modifiedArgs[i] === '--message') &&
-        i + 1 < modifiedArgs.length
+        modifiedArgs[i] === '--print' ||
+        modifiedArgs[i] === '--prompt' ||
+        modifiedArgs[i] === '-p' ||
+        modifiedArgs[i] === '--instruction' ||
+        modifiedArgs[i] === '--message'
       ) {
-        // Append instructions to the next argument (the prompt text)
-        modifiedArgs[i + 1] = modifiedArgs[i + 1] + instructions;
-        foundPromptFlag = true;
-        break;
+        // Find the next non-flag argument (the prompt text)
+        // Skip over flags like --force, --resume, etc.
+        let promptIndex = i + 1;
+        while (promptIndex < modifiedArgs.length && skipFlags.includes(modifiedArgs[promptIndex])) {
+          promptIndex++;
+        }
+
+        if (promptIndex < modifiedArgs.length) {
+          // Append instructions to the prompt text
+          modifiedArgs[promptIndex] = modifiedArgs[promptIndex] + instructions;
+          foundPromptFlag = true;
+          break;
+        }
       }
     }
 

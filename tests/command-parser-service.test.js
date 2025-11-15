@@ -98,6 +98,16 @@ describe('CommandParserService', () => {
       const result = parser.parseCommand(' cursor generate');
       expect(result).toEqual(['cursor', 'generate']);
     });
+
+    it('should parse command with --print --force flags', () => {
+      const result = parser.parseCommand('cursor --print --force "test prompt"');
+      expect(result).toEqual(['cursor', '--print', '--force', 'test prompt']);
+    });
+
+    it('should parse command with --resume --force flags', () => {
+      const result = parser.parseCommand('cursor --resume --force "resume prompt"');
+      expect(result).toEqual(['cursor', '--resume', '--force', 'resume prompt']);
+    });
   });
 
   describe('appendInstructions', () => {
@@ -162,6 +172,32 @@ describe('CommandParserService', () => {
         'cursor',
         'generate',
         '--message',
+        'original prompt\n\nAdditional instructions',
+      ]);
+    });
+
+    it('should append instructions to prompt when --print --force is used', () => {
+      const args = ['cursor', '--print', '--force', 'original prompt'];
+      const instructions = '\n\nAdditional instructions';
+      const result = parser.appendInstructions(args, instructions);
+
+      expect(result).toEqual([
+        'cursor',
+        '--print',
+        '--force',
+        'original prompt\n\nAdditional instructions',
+      ]);
+    });
+
+    it('should append instructions to prompt when --resume --force is used', () => {
+      const args = ['cursor', '--resume', '--force', 'original prompt'];
+      const instructions = '\n\nAdditional instructions';
+      const result = parser.appendInstructions(args, instructions);
+
+      expect(result).toEqual([
+        'cursor',
+        '--resume',
+        '--force',
         'original prompt\n\nAdditional instructions',
       ]);
     });
