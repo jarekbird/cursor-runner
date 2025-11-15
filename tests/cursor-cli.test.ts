@@ -1,7 +1,9 @@
+// eslint-disable-next-line node/no-unpublished-import
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { CursorCLI } from '../src/cursor-cli.js';
 
 describe('CursorCLI', () => {
-  let cursorCLI;
+  let cursorCLI: CursorCLI;
 
   beforeEach(() => {
     cursorCLI = new CursorCLI();

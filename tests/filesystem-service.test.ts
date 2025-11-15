@@ -3,8 +3,8 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { FilesystemService } from '../src/filesystem-service.js';
 
 describe('FilesystemService', () => {
-  let filesystemService;
-  let mockExistsFn;
+  let filesystemService: FilesystemService;
+  let mockExistsFn: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();

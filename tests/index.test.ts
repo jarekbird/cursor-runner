@@ -3,11 +3,11 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { CursorRunner } from '../src/index.js';
 
 describe('CursorRunner', () => {
-  let cursorRunner;
-  let originalEnv;
-  let mockCursorCLI;
-  let mockTargetAppRunner;
-  let mockServer;
+  let cursorRunner: CursorRunner;
+  let originalEnv: NodeJS.ProcessEnv;
+  let mockCursorCLI: any;
+  let mockTargetAppRunner: any;
+  let mockServer: any;
 
   beforeEach(() => {
     originalEnv = { ...process.env };
@@ -16,25 +16,25 @@ describe('CursorRunner', () => {
 
     // Suppress console.error and process.exit to prevent test failures
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    jest.spyOn(process, 'exit').mockImplementation(() => {});
+    jest.spyOn(process, 'exit').mockImplementation((() => {}) as typeof process.exit);
 
     // Create mock instances using dependency injection
     mockCursorCLI = {
-      validate: jest.fn().mockResolvedValue(true),
-      generateTests: jest.fn().mockResolvedValue({ success: true, files: [] }),
-      generateImplementation: jest.fn().mockResolvedValue({ success: true, files: [] }),
-      refactorCode: jest.fn().mockResolvedValue({ success: true, files: [] }),
-    };
+      validate: (jest.fn() as any).mockResolvedValue(true),
+      generateTests: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
+      generateImplementation: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
+      refactorCode: (jest.fn() as any).mockResolvedValue({ success: true, files: [] }),
+    } as any;
 
     mockTargetAppRunner = {
-      runTests: jest.fn().mockResolvedValue({ success: true, output: 'Tests passed' }),
-    };
+      runTests: (jest.fn() as any).mockResolvedValue({ success: true, output: 'Tests passed' }),
+    } as any;
 
     mockServer = {
-      start: jest.fn().mockResolvedValue(),
-      stop: jest.fn().mockResolvedValue(),
+      start: (jest.fn() as any).mockResolvedValue(undefined),
+      stop: (jest.fn() as any).mockResolvedValue(undefined),
       port: 3001,
-    };
+    } as any;
 
     cursorRunner = new CursorRunner({
       cursorCLI: mockCursorCLI,
@@ -164,12 +164,12 @@ describe('CursorRunner', () => {
     it('should execute red phase (test generation)', async () => {
       const request = {
         id: 'test-123',
-        phase: 'red',
+        phase: 'red' as const,
         requirements: { description: 'Test feature' },
         targetPath: '/path/to/app',
       };
 
-      const result = await cursorRunner.executeCodeGeneration(request);
+      const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.generateTests).toHaveBeenCalledWith(
         request.requirements,
@@ -181,12 +181,12 @@ describe('CursorRunner', () => {
     it('should execute green phase (implementation generation)', async () => {
       const request = {
         id: 'test-123',
-        phase: 'green',
+        phase: 'green' as const,
         requirements: { description: 'Test feature' },
         targetPath: '/path/to/app',
       };
 
-      const result = await cursorRunner.executeCodeGeneration(request);
+      const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.generateImplementation).toHaveBeenCalledWith(
         request.requirements,
@@ -198,12 +198,12 @@ describe('CursorRunner', () => {
     it('should execute refactor phase', async () => {
       const request = {
         id: 'test-123',
-        phase: 'refactor',
+        phase: 'refactor' as const,
         requirements: { description: 'Refactor code' },
         targetPath: '/path/to/app',
       };
 
-      const result = await cursorRunner.executeCodeGeneration(request);
+      const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.cursorCLI.refactorCode).toHaveBeenCalledWith(
         request.requirements,
@@ -215,12 +215,12 @@ describe('CursorRunner', () => {
     it('should execute validate phase (test execution)', async () => {
       const request = {
         id: 'test-123',
-        phase: 'validate',
+        phase: 'validate' as const,
         requirements: { description: 'Validate code' },
         targetPath: '/path/to/app',
       };
 
-      const result = await cursorRunner.executeCodeGeneration(request);
+      const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(cursorRunner.targetAppRunner.runTests).toHaveBeenCalledWith(request.targetPath);
       expect(result.success).toBe(true);
@@ -229,7 +229,7 @@ describe('CursorRunner', () => {
     it('should throw error for unknown phase', async () => {
       const request = {
         id: 'test-123',
-        phase: 'unknown',
+        phase: 'unknown' as any,
         requirements: { description: 'Test' },
         targetPath: '/path/to/app',
       };
@@ -242,7 +242,7 @@ describe('CursorRunner', () => {
     it('should handle errors during code generation', async () => {
       const request = {
         id: 'test-123',
-        phase: 'red',
+        phase: 'red' as const,
         requirements: { description: 'Test feature' },
         targetPath: '/path/to/app',
       };
@@ -257,7 +257,7 @@ describe('CursorRunner', () => {
     it('should include duration and files count in result', async () => {
       const request = {
         id: 'test-123',
-        phase: 'red',
+        phase: 'red' as const,
         requirements: { description: 'Test feature' },
         targetPath: '/path/to/app',
       };
@@ -267,7 +267,7 @@ describe('CursorRunner', () => {
         files: ['file1.js', 'file2.js'],
       });
 
-      const result = await cursorRunner.executeCodeGeneration(request);
+      const result = (await cursorRunner.executeCodeGeneration(request)) as any;
 
       expect(result).toHaveProperty('success');
       expect(result).toHaveProperty('files');

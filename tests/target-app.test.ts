@@ -5,13 +5,13 @@ import { TargetAppRunner } from '../src/target-app.js';
 // Mock dependencies before importing anything that uses them
 const mockSpawn = jest.fn();
 jest.mock('child_process', () => ({
-  spawn: (...args) => mockSpawn(...args),
+  spawn: (...args: any[]) => mockSpawn(...args),
 }));
 
 describe.skip('TargetAppRunner', () => {
-  let targetAppRunner;
-  let mockChild;
-  let mockExistsSync;
+  let targetAppRunner: TargetAppRunner;
+  let mockChild: any;
+  let mockExistsSync: jest.Mock;
 
   beforeEach(() => {
     mockExistsSync = jest.fn().mockReturnValue(true);
@@ -19,15 +19,15 @@ describe.skip('TargetAppRunner', () => {
 
     // Create mock child process that stores event handlers synchronously
     const handlers = {
-      stdout: [],
-      stderr: [],
-      close: [],
-      error: [],
+      stdout: [] as Array<(data: Buffer) => void>,
+      stderr: [] as Array<(data: Buffer) => void>,
+      close: [] as Array<(code: number) => void>,
+      error: [] as Array<(error: Error) => void>,
     };
 
     mockChild = {
       stdout: {
-        on: jest.fn((event, cb) => {
+        on: jest.fn((event: string, cb: (data: Buffer) => void) => {
           if (event === 'data') {
             handlers.stdout.push(cb);
           }
@@ -35,19 +35,19 @@ describe.skip('TargetAppRunner', () => {
         }),
       },
       stderr: {
-        on: jest.fn((event, cb) => {
+        on: jest.fn((event: string, cb: (data: Buffer) => void) => {
           if (event === 'data') {
             handlers.stderr.push(cb);
           }
           return mockChild.stderr; // Chainable
         }),
       },
-      on: jest.fn((event, cb) => {
+      on: jest.fn((event: string, cb: (code: number | Error) => void) => {
         if (event === 'close') {
-          handlers.close.push(cb);
+          handlers.close.push(cb as (code: number) => void);
         }
         if (event === 'error') {
-          handlers.error.push(cb);
+          handlers.error.push(cb as (error: Error) => void);
         }
         return mockChild; // Chainable
       }),
@@ -118,10 +118,12 @@ describe.skip('TargetAppRunner', () => {
       const promise = runner.runTests();
 
       // Simulate stdout data and successful close using stored handlers
-      mockChild.handlers.stdout.forEach((handler) => handler(Buffer.from(mockOutput)));
-      mockChild.handlers.close.forEach((handler) => handler(0));
+      mockChild.handlers.stdout.forEach((handler: (data: Buffer) => void) =>
+        handler(Buffer.from(mockOutput))
+      );
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(0));
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.success).toBe(true);
       expect(result.exitCode).toBe(0);
@@ -140,10 +142,12 @@ describe.skip('TargetAppRunner', () => {
 
       const promise = runner.runTests();
 
-      mockChild.handlers.stdout.forEach((handler) => handler(Buffer.from(mockOutput)));
-      mockChild.handlers.close.forEach((handler) => handler(0));
+      mockChild.handlers.stdout.forEach((handler: (data: Buffer) => void) =>
+        handler(Buffer.from(mockOutput))
+      );
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(0));
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.success).toBe(true);
       expect(result.passed.passed).toBe(5);
@@ -160,11 +164,15 @@ describe.skip('TargetAppRunner', () => {
 
       const promise = targetAppRunner.runTests();
 
-      mockChild.handlers.stdout.forEach((handler) => handler(Buffer.from(mockOutput)));
-      mockChild.handlers.stderr.forEach((handler) => handler(Buffer.from(mockStderr)));
-      mockChild.handlers.close.forEach((handler) => handler(1));
+      mockChild.handlers.stdout.forEach((handler: (data: Buffer) => void) =>
+        handler(Buffer.from(mockOutput))
+      );
+      mockChild.handlers.stderr.forEach((handler: (data: Buffer) => void) =>
+        handler(Buffer.from(mockStderr))
+      );
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(1));
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.success).toBe(false);
       expect(result.exitCode).toBe(1);
@@ -178,7 +186,7 @@ describe.skip('TargetAppRunner', () => {
 
       const promise = targetAppRunner.runTests(customPath);
 
-      mockChild.handlers.close.forEach((handler) => handler(0));
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(0));
 
       await promise;
 
@@ -193,7 +201,7 @@ describe.skip('TargetAppRunner', () => {
       process.env.TARGET_APP_TYPE = 'unsupported';
       const runner = new TargetAppRunner();
 
-      const result = await runner.runTests();
+      const result = (await runner.runTests()) as any;
       expect(result.success).toBe(false);
       expect(result.error).toBe('Unsupported target app type: unsupported');
     });
@@ -202,9 +210,11 @@ describe.skip('TargetAppRunner', () => {
       const errorMessage = 'Command not found';
       const promise = targetAppRunner.runTests();
 
-      mockChild.handlers.error.forEach((handler) => handler(new Error(errorMessage)));
+      mockChild.handlers.error.forEach((handler: (error: Error) => void) =>
+        handler(new Error(errorMessage))
+      );
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(errorMessage);
@@ -219,10 +229,18 @@ describe.skip('TargetAppRunner', () => {
       const onCalls = mockChild.on.mock.calls;
 
       return {
-        stdout: stdoutOnCalls.find((call) => call[0] === 'data')?.[1],
-        stderr: stderrOnCalls.find((call) => call[0] === 'data')?.[1],
-        close: onCalls.find((call) => call[0] === 'close')?.[1],
-        error: onCalls.find((call) => call[0] === 'error')?.[1],
+        stdout: stdoutOnCalls.find((call: any) => call[0] === 'data')?.[1] as
+          | ((data: Buffer) => void)
+          | undefined,
+        stderr: stderrOnCalls.find((call: any) => call[0] === 'data')?.[1] as
+          | ((data: Buffer) => void)
+          | undefined,
+        close: onCalls.find((call: any) => call[0] === 'close')?.[1] as
+          | ((code: number) => void)
+          | undefined,
+        error: onCalls.find((call: any) => call[0] === 'error')?.[1] as
+          | ((error: Error) => void)
+          | undefined,
       };
     };
 
@@ -243,14 +261,16 @@ describe.skip('TargetAppRunner', () => {
       if (!handlers.stdout || !handlers.close) {
         expect(mockChild.handlers.stdout.length).toBeGreaterThan(0);
         expect(mockChild.handlers.close.length).toBeGreaterThan(0);
-        mockChild.handlers.stdout.forEach((h) => h(Buffer.from(mockStdout)));
-        mockChild.handlers.close.forEach((h) => h(0));
+        mockChild.handlers.stdout.forEach((h: (data: Buffer) => void) =>
+          h(Buffer.from(mockStdout))
+        );
+        mockChild.handlers.close.forEach((h: (code: number) => void) => h(0));
       } else {
         handlers.stdout(Buffer.from(mockStdout));
         handlers.close(0);
       }
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe(mockStdout);
@@ -266,10 +286,12 @@ describe.skip('TargetAppRunner', () => {
 
       const promise = targetAppRunner.executeCommand('bundle', ['exec', 'rake', 'invalid']);
 
-      mockChild.handlers.stderr.forEach((handler) => handler(Buffer.from(mockStderr)));
-      mockChild.handlers.close.forEach((handler) => handler(1));
+      mockChild.handlers.stderr.forEach((handler: (data: Buffer) => void) =>
+        handler(Buffer.from(mockStderr))
+      );
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(1));
 
-      const result = await promise;
+      const result = (await promise) as any;
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toBe(mockStderr);
@@ -282,7 +304,7 @@ describe.skip('TargetAppRunner', () => {
         cwd: customCwd,
       });
 
-      mockChild.handlers.close.forEach((handler) => handler(0));
+      mockChild.handlers.close.forEach((handler: (code: number) => void) => handler(0));
 
       await promise;
 
@@ -327,7 +349,7 @@ describe.skip('TargetAppRunner', () => {
       // Error handler should be registered synchronously
       expect(mockChild.handlers.error.length).toBeGreaterThan(0);
 
-      mockChild.handlers.error.forEach((handler) => handler(processError));
+      mockChild.handlers.error.forEach((handler: (error: Error) => void) => handler(processError));
 
       await expect(promise).rejects.toThrow('Process error');
     });
@@ -336,7 +358,7 @@ describe.skip('TargetAppRunner', () => {
   describe('extractTestResults', () => {
     it('should extract RSpec test results', () => {
       const output = '10 examples, 2 failures';
-      const results = targetAppRunner.extractTestResults(output, false);
+      const results = targetAppRunner.extractTestResults(output, false) as any;
 
       expect(results.total).toBe(10);
       expect(results.failed).toBe(2);
@@ -346,7 +368,7 @@ describe.skip('TargetAppRunner', () => {
 
     it('should extract RSpec results with singular forms', () => {
       const output = '1 example, 1 failure';
-      const results = targetAppRunner.extractTestResults(output, false);
+      const results = targetAppRunner.extractTestResults(output, false) as any;
 
       expect(results.total).toBe(1);
       expect(results.failed).toBe(1);
@@ -355,14 +377,14 @@ describe.skip('TargetAppRunner', () => {
 
     it('should extract Jest test results', () => {
       const output = '5 passed';
-      const results = targetAppRunner.extractTestResults(output, true);
+      const results = targetAppRunner.extractTestResults(output, true) as any;
 
       expect(results.passed).toBe(5);
       expect(results.success).toBe(true);
     });
 
     it('should handle empty output', () => {
-      const results = targetAppRunner.extractTestResults('', true);
+      const results = targetAppRunner.extractTestResults('', true) as any;
 
       expect(results.total).toBe(0);
       expect(results.passed).toBe(0);
@@ -372,7 +394,7 @@ describe.skip('TargetAppRunner', () => {
 
     it('should handle output with no test results', () => {
       const output = 'Some other output without test results';
-      const results = targetAppRunner.extractTestResults(output, true);
+      const results = targetAppRunner.extractTestResults(output, true) as any;
 
       expect(results.total).toBe(0);
       expect(results.passed).toBe(0);
@@ -381,7 +403,7 @@ describe.skip('TargetAppRunner', () => {
 
     it('should handle RSpec results with all passing', () => {
       const output = '10 examples, 0 failures';
-      const results = targetAppRunner.extractTestResults(output, true);
+      const results = targetAppRunner.extractTestResults(output, true) as any;
 
       expect(results.total).toBe(10);
       expect(results.failed).toBe(0);

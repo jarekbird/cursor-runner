@@ -5,11 +5,11 @@ import request from 'supertest';
 import { Server } from '../src/server.js';
 
 describe('Server', () => {
-  let server;
-  let app;
-  let mockGitService;
-  let mockCursorCLI;
-  let mockFilesystem;
+  let server: Server;
+  let app: any;
+  let mockGitService: any;
+  let mockCursorCLI: any;
+  let mockFilesystem: any;
 
   beforeEach(() => {
     // Reset mocks

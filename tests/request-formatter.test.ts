@@ -15,7 +15,7 @@ describe('RequestFormatter', () => {
         id: 'test-123',
       };
 
-      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest);
+      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest) as any;
 
       expect(formatted.id).toBe('test-123');
       expect(formatted.phase).toBe('red');
@@ -31,7 +31,7 @@ describe('RequestFormatter', () => {
         requirements: { description: 'Test' },
       };
 
-      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest);
+      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest) as any;
 
       expect(formatted.id).toBeDefined();
       expect(formatted.id).toMatch(/^req-/);
@@ -43,7 +43,7 @@ describe('RequestFormatter', () => {
         requirements: { description: 'Test' },
       };
 
-      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest);
+      const formatted = RequestFormatter.formatCodeGenerationRequest(rawRequest) as any;
 
       expect(formatted.phase).toBe('red');
     });
@@ -51,7 +51,7 @@ describe('RequestFormatter', () => {
     it('should throw error if phase is missing', () => {
       const rawRequest = {
         requirements: { description: 'Test' },
-      };
+      } as any;
 
       expect(() => {
         RequestFormatter.formatCodeGenerationRequest(rawRequest);
@@ -61,7 +61,7 @@ describe('RequestFormatter', () => {
     it('should throw error if requirements is missing', () => {
       const rawRequest = {
         phase: 'red',
-      };
+      } as any;
 
       expect(() => {
         RequestFormatter.formatCodeGenerationRequest(rawRequest);
@@ -83,7 +83,7 @@ describe('RequestFormatter', () => {
   describe('formatRequirements', () => {
     it('should format string requirements', () => {
       const requirements = 'Create user service';
-      const formatted = RequestFormatter.formatRequirements(requirements);
+      const formatted = RequestFormatter.formatRequirements(requirements) as any;
 
       expect(formatted.description).toBe('Create user service');
       expect(formatted.type).toBe('general');
@@ -96,7 +96,7 @@ describe('RequestFormatter', () => {
         testFramework: 'rspec',
       };
 
-      const formatted = RequestFormatter.formatRequirements(requirements);
+      const formatted = RequestFormatter.formatRequirements(requirements) as any;
 
       expect(formatted.description).toBe('Create user service');
       expect(formatted.type).toBe('service');
@@ -108,9 +108,9 @@ describe('RequestFormatter', () => {
         description: 'Test',
         test_framework: 'rspec',
         testFramework: 'jest',
-      };
+      } as any;
 
-      const formatted = RequestFormatter.formatRequirements(requirements);
+      const formatted = RequestFormatter.formatRequirements(requirements) as any;
 
       // Both should be available, but testFramework should use snake_case value
       expect(formatted.testFramework).toBe('rspec');
@@ -132,7 +132,7 @@ describe('RequestFormatter', () => {
         phase: 'red',
       };
 
-      const response = RequestFormatter.formatCodeGenerationResponse(result, request);
+      const response = RequestFormatter.formatCodeGenerationResponse(result, request) as any;
 
       expect(response.success).toBe(true);
       expect(response.requestId).toBe('req-123');
@@ -152,7 +152,7 @@ describe('RequestFormatter', () => {
         phase: 'red',
       };
 
-      const response = RequestFormatter.formatCodeGenerationResponse(result, request);
+      const response = RequestFormatter.formatCodeGenerationResponse(result, request) as any;
 
       expect(response.success).toBe(false);
       expect(response.error).toBe('Test generation failed');
@@ -174,7 +174,7 @@ describe('RequestFormatter', () => {
         phase: 'validate',
       };
 
-      const response = RequestFormatter.formatCodeGenerationResponse(result, request);
+      const response = RequestFormatter.formatCodeGenerationResponse(result, request) as any;
 
       expect(response.data.testResults).toBeDefined();
       expect(response.data.testResults.total).toBe(10);
@@ -189,7 +189,7 @@ describe('RequestFormatter', () => {
         phase: 'red',
       };
 
-      const response = RequestFormatter.formatErrorResponse(error, request);
+      const response = RequestFormatter.formatErrorResponse(error, request) as any;
 
       expect(response.success).toBe(false);
       expect(response.error).toBe('Test error');
@@ -202,7 +202,7 @@ describe('RequestFormatter', () => {
       process.env.NODE_ENV = 'development';
 
       const error = new Error('Test error');
-      const response = RequestFormatter.formatErrorResponse(error);
+      const response = RequestFormatter.formatErrorResponse(error) as any;
 
       expect(response.stack).toBeDefined();
 
@@ -217,7 +217,7 @@ describe('RequestFormatter', () => {
         requirements: { description: 'Test' },
       };
 
-      const validation = RequestFormatter.validateRequest(request);
+      const validation = RequestFormatter.validateRequest(request) as any;
 
       expect(validation.valid).toBe(true);
       expect(validation.errors).toEqual([]);
@@ -226,9 +226,9 @@ describe('RequestFormatter', () => {
     it('should reject request without phase', () => {
       const request = {
         requirements: { description: 'Test' },
-      };
+      } as any;
 
-      const validation = RequestFormatter.validateRequest(request);
+      const validation = RequestFormatter.validateRequest(request) as any;
 
       expect(validation.valid).toBe(false);
       expect(validation.errors).toContain('phase is required');
@@ -240,14 +240,14 @@ describe('RequestFormatter', () => {
         requirements: { description: 'Test' },
       };
 
-      const validation = RequestFormatter.validateRequest(request);
+      const validation = RequestFormatter.validateRequest(request) as any;
 
       expect(validation.valid).toBe(false);
       expect(validation.errors.length).toBeGreaterThan(0);
     });
 
     it('should reject null request', () => {
-      const validation = RequestFormatter.validateRequest(null);
+      const validation = RequestFormatter.validateRequest(null as any) as any;
 
       expect(validation.valid).toBe(false);
       expect(validation.errors).toContain('Request is required');

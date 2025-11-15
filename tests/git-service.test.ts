@@ -5,7 +5,7 @@ import os from 'os';
 import fs from 'fs';
 
 describe('GitService', () => {
-  let gitService;
+  let gitService: GitService;
 
   beforeEach(() => {
     gitService = new GitService();

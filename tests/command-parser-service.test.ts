@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 import { CommandParserService } from '../src/command-parser-service.js';
 
 describe('CommandParserService', () => {
-  let parser;
+  let parser: CommandParserService;
 
   beforeEach(() => {
     parser = new CommandParserService();
@@ -211,7 +211,7 @@ describe('CommandParserService', () => {
     });
 
     it('should handle empty command array', () => {
-      const args = [];
+      const args: string[] = [];
       const instructions = '\n\nAdditional instructions';
       const result = parser.appendInstructions(args, instructions);
 
