@@ -22,7 +22,9 @@ jobs:
           script: |
             set -e
             cd cursor-runner || { echo "Directory cursor-runner not found"; exit 1; }
-            git pull || { echo "Git pull failed"; exit 1; }
+            git fetch origin || { echo "Git fetch failed"; exit 1; }
+            BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+            git reset --hard origin/$BRANCH || { echo "Git reset failed"; exit 1; }
             docker compose build cursor-runner || { echo "Docker build failed"; exit 1; }
             docker compose up -d cursor-runner || { echo "Docker up failed"; exit 1; }
             echo "Deployment completed successfully"
