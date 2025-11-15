@@ -41,6 +41,8 @@ services:
       - ../jarek-va:/app/target/jarek-va
       # Mount repositories directory for persistence
       - cursor_runner_repositories:/app/repositories
+      # Mount shared SQLite database for cross-service access
+      - shared_sqlite_db:/app/shared_db
       # Mount logs for debugging
       - ./logs:/app/logs
       # Mount cursor-cli if available on host (optional)
@@ -57,6 +59,10 @@ services:
 volumes:
   cursor_runner_repositories:
     driver: local
+  # Shared SQLite database volume (external reference to jarek-va volume)
+  shared_sqlite_db:
+    external: true
+    name: shared_sqlite_db
 
 networks:
   virtual-assistant-network:
