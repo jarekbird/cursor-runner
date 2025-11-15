@@ -72,13 +72,12 @@ export class Server {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.reviewAgent = new ReviewAgentService(this.cursorCLI as any);
     this.filesystem = new FilesystemService();
-    // filesystem parameter is optional (defaults to null) in the JS implementation
     this.cursorExecution = new CursorExecutionService(
       this.gitService,
       this.cursorCLI,
       this.commandParser,
       this.reviewAgent,
-      this.filesystem as any
+      this.filesystem
     );
 
     this.setupMiddleware();

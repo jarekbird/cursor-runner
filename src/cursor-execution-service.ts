@@ -3,6 +3,113 @@ import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
+import type { GitService } from './git-service.js';
+import type { CursorCLI, CommandResult } from './cursor-cli.js';
+import type { CommandParserService } from './command-parser-service.js';
+import type { ReviewAgentService } from './review-agent-service.js';
+
+/**
+ * Parameters for execute method
+ */
+export interface ExecuteParams {
+  repository?: string | null;
+  branchName?: string;
+  prompt: string;
+  requestId: string;
+  callbackUrl?: string;
+}
+
+/**
+ * Parameters for iterate method
+ */
+export interface IterateParams {
+  repository?: string | null;
+  branchName?: string;
+  prompt: string;
+  requestId: string;
+  maxIterations?: number;
+  callbackUrl?: string;
+}
+
+/**
+ * Error response structure
+ */
+interface ErrorResponse {
+  status: number;
+  body: {
+    success: false;
+    error: string;
+  };
+  requestId?: string;
+}
+
+/**
+ * Success response structure
+ */
+interface SuccessResponse {
+  status: number;
+  body: {
+    success: boolean;
+    requestId: string;
+    repository?: string | null;
+    branchName?: string;
+    command?: string[];
+    output?: string;
+    error?: string | null;
+    exitCode?: number;
+    duration: string;
+    timestamp: string;
+    iterations?: number;
+    maxIterations?: number;
+    reviewJustification?: string;
+    originalOutput?: string;
+  };
+}
+
+/**
+ * Validation result - either an error response or repository path info
+ */
+type ValidationResult = ErrorResponse | null;
+
+/**
+ * Repository validation result
+ */
+interface RepositoryValidationResult {
+  status?: number;
+  body?: {
+    success: false;
+    error: string;
+  };
+  fullRepositoryPath?: string;
+}
+
+/**
+ * Execution result
+ */
+type ExecutionResult = ErrorResponse | SuccessResponse;
+
+/**
+ * Iteration result
+ */
+type IterationResult = ErrorResponse | SuccessResponse;
+
+/**
+ * Command error with output properties
+ */
+interface CommandError extends Error {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number | null;
+}
+
+/**
+ * Review result structure
+ */
+interface ReviewResult {
+  code_complete: boolean;
+  break_iteration: boolean;
+  justification?: string;
+}
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
@@ -11,7 +118,20 @@ import { WorkspaceTrustService } from './workspace-trust-service.js';
  * and execution coordination for both single and iterative cursor commands.
  */
 export class CursorExecutionService {
-  constructor(gitService, cursorCLI, commandParser, reviewAgent, filesystem = null) {
+  private gitService: GitService;
+  private cursorCLI: CursorCLI;
+  private commandParser: CommandParserService;
+  private reviewAgent: ReviewAgentService;
+  private filesystem: FilesystemService;
+  private workspaceTrust: WorkspaceTrustService;
+
+  constructor(
+    gitService: GitService,
+    cursorCLI: CursorCLI,
+    commandParser: CommandParserService,
+    reviewAgent: ReviewAgentService,
+    filesystem: FilesystemService | null = null
+  ) {
     this.gitService = gitService;
     this.cursorCLI = cursorCLI;
     this.commandParser = commandParser;
@@ -22,10 +142,10 @@ export class CursorExecutionService {
 
   /**
    * Validate execution request parameters
-   * @param {Object} params - Request parameters
-   * @returns {Object|null} Error response or null if valid
+   * @param params - Request parameters
+   * @returns Error response or null if valid
    */
-  validateRequest(params) {
+  validateRequest(params: { prompt?: string }): ValidationResult {
     const { prompt } = params;
 
     if (!prompt) {
@@ -43,10 +163,10 @@ export class CursorExecutionService {
 
   /**
    * Validate repository exists locally or return repositories directory
-   * @param {string|null|undefined} repository - Repository name (optional)
-   * @returns {Object|null} Error response or { fullRepositoryPath } if valid
+   * @param repository - Repository name (optional)
+   * @returns Error response or { fullRepositoryPath } if valid
    */
-  validateRepository(repository) {
+  validateRepository(repository?: string | null): RepositoryValidationResult {
     const repositoryPath = this.gitService.repositoriesPath;
 
     // If no repository provided, use the repositories directory itself
@@ -72,25 +192,25 @@ export class CursorExecutionService {
 
   /**
    * Prepare command with instructions
-   * @param {string} command - Original command string
-   * @returns {Array<string>} Prepared command arguments
+   * @param command - Original command string
+   * @returns Prepared command arguments
    */
-  prepareCommand(command) {
+  prepareCommand(command: string): string[] {
     const commandArgs = this.commandParser.parseCommand(command);
     return commandArgs;
   }
 
   /**
    * Execute a single cursor command
-   * @param {Object} params - Execution parameters
-   * @param {string} [params.repository] - Repository name (optional, uses repositories directory if not provided)
-   * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.prompt - Prompt string
-   * @param {string} params.requestId - Request ID
-   * @param {string} [params.callbackUrl] - Optional callback URL to notify when complete
-   * @returns {Promise<Object>} Execution result
+   * @param params - Execution parameters
+   * @param params.repository - Repository name (optional, uses repositories directory if not provided)
+   * @param params.branchName - Optional branch name (for logging/tracking)
+   * @param params.prompt - Prompt string
+   * @param params.requestId - Request ID
+   * @param params.callbackUrl - Optional callback URL to notify when complete
+   * @returns Execution result
    */
-  async execute(params) {
+  async execute(params: ExecuteParams): Promise<ExecutionResult> {
     const { repository, branchName, prompt, requestId, callbackUrl } = params;
     const startTime = Date.now();
 
@@ -147,9 +267,28 @@ export class CursorExecutionService {
           });
         });
       }
-      return { ...repoValidation, requestId };
+      const errorResponse: ErrorResponse = {
+        status: repoValidation.status,
+        body: repoValidation.body || {
+          success: false,
+          error: 'Repository validation error',
+        },
+        requestId,
+      };
+      return errorResponse;
     }
-    const { fullRepositoryPath } = repoValidation;
+    const fullRepositoryPath = repoValidation.fullRepositoryPath;
+    if (!fullRepositoryPath) {
+      const errorResponse: ErrorResponse = {
+        status: 500,
+        body: {
+          success: false,
+          error: 'Failed to determine repository path',
+        },
+        requestId,
+      };
+      return errorResponse;
+    }
 
     // Ensure workspace trust is configured before executing commands
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
@@ -185,7 +324,7 @@ export class CursorExecutionService {
       duration: `${duration}ms`,
     });
 
-    const responseBody = {
+    const responseBody: SuccessResponse['body'] = {
       success: result.success !== false,
       requestId,
       repository,
@@ -221,16 +360,16 @@ export class CursorExecutionService {
 
   /**
    * Execute cursor command iteratively until completion
-   * @param {Object} params - Execution parameters
-   * @param {string} [params.repository] - Repository name (optional, uses repositories directory if not provided)
-   * @param {string} [params.branchName] - Optional branch name (for logging/tracking)
-   * @param {string} params.prompt - Prompt string
-   * @param {string} params.requestId - Request ID
-   * @param {number} params.maxIterations - Maximum iterations (default: 25)
-   * @param {string} [params.callbackUrl] - Optional callback URL to notify when complete
-   * @returns {Promise<Object>} Execution result
+   * @param params - Execution parameters
+   * @param params.repository - Repository name (optional, uses repositories directory if not provided)
+   * @param params.branchName - Optional branch name (for logging/tracking)
+   * @param params.prompt - Prompt string
+   * @param params.requestId - Request ID
+   * @param params.maxIterations - Maximum iterations (default: 25)
+   * @param params.callbackUrl - Optional callback URL to notify when complete
+   * @returns Execution result
    */
-  async iterate(params) {
+  async iterate(params: IterateParams): Promise<IterationResult> {
     const { repository, branchName, prompt, requestId, maxIterations = 25, callbackUrl } = params;
     const startTime = Date.now();
 
@@ -293,9 +432,28 @@ export class CursorExecutionService {
           });
         });
       }
-      return { ...repoValidation, requestId };
+      const errorResponse: ErrorResponse = {
+        status: repoValidation.status,
+        body: repoValidation.body || {
+          success: false,
+          error: 'Repository validation error',
+        },
+        requestId,
+      };
+      return errorResponse;
     }
-    const { fullRepositoryPath } = repoValidation;
+    const fullRepositoryPath = repoValidation.fullRepositoryPath;
+    if (!fullRepositoryPath) {
+      const errorResponse: ErrorResponse = {
+        status: 500,
+        body: {
+          success: false,
+          error: 'Failed to determine repository path',
+        },
+        requestId,
+      };
+      return errorResponse;
+    }
 
     // Ensure workspace trust is configured before executing commands
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
@@ -316,7 +474,7 @@ export class CursorExecutionService {
       timeout: `${iterateTimeout}ms`,
     });
 
-    let lastResult;
+    let lastResult: CommandResult;
     try {
       lastResult = await this.cursorCLI.executeCommand(modifiedArgs, {
         cwd: fullRepositoryPath,
@@ -324,30 +482,31 @@ export class CursorExecutionService {
       });
     } catch (error) {
       // If command failed (e.g., timeout), extract partial output from error if available
+      const commandError = error as CommandError;
       logger.error('Initial cursor command failed', {
         requestId,
-        error: error.message,
-        hasPartialOutput: !!(error.stdout || error.stderr),
+        error: commandError.message,
+        hasPartialOutput: !!(commandError.stdout || commandError.stderr),
       });
 
       // Create a result object from the error with any partial output
       lastResult = {
         success: false,
-        exitCode: error.exitCode || 1,
-        stdout: error.stdout || '',
-        stderr: error.stderr || error.message || '',
+        exitCode: commandError.exitCode || 1,
+        stdout: commandError.stdout || '',
+        stderr: commandError.stderr || commandError.message || '',
       };
 
       // If we have partial output, continue to review it; otherwise, throw to trigger error callback
-      if (!error.stdout && !error.stderr) {
+      if (!commandError.stdout && !commandError.stderr) {
         throw error;
       }
     }
 
     let iteration = 1;
-    let iterationError = null;
-    let reviewJustification = null;
-    let originalOutput = null;
+    let iterationError: string | null = null;
+    let reviewJustification: string | null = null;
+    let originalOutput: string | null = null;
 
     // Iteration loop
     while (iteration <= maxIterations) {
@@ -372,23 +531,24 @@ export class CursorExecutionService {
         reviewResponse = await this.reviewAgent.reviewOutput(
           lastResult.stdout,
           fullRepositoryPath,
-          iterateTimeout
+          iterateTimeout || null
         );
       } catch (reviewError) {
         // If review agent throws an error, construct a review result from the error
+        const error = reviewError instanceof Error ? reviewError : new Error(String(reviewError));
         logger.error('Review agent threw an error', {
           requestId,
           iteration,
-          error: reviewError.message,
+          error: error.message,
         });
         reviewResponse = {
           result: null,
-          rawOutput: `Review agent execution error: ${reviewError.message}`,
+          rawOutput: `Review agent execution error: ${error.message}`,
         };
       }
 
       // If parsing failed, construct our own review result
-      let reviewResult = reviewResponse.result;
+      let reviewResult: ReviewResult | null = reviewResponse.result;
       if (!reviewResult) {
         logger.warn('Failed to parse review result, constructing fallback review result', {
           requestId,
@@ -454,23 +614,24 @@ export class CursorExecutionService {
         });
       } catch (error) {
         // If command failed (e.g., timeout), extract partial output from error if available
+        const commandError = error as CommandError;
         logger.error('Cursor resume command failed', {
           requestId,
           iteration,
-          error: error.message,
-          hasPartialOutput: !!(error.stdout || error.stderr),
+          error: commandError.message,
+          hasPartialOutput: !!(commandError.stdout || commandError.stderr),
         });
 
         // Create a result object from the error with any partial output
         lastResult = {
           success: false,
-          exitCode: error.exitCode || 1,
-          stdout: error.stdout || '',
-          stderr: error.stderr || error.message || '',
+          exitCode: commandError.exitCode || 1,
+          stdout: commandError.stdout || '',
+          stderr: commandError.stderr || commandError.message || '',
         };
 
         // If we have no partial output, throw to break iteration
-        if (!error.stdout && !error.stderr) {
+        if (!commandError.stdout && !commandError.stderr) {
           throw error;
         }
       }
@@ -495,7 +656,7 @@ export class CursorExecutionService {
     // Combine errors: prefer iteration error if present, otherwise use lastResult error
     const errorMessage = iterationError || lastResult.stderr || null;
 
-    const responseBody = {
+    const responseBody: SuccessResponse['body'] = {
       success: isSuccess,
       requestId,
       repository,
@@ -551,12 +712,16 @@ export class CursorExecutionService {
 
   /**
    * Call webhook callback URL with result
-   * @param {string} callbackUrl - URL to call (may include secret in query string)
-   * @param {Object} result - Result to send
-   * @param {string} requestId - Request ID for logging
-   * @returns {Promise<void>}
+   * @param callbackUrl - URL to call (may include secret in query string)
+   * @param result - Result to send
+   * @param requestId - Request ID for logging
+   * @returns Promise that resolves when webhook is called
    */
-  async callbackWebhook(callbackUrl, result, requestId) {
+  async callbackWebhook(
+    callbackUrl: string,
+    result: Record<string, unknown>,
+    requestId: string
+  ): Promise<void> {
     try {
       logger.info('Calling callback webhook', { requestId, callbackUrl });
 
@@ -569,7 +734,7 @@ export class CursorExecutionService {
         secret = getWebhookSecret();
       }
 
-      const headers = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'User-Agent': 'cursor-runner/1.0',
       };
@@ -603,16 +768,17 @@ export class CursorExecutionService {
       });
     } catch (error) {
       // Log error but don't throw - we don't want to fail the main operation
-      if (error.name === 'AbortError') {
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (err.name === 'AbortError') {
         logger.error('Callback webhook timeout', { requestId, callbackUrl });
       } else {
         logger.error('Callback webhook error', {
           requestId,
           callbackUrl,
-          error: error.message,
+          error: err.message,
         });
       }
-      throw error; // Re-throw so caller can handle if needed
+      throw err; // Re-throw so caller can handle if needed
     }
   }
 }

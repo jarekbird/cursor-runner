@@ -4,6 +4,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import request from 'supertest';
 import { Server } from '../src/server.js';
 import { ReviewAgentService } from '../src/review-agent-service.js';
+import { CursorExecutionService } from '../src/cursor-execution-service.js';
 
 describe('Server', () => {
   let server: Server;
@@ -42,11 +43,14 @@ describe('Server', () => {
     server.filesystem = mockFilesystem;
     // Create new reviewAgent with mocked cursorCLI
     server.reviewAgent = new ReviewAgentService(mockCursorCLI);
-    // Update cursorExecution with all mocked services
-    server.cursorExecution.gitService = mockGitService;
-    server.cursorExecution.cursorCLI = mockCursorCLI;
-    server.cursorExecution.filesystem = mockFilesystem;
-    server.cursorExecution.reviewAgent = server.reviewAgent;
+    // Create new cursorExecution with all mocked services
+    server.cursorExecution = new CursorExecutionService(
+      mockGitService,
+      mockCursorCLI,
+      server.commandParser,
+      server.reviewAgent,
+      mockFilesystem
+    );
   });
 
   afterEach(async () => {
