@@ -43,7 +43,8 @@ export class CursorCLI {
    */
   async executeCommand(args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Command security validation removed
+      // Validate command security
+      this.validateCommandSecurity(args);
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
@@ -59,6 +60,12 @@ export class CursorCLI {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       });
+
+      // Close stdin immediately - cursor CLI doesn't need input for --print/--resume commands
+      // This prevents the process from hanging while waiting for stdin EOF
+      if (child.stdin) {
+        child.stdin.end();
+      }
 
       let stdout = '';
       let stderr = '';
@@ -198,11 +205,20 @@ export class CursorCLI {
   /**
    * Validate command security
    * @param {Array<string>} args - Command arguments
-   * @deprecated Validation removed - no longer blocks commands
    */
   validateCommandSecurity(args) {
-    // Validation removed - no longer blocking commands
-    logger.debug('Command security check skipped', { args });
+    const commandString = args.join(' ').toLowerCase();
+
+    // Check for blocked commands
+    for (const blocked of this.blockedCommands) {
+      if (commandString.includes(blocked.toLowerCase())) {
+        throw new Error(`Blocked command detected: ${blocked}`);
+      }
+    }
+
+    // For sensitive operations, validate against allowed commands
+    // This is a basic check - enhance as needed
+    logger.debug('Command security validated', { args });
   }
 
   /**

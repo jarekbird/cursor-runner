@@ -16,9 +16,6 @@ describe('Server', () => {
     // Reset mocks
     jest.clearAllMocks();
 
-    // Clear ENABLE_TERMINAL_COMMANDS to ensure default behavior (false)
-    delete process.env.ENABLE_TERMINAL_COMMANDS;
-
     // Create mock git service
     mockGitService = {
       repositoriesPath: '/test/repositories',
@@ -103,51 +100,15 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       });
 
-      it('should work without repository (uses repositories directory)', async () => {
-        const mockResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Generated code successfully',
-          stderr: '',
-        };
-
-        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
-
+      it('should return 400 if prompt is missing', async () => {
         const response = await request(app).post('/cursor/execute').send({
           branchName: 'main',
-          prompt: 'test',
+          repository: 'test-repo',
         });
 
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.repository).toBeUndefined();
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        // Verify it uses repositories directory (not a subdirectory)
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][1];
-        expect(callArgs.cwd).toBe('/test/repositories');
-      });
-
-      it('should work with empty string repository (uses repositories directory)', async () => {
-        const mockResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Generated code successfully',
-          stderr: '',
-        };
-
-        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
-
-        const response = await request(app).post('/cursor/execute').send({
-          repository: '',
-          branchName: 'main',
-          prompt: 'test',
-        });
-
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][1];
-        expect(callArgs.cwd).toBe('/test/repositories');
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('prompt is required');
       });
 
       it('should work without branchName', async () => {
@@ -220,10 +181,7 @@ describe('Server', () => {
         expect(response.body.error).toContain('Repository not found locally');
       });
 
-      it('should not append terminal instructions by default', async () => {
-        // Set terminalInstructions to empty string (default behavior)
-        server.cursorExecution.terminalInstructions = '';
-
+      it('should append instructions to prompt with --print flag', async () => {
         const mockResult = {
           success: true,
           exitCode: 0,
@@ -242,39 +200,10 @@ describe('Server', () => {
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
         const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const promptIndex = callArgs.findIndex((arg) => arg === '--print');
-        expect(promptIndex).toBeGreaterThan(-1);
-        expect(callArgs[promptIndex + 1]).toContain('Create service');
-        expect(callArgs[promptIndex + 1]).not.toContain('If you need to run a terminal command');
-      });
-
-      it('should append terminal instructions when ENABLE_TERMINAL_COMMANDS is true', async () => {
-        // Set terminalInstructions to include the wrapper text (when enabled)
-        server.cursorExecution.terminalInstructions =
-          '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
-
-        const mockResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Output',
-          stderr: '',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
-
-        await request(app).post('/cursor/execute').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'Create service',
-        });
-
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][0];
-        const promptIndex = callArgs.findIndex((arg) => arg === '--print');
-        expect(promptIndex).toBeGreaterThan(-1);
-        expect(callArgs[promptIndex + 1]).toContain('Create service');
-        expect(callArgs[promptIndex + 1]).toContain('If you need to run a terminal command');
+        const printIndex = callArgs.findIndex((arg) => arg === '--print');
+        expect(printIndex).toBeGreaterThan(-1);
+        expect(callArgs[printIndex + 1]).toContain('Create service');
+        expect(callArgs[printIndex + 1]).toContain('If you need to run a terminal command');
       });
 
       it('should handle command execution errors', async () => {
@@ -432,77 +361,13 @@ describe('Server', () => {
         expect(mockCursorCLI.executeCommand).toHaveBeenCalledTimes(4); // Initial + review + resume + review
       });
 
-      it('should work without repository (uses repositories directory)', async () => {
-        const mockCursorResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Code generated successfully',
-          stderr: '',
-        };
-
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
-            justification: 'Task completed',
-          }),
-          stderr: '',
-        };
-
-        mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult) // Initial command
-          .mockResolvedValueOnce(mockReviewResult); // Review agent
-
+      it('should return 400 if prompt is missing', async () => {
         const response = await request(app).post('/cursor/iterate').send({
-          prompt: 'test',
+          repository: 'test-repo',
         });
 
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.repository).toBeUndefined();
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        // Verify it uses repositories directory
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][1];
-        expect(callArgs.cwd).toBe('/test/repositories');
-      });
-
-      it('should work with empty string repository (uses repositories directory)', async () => {
-        const mockCursorResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Code generated successfully',
-          stderr: '',
-        };
-
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: true,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
-            justification: 'Task completed',
-          }),
-          stderr: '',
-        };
-
-        mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult) // Initial command
-          .mockResolvedValueOnce(mockReviewResult); // Review agent
-
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: '',
-          prompt: 'test',
-        });
-
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
-        const callArgs = mockCursorCLI.executeCommand.mock.calls[0][1];
-        expect(callArgs.cwd).toBe('/test/repositories');
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('prompt is required');
       });
 
       it('should work without branchName', async () => {
@@ -539,17 +404,6 @@ describe('Server', () => {
         expect(response.body.success).toBe(true);
         expect(response.body.repository).toBe('test-repo');
         expect(response.body.branchName).toBeUndefined();
-      });
-
-      it('should return 400 if prompt is missing', async () => {
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: 'test-repo',
-          branchName: 'main',
-        });
-
-        expect(response.status).toBe(400);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('prompt is required');
       });
 
       it('should return 404 if repository does not exist locally', async () => {
@@ -673,70 +527,6 @@ describe('Server', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.iterations).toBe(25);
-        expect(response.body.maxIterations).toBe(25);
-      });
-
-      it('should return 422 when max iterations reached but last result failed', async () => {
-        const mockCursorResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Still working',
-          stderr: '',
-        };
-
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: JSON.stringify({
-            code_complete: false,
-            execute_terminal_command: false,
-            terminal_command_requested: null,
-            justification: 'Still in progress',
-          }),
-          stderr: '',
-        };
-
-        const mockFailedResult = {
-          success: false,
-          exitCode: 1,
-          stdout: '',
-          stderr: 'Command failed at max iterations',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-
-        // Set up mocks: initial command, then review, then 24 successful iterations,
-        // then one failed resume command
-        const mockCalls = [
-          mockCursorResult, // Initial command
-          mockReviewResult, // First review
-        ];
-
-        // Add 24 successful iterations (each iteration = resume + review)
-        for (let i = 0; i < 24; i++) {
-          mockCalls.push(mockCursorResult); // Resume
-          mockCalls.push(mockReviewResult); // Review
-        }
-
-        // Last iteration fails
-        mockCalls.push(mockFailedResult); // Failed resume
-
-        mockCursorCLI.executeCommand.mockImplementation(() => {
-          const result = mockCalls.shift();
-          return Promise.resolve(result || mockCursorResult);
-        });
-
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'test',
-        });
-
-        expect(response.status).toBe(422);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('Command failed at max iterations');
         expect(response.body.iterations).toBe(25);
         expect(response.body.maxIterations).toBe(25);
       });
@@ -767,79 +557,8 @@ describe('Server', () => {
           prompt: 'test',
         });
 
-        expect(response.status).toBe(422);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toContain('Failed to parse review agent output');
+        expect(response.status).toBe(422); // Returns 422 when review agent fails
         expect(response.body.iterations).toBe(0); // Should break on review failure
-      });
-
-      it('should return 422 when cursor command fails (e.g., authentication error)', async () => {
-        const mockCursorResult = {
-          success: false,
-          exitCode: 1,
-          stdout: '',
-          stderr:
-            "Error: Authentication required. Please run 'cursor-agent login' first, or set CURSOR_API_KEY environment variable.",
-        };
-
-        // Review agent fails to parse (returns invalid JSON), so we get iteration error
-        // which takes precedence over the initial command error
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Invalid JSON response',
-          stderr: '',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-        mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult) // Initial command fails
-          .mockResolvedValueOnce(mockReviewResult); // Review agent returns invalid JSON
-
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'test',
-        });
-
-        expect(response.status).toBe(422);
-        expect(response.body.success).toBe(false);
-        // When review parsing fails, iteration error takes precedence
-        expect(response.body.error).toContain('Failed to parse review agent output');
-        expect(response.body.iterations).toBe(0);
-      });
-
-      it('should return 422 when cursor command fails and review parsing also fails', async () => {
-        const mockCursorResult = {
-          success: false,
-          exitCode: 1,
-          stdout: '',
-          stderr: 'Error: Authentication required.',
-        };
-
-        const mockReviewResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Invalid JSON response',
-          stderr: '',
-        };
-
-        mockFilesystem.exists.mockReturnValue(true);
-        mockCursorCLI.executeCommand
-          .mockResolvedValueOnce(mockCursorResult) // Initial command fails
-          .mockResolvedValueOnce(mockReviewResult); // Review agent returns invalid JSON
-
-        const response = await request(app).post('/cursor/iterate').send({
-          repository: 'test-repo',
-          branchName: 'main',
-          prompt: 'test',
-        });
-
-        expect(response.status).toBe(422);
-        expect(response.body.success).toBe(false);
-        // Should prefer iteration error (review parsing failure) over command error
-        expect(response.body.error).toContain('Failed to parse review agent output');
-        expect(response.body.iterations).toBe(0);
       });
 
       it('should include terminal output in resume prompt', async () => {

@@ -1,4 +1,4 @@
-import { spawn as defaultSpawn } from 'child_process';
+import { spawn } from 'child_process';
 import { logger } from './logger.js';
 
 /**
@@ -7,14 +7,7 @@ import { logger } from './logger.js';
  * Provides secure terminal command execution with validation, timeouts, and security restrictions.
  */
 export class TerminalService {
-  /**
-   * @param {Object} [options]
-   * @param {Function} [options.spawnFn] - Optional dependency-injected spawn function (for testing)
-   */
-  constructor(options = {}) {
-    const { spawnFn } = options;
-    this.spawnFn = spawnFn || defaultSpawn;
-
+  constructor() {
     this.timeout = parseInt(process.env.TERMINAL_COMMAND_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.TERMINAL_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 
@@ -36,14 +29,15 @@ export class TerminalService {
    */
   async executeCommand(command, args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      // Command security validation removed
+      // Validate command security
+      this.validateCommandSecurity(command, args);
 
       const cwd = options.cwd || process.cwd();
       const timeout = options.timeout || this.timeout;
 
       logger.debug('Executing terminal command', { command, args, cwd });
 
-      const child = this.spawnFn(command, args, {
+      const child = spawn(command, args, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false, // Never use shell: true for security
@@ -112,10 +106,33 @@ export class TerminalService {
    * Validate command security
    * @param {string} command - Command to validate
    * @param {Array<string>} args - Command arguments
-   * @deprecated Validation removed - no longer blocks commands
    */
   validateCommandSecurity(command, args) {
-    // Validation removed - no longer blocking commands
-    logger.debug('Command security check skipped', { command, args });
+    const commandLower = command.toLowerCase();
+    const commandString = [command, ...args].join(' ').toLowerCase();
+
+    // Check for blocked commands
+    for (const blocked of this.blockedCommands) {
+      if (
+        commandLower.includes(blocked.toLowerCase()) ||
+        commandString.includes(blocked.toLowerCase())
+      ) {
+        throw new Error(`Blocked command detected: ${blocked}`);
+      }
+    }
+
+    // Check against allowed commands (if whitelist is enforced)
+    // For now, we only block dangerous commands, but you can enable strict whitelisting
+    if (process.env.ENFORCE_COMMAND_WHITELIST === 'true') {
+      const isAllowed = this.allowedCommands.some((allowed) =>
+        commandLower.includes(allowed.toLowerCase())
+      );
+
+      if (!isAllowed) {
+        throw new Error(`Command not in whitelist: ${command}`);
+      }
+    }
+
+    logger.debug('Command security validated', { command, args });
   }
 }

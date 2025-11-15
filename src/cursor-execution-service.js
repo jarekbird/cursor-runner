@@ -23,18 +23,8 @@ export class CursorExecutionService {
     this.commandParser = commandParser;
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
-
-    // Only include terminal instructions if terminal command execution is enabled
-    // Defaults to false (no wrapper text) unless explicitly set to true
-    const enableTerminalCommands = process.env.ENABLE_TERMINAL_COMMANDS;
-    const isTerminalEnabled =
-      enableTerminalCommands !== undefined &&
-      enableTerminalCommands !== '' &&
-      enableTerminalCommands.toLowerCase() === 'true';
-
-    this.terminalInstructions = isTerminalEnabled
-      ? '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.'
-      : '';
+    this.terminalInstructions =
+      '\n\nIf you need to run a terminal command, stop and request that the caller run the terminal command for you. Be explicit about what terminal command needs to be run.';
   }
 
   /**
