@@ -11,10 +11,10 @@ jest.mock('child_process', () => ({
 describe.skip('TargetAppRunner', () => {
   let targetAppRunner: TargetAppRunner;
   let mockChild: any;
-  let mockExistsSync: jest.Mock;
+  let mockExistsSync: jest.Mock<(path: string) => boolean>;
 
   beforeEach(() => {
-    mockExistsSync = jest.fn().mockReturnValue(true);
+    mockExistsSync = jest.fn<(path: string) => boolean>().mockReturnValue(true);
     targetAppRunner = new TargetAppRunner({ fsExistsSync: mockExistsSync });
 
     // Create mock child process that stores event handlers synchronously
