@@ -5,8 +5,12 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "type-check": "tsc --noEmit",
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "start:prod": "npm run build && node dist/index.js",
+    "dev": "tsx watch src/index.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:changed": "NODE_OPTIONS=--experimental-vm-modules jest --onlyChanged",
@@ -17,8 +21,8 @@
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "lint:changed": "node scripts/lint-changed.js",
-    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\"",
+    "format": "prettier --write \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
+    "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check:changed": "node scripts/format-check-changed.js"
   },
   "keywords": [
@@ -37,14 +41,22 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
+    "@types/express": "^5.0.5",
     "@types/jest": "^29.5.11",
+    "@types/node": "^24.10.1",
+    "@types/supertest": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.46.4",
+    "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-node": "^11.1.0",
     "jest": "^29.7.0",
     "jest-circus": "^30.2.0",
     "prettier": "^3.1.1",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"
