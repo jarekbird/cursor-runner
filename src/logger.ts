@@ -9,17 +9,17 @@ const __dirname = path.dirname(__filename);
 /**
  * Configure Winston logger
  */
-const logLevel = process.env.LOG_LEVEL || 'info';
-const logFile = process.env.LOG_FILE || path.join(__dirname, '../logs/cursor-runner.log');
+const logLevel: string = process.env.LOG_LEVEL || 'info';
+const logFile: string = process.env.LOG_FILE || path.join(__dirname, '../logs/cursor-runner.log');
 
 // Ensure logs directory exists
 try {
   mkdirSync(path.dirname(logFile), { recursive: true });
-} catch (error) {
+} catch {
   // Directory might already exist, ignore error
 }
 
-export const logger = winston.createLogger({
+export const logger: winston.Logger = winston.createLogger({
   level: logLevel,
   format: winston.format.combine(
     winston.format.timestamp(),
