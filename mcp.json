@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "sqlite": {
+    "cursor-runner-shared-sqlite": {
       "command": "npx",
       "args": [
         "-y",

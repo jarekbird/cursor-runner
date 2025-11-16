@@ -51,6 +51,15 @@ jobs:
             BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
             git reset --hard origin/$BRANCH || { echo "Git reset failed"; exit 1; }
             
+            # Merge MCP configuration with existing repositories mcp.json
+            echo "Merging MCP configuration..."
+            if [ -f "merge-mcp-config.js" ]; then
+              chmod +x merge-mcp-config.js
+              node merge-mcp-config.js || { echo "Warning: MCP config merge failed, continuing deployment"; }
+            else
+              echo "Warning: merge-mcp-config.js not found, skipping MCP config merge"
+            fi
+            
             # Build and deploy
             docker compose build cursor-runner || { echo "Docker build failed"; exit 1; }
             docker compose up -d cursor-runner || { echo "Docker up failed"; exit 1; }
