@@ -9,11 +9,8 @@
       ]
     },
     "cursor-agents": {
-      "command": "sh",
-      "args": [
-        "-c",
-        "cd /app/target/cursor-agents && node dist/mcp/index.js"
-      ],
+      "command": "/app/mcp-server-wrapper.sh",
+      "args": [],
       "env": {
         "REDIS_URL": "redis://redis:6379/0",
         "NODE_ENV": "production"
