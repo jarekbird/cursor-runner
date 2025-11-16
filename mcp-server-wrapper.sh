@@ -1,17 +1,15 @@
 #!/bin/bash
-# Wrapper script for cursor-agents MCP server
-# This ensures we run from the correct directory and environment variables are set
+set -euo pipefail
 
 cd /app/target/cursor-agents || {
-  echo "Error: Could not change to /app/target/cursor-agents" >&2
+  echo "[mcp-server-wrapper] Failed to cd into /app/target/cursor-agents" >&2
   exit 1
 }
 
-# Environment variables should be passed from cursor-cli via the env field in mcp.json
-# But we can also set defaults if not provided
 export REDIS_URL="${REDIS_URL:-redis://redis:6379/0}"
 export NODE_ENV="${NODE_ENV:-production}"
 
-# Run the MCP server
-exec node dist/mcp/index.js
+echo "[mcp-server-wrapper] Starting MCP server with REDIS_URL=${REDIS_URL}" >&2
+
+exec node dist/mcp/index.js "$@"
 

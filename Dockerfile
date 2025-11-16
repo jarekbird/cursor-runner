@@ -9,6 +9,9 @@ RUN apt-get update -qq && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    procps \
+    psmisc \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cursor-agent (Cursor CLI)
