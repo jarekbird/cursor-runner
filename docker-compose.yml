@@ -45,6 +45,8 @@ services:
       - shared_sqlite_db:/app/shared_db
       # Mount logs for debugging
       - ./logs:/app/logs
+      # Mount MCP configuration for cursor-cli
+      - ./mcp.json:/root/.cursor/mcp.json:ro
       # Mount cursor-cli if available on host (optional)
       # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:

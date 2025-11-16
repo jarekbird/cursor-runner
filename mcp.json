@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "/app/shared_db/shared.sqlite3"
+      ]
+    }
+  }
+}
+
