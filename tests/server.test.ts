@@ -660,6 +660,9 @@ describe('Server', () => {
 
       it('should return 200 immediately even if repository validation fails (error sent via callback)', async () => {
         mockFilesystem.exists.mockReturnValue(false);
+        const callbackWebhookSpy = jest
+          .spyOn(server.cursorExecution, 'callbackWebhook')
+          .mockResolvedValue(undefined);
 
         const response = await request(app).post('/cursor/iterate').send({
           repository: 'nonexistent-repo',
@@ -672,6 +675,24 @@ describe('Server', () => {
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.message).toBe('Request accepted, processing asynchronously');
+
+        // Wait for async processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback webhook was called with repository error
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            repository: 'nonexistent-repo',
+            error: expect.stringContaining('Repository not found locally'),
+            iterations: 0,
+            exitCode: 1,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
       });
 
       it('should stop after max iterations', async () => {

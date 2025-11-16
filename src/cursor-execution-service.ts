@@ -153,7 +153,7 @@ type CallbackWebhookPayload =
  * System settings MCP instructions
  * These instructions are appended to all non-review agent prompts
  */
-const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection. Use SQL queries via the MCP connection to read and update system_settings table. Do not modify system settings through Rails console or direct file edits.`;
+const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.`;
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
