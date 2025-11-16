@@ -1,4 +1,5 @@
 import path from 'path';
+import { mkdirSync } from 'fs';
 import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
@@ -153,11 +154,20 @@ type CallbackWebhookPayload =
  * System settings MCP instructions
  * These instructions are appended to all non-review agent prompts
  */
+const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
+const CURSOR_AGENTS_TOOLS_PATH =
+  process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
 const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
-IMPORTANT: When building an agent, use the cursor-agents MCP connection. Cursor agents should target the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/execute) with a prompt that this agent will later execute.
+IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
+- To list all agents: python3 ${CURSOR_AGENTS_TOOLS_PATH}/list_agents.py
+- To get agent status: python3 ${CURSOR_AGENTS_TOOLS_PATH}/get_agent_status.py --name <agent-name>
+- To create an agent: python3 ${CURSOR_AGENTS_TOOLS_PATH}/create_agent.py --name <name> --target-url <url> [options]
+- To delete an agent: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_agent.py --name <agent-name>
 
-IMPORTANT: For the cursor-agents MCP server, you MUST use TOOLS, not resources. The cursor-agents MCP server does not expose resources. To see existing agents, use the mcp_cursor-agents_list_agents tool. Do NOT try to list resources from cursor-agents - use the tools instead (list_agents, get_agent_status, create_agent, delete_agent).`;
+When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate) with a prompt that this agent will later execute.
+
+IMPORTANT: When creating one-time scripts (shell scripts, Python scripts, etc.), place them in ${SCRIPTS_PATH}. This directory is shared and persistent across container restarts. Do not create scripts in the repository directories or other temporary locations.`;
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
@@ -167,6 +177,7 @@ IMPORTANT: For the cursor-agents MCP server, you MUST use TOOLS, not resources. 
  */
 export class CursorExecutionService {
   private gitService: GitService;
+  private scriptsPath: string;
   private cursorCLI: CursorCLI;
   private commandParser: CommandParserService;
   private reviewAgent: ReviewAgentService;
@@ -186,6 +197,28 @@ export class CursorExecutionService {
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
     this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
+    this.scriptsPath = SCRIPTS_PATH;
+    this.ensureScriptsDirectory();
+  }
+
+  /**
+   * Ensure scripts directory exists
+   */
+  private ensureScriptsDirectory(): void {
+    if (!this.filesystem.exists(this.scriptsPath)) {
+      try {
+        mkdirSync(this.scriptsPath, { recursive: true });
+        logger.info('Created scripts directory', { path: this.scriptsPath });
+      } catch (error) {
+        // In test environments or when permissions are insufficient, log a warning
+        // The directory will be created when the container starts with proper permissions
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.warn('Could not create scripts directory', {
+          path: this.scriptsPath,
+          error: errorMessage,
+        });
+      }
+    }
   }
 
   /**

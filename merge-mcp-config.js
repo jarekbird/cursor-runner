@@ -13,15 +13,15 @@ import { execSync } from 'child_process';
 // Get the directory where this script is located (ES module way)
 const __filename = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(__filename);
-// Check if running in Docker container (cursor-runner container has /app/repositories mounted)
-const IS_DOCKER = fs.existsSync('/app/repositories');
+// Check if running in Docker container (cursor-runner container has /cursor mounted)
+const IS_DOCKER = fs.existsSync('/cursor');
 
 // In the cursor-runner container:
 // - Script is at /app/merge-mcp-config.js (copied during build)
 // - mcp.json is at /app/mcp.json (copied during build)
-// - Repositories volume is mounted at /app/repositories
+// - Cursor volume is mounted at /cursor (contains repositories and tools directories)
 const CURSOR_RUNNER_MCP = IS_DOCKER ? '/app/mcp.json' : path.join(SCRIPT_DIR, 'mcp.json');
-const REPOSITORIES_MCP = IS_DOCKER ? '/app/repositories/mcp.json' : null;
+const REPOSITORIES_MCP = IS_DOCKER ? '/cursor/repositories/mcp.json' : null;
 const ROOT_MCP = IS_DOCKER ? null : path.join(path.resolve(SCRIPT_DIR, '..'), 'mcp.json');
 
 console.log('=== Merging MCP Configuration ===');
@@ -34,7 +34,7 @@ console.log('');
 // Determine which existing mcp.json to use (repositories directory or root)
 let existingMcp = null;
 if (IS_DOCKER) {
-  // Running in Docker container - use /app/repositories/mcp.json
+  // Running in Docker container - use /cursor/repositories/mcp.json
   if (fs.existsSync(REPOSITORIES_MCP)) {
     existingMcp = REPOSITORIES_MCP;
     console.log(`Found existing MCP config at: ${REPOSITORIES_MCP}`);
@@ -72,7 +72,7 @@ if (IS_DOCKER) {
     // Try to get the Docker volume mount point
     const volumeInfo = execSync('docker volume inspect cursor_runner_repositories --format "{{.Mountpoint}}"', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
     if (volumeInfo && volumeInfo.length > 0) {
-      hostRepositoriesMcp = path.join(volumeInfo, 'mcp.json');
+      hostRepositoriesMcp = path.join(volumeInfo, 'repositories', 'mcp.json');
     }
   } catch (error) {
     // Volume doesn't exist or docker not available

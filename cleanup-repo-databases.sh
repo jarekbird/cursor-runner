@@ -6,7 +6,7 @@
 set -e
 
 CONTAINER_NAME="cursor-runner"
-REPOSITORIES_PATH="/app/repositories"
+REPOSITORIES_PATH="/cursor/repositories"
 
 echo "=== Cleaning up repository-specific databases ==="
 echo ""
