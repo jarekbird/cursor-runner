@@ -150,6 +150,12 @@ type CallbackWebhookPayload =
     };
 
 /**
+ * System settings MCP instructions
+ * These instructions are appended to all non-review agent prompts
+ */
+const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection. Use SQL queries via the MCP connection to read and update system_settings table. Do not modify system settings through Rails console or direct file edits.`;
+
+/**
  * CursorExecutionService - Orchestrates cursor command execution
  *
  * Handles repository validation, command preparation,
@@ -235,7 +241,8 @@ export class CursorExecutionService {
    */
   prepareCommand(command: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
-    return commandArgs;
+    // Append system settings MCP instructions to all prompts
+    return this.commandParser.appendInstructions(commandArgs, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
   }
 
   /**
@@ -638,8 +645,11 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
+      // Append system settings MCP instructions to resume prompt
+      const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+
       // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
-      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePrompt];
+      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
