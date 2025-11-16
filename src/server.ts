@@ -153,7 +153,7 @@ export class Server {
 
     /**
      * POST /cursor/execute
-     * Execute cursor-cli command in a repository or repositories directory
+     * Execute cursor-cli command synchronously - waits for completion before responding
      * Body: { repository?: string, branchName?: string, prompt: string }
      * If repository is not provided, uses the repositories directory as working directory
      * Prompt is required and will be used to construct the cursor command internally.
@@ -165,72 +165,22 @@ export class Server {
         const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         try {
-          logger.info('Cursor execution request received', {
+          logger.info('Cursor execution request received (synchronous)', {
             requestId,
             body: req.body,
             ip: req.ip,
             userAgent: req.get('user-agent'),
           });
 
-          // Check if callbackUrl is provided for async processing
-          const callbackUrl = body.callbackUrl || body.callback_url;
-          if (callbackUrl) {
-            // Return 200 OK immediately and process asynchronously
-            res.status(200).json({
-              success: true,
-              message: 'Request accepted, processing asynchronously',
-              requestId,
-              timestamp: new Date().toISOString(),
-            });
+          // Process execution synchronously - wait for completion
+          const result = (await this.cursorExecution.execute({
+            repository: body.repository,
+            branchName: body.branchName,
+            prompt: body.prompt,
+            requestId,
+          })) as { status: number; body: unknown };
 
-            // Process execution asynchronously
-            this.cursorExecution
-              .execute({
-                repository: body.repository,
-                branchName: body.branchName,
-                prompt: body.prompt,
-                requestId,
-                callbackUrl,
-              })
-              .catch((error: Error) => {
-                logger.error('Cursor execution processing failed', {
-                  requestId: requestId || 'unknown',
-                  error: error.message,
-                  stack: error.stack,
-                  body: req.body,
-                });
-                // Try to notify about the error via callback
-                if (callbackUrl) {
-                  this.cursorExecution
-                    .callbackWebhook(
-                      callbackUrl,
-                      {
-                        success: false,
-                        requestId,
-                        error: error.message,
-                        timestamp: new Date().toISOString(),
-                      },
-                      requestId
-                    )
-                    .catch((webhookError: Error) => {
-                      logger.error('Failed to send error callback', {
-                        requestId,
-                        error: webhookError.message,
-                      });
-                    });
-                }
-              });
-          } else {
-            // No callback URL - process synchronously (backward compatibility)
-            const result = (await this.cursorExecution.execute({
-              repository: body.repository,
-              branchName: body.branchName,
-              prompt: body.prompt,
-              requestId,
-            })) as { status: number; body: unknown };
-
-            res.status(result.status).json(result.body);
-          }
+          res.status(result.status).json(result.body);
         } catch (error) {
           const err = error as Error;
           logger.error('Cursor execution request failed', {
@@ -254,9 +204,110 @@ export class Server {
     );
 
     /**
+     * POST /cursor/execute/async
+     * Execute cursor-cli command asynchronously - returns immediately and processes in background
+     * Body: { repository?: string, branchName?: string, prompt: string, callbackUrl?: string }
+     * If repository is not provided, uses the repositories directory as working directory
+     * Prompt is required and will be used to construct the cursor command internally.
+     * callbackUrl is required for async processing.
+     */
+    router.post(
+      '/execute/async',
+      async (req: Request<unknown, unknown, CursorExecuteRequest>, res: Response) => {
+        const body = req.body as CursorExecuteRequest;
+        const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        try {
+          logger.info('Cursor execution request received (async)', {
+            requestId,
+            body: req.body,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+          });
+
+          // Check if callbackUrl is provided for async processing
+          const callbackUrl = body.callbackUrl || body.callback_url;
+          if (!callbackUrl) {
+            res.status(400).json({
+              success: false,
+              error: 'callbackUrl is required for async execution',
+              requestId,
+              timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+
+          // Return 200 OK immediately and process asynchronously
+          res.status(200).json({
+            success: true,
+            message: 'Request accepted, processing asynchronously',
+            requestId,
+            timestamp: new Date().toISOString(),
+          });
+
+          // Process execution asynchronously
+          this.cursorExecution
+            .execute({
+              repository: body.repository,
+              branchName: body.branchName,
+              prompt: body.prompt,
+              requestId,
+              callbackUrl,
+            })
+            .catch((error: Error) => {
+              logger.error('Cursor execution processing failed', {
+                requestId: requestId || 'unknown',
+                error: error.message,
+                stack: error.stack,
+                body: req.body,
+              });
+              // Try to notify about the error via callback
+              if (callbackUrl) {
+                this.cursorExecution
+                  .callbackWebhook(
+                    callbackUrl,
+                    {
+                      success: false,
+                      requestId,
+                      error: error.message,
+                      timestamp: new Date().toISOString(),
+                    },
+                    requestId
+                  )
+                  .catch((webhookError: Error) => {
+                    logger.error('Failed to send error callback', {
+                      requestId,
+                      error: webhookError.message,
+                    });
+                  });
+              }
+            });
+        } catch (error) {
+          const err = error as Error;
+          logger.error('Cursor execution request setup failed', {
+            requestId: requestId || 'unknown',
+            error: err.message,
+            stack: err.stack,
+            body: req.body,
+          });
+
+          // If we haven't sent a response yet, send error
+          if (!res.headersSent) {
+            res.status(500).json({
+              success: false,
+              error: err.message,
+              requestId: requestId || 'unknown',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    );
+
+    /**
      * POST /cursor/iterate
-     * Execute cursor-cli command iteratively until completion
-     * Body: { repository?: string, branchName?: string, prompt: string }
+     * Execute cursor-cli command iteratively until completion - waits for completion before responding
+     * Body: { repository?: string, branchName?: string, prompt: string, maxIterations?: number }
      * If repository is not provided, uses the repositories directory as working directory
      * Prompt is required and will be used to construct the cursor command internally.
      */
@@ -267,7 +318,63 @@ export class Server {
         const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         try {
-          logger.info('Cursor iterate request received', {
+          logger.info('Cursor iterate request received (synchronous)', {
+            requestId,
+            body: req.body,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+          });
+
+          // Process iteration synchronously - wait for completion
+          const result = await this.cursorExecution.iterate({
+            repository: body.repository,
+            branchName: body.branchName,
+            prompt: body.prompt,
+            requestId,
+            maxIterations: body.maxIterations || 25,
+          });
+
+          // Convert IterationResult to HTTP response
+          // Both ErrorResponse and SuccessResponse have status and body fields
+          res.status(result.status).json(result.body);
+        } catch (error) {
+          const err = error as Error;
+          logger.error('Cursor iterate request failed', {
+            requestId: requestId || 'unknown',
+            error: err.message,
+            stack: err.stack,
+            body: req.body,
+          });
+
+          // If we haven't sent a response yet, send error
+          if (!res.headersSent) {
+            res.status(500).json({
+              success: false,
+              error: err.message,
+              requestId: requestId || 'unknown',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    );
+
+    /**
+     * POST /cursor/iterate/async
+     * Execute cursor-cli command iteratively until completion - returns immediately and processes in background
+     * Body: { repository?: string, branchName?: string, prompt: string, maxIterations?: number, callbackUrl?: string }
+     * If repository is not provided, uses the repositories directory as working directory
+     * Prompt is required and will be used to construct the cursor command internally.
+     * If callbackUrl is not provided, will auto-construct one.
+     */
+    router.post(
+      '/iterate/async',
+      async (req: Request<unknown, unknown, CursorExecuteRequest>, res: Response) => {
+        const body = req.body as CursorExecuteRequest;
+        const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        try {
+          logger.info('Cursor iterate request received (async)', {
             requestId,
             body: req.body,
             ip: req.ip,

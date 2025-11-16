@@ -90,7 +90,13 @@ class CursorRunner {
 
       this.logger.info('cursor-runner initialized successfully', {
         port: this.server.port,
-        endpoints: ['GET /health', 'POST /cursor/execute', 'POST /cursor/iterate'],
+        endpoints: [
+          'GET /health',
+          'POST /cursor/execute',
+          'POST /cursor/execute/async',
+          'POST /cursor/iterate',
+          'POST /cursor/iterate/async',
+        ],
       });
     } catch (error) {
       const errorMessage = getErrorMessage(error);

@@ -169,7 +169,7 @@ describe('Server', () => {
         const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/execute').send({
+        const response = await request(app).post('/cursor/execute/async').send({
           repository: 'test-repo',
           branchName: 'main',
           callbackUrl: mockCallbackUrl,
@@ -216,7 +216,7 @@ describe('Server', () => {
         mockFilesystem.exists.mockReturnValue(false);
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/execute').send({
+        const response = await request(app).post('/cursor/execute/async').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
           prompt: 'test',
@@ -258,7 +258,7 @@ describe('Server', () => {
         mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/execute').send({
+        const response = await request(app).post('/cursor/execute/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'Create service',
@@ -332,13 +332,13 @@ describe('Server', () => {
       });
     });
 
-    describe('POST /cursor/iterate', () => {
+    describe('POST /cursor/iterate/async', () => {
       const mockCallbackUrl = 'http://localhost:3000/cursor-runner/callback?secret=test-secret';
 
       it('should call callback webhook on validation error when callbackUrl is provided', async () => {
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           callbackUrl: mockCallbackUrl,
@@ -371,7 +371,7 @@ describe('Server', () => {
         mockFilesystem.exists.mockReturnValue(false);
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
           prompt: 'test',
@@ -425,7 +425,7 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult) // Initial command
           .mockResolvedValueOnce(mockReviewResult); // Review agent
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'Create user service',
@@ -489,7 +489,7 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult2) // Resume command
           .mockResolvedValueOnce(mockReviewResult2); // Second review
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'Create user service',
@@ -539,7 +539,7 @@ describe('Server', () => {
 
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           prompt: 'test',
         });
@@ -597,7 +597,7 @@ describe('Server', () => {
 
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           prompt: 'test',
         });
@@ -647,7 +647,7 @@ describe('Server', () => {
           .mockResolvedValueOnce(mockCursorResult) // Initial command
           .mockResolvedValueOnce(mockReviewResult); // Review agent
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           prompt: 'Create user service',
           callbackUrl: mockCallbackUrl,
@@ -664,7 +664,7 @@ describe('Server', () => {
           .spyOn(server.cursorExecution, 'callbackWebhook')
           .mockResolvedValue(undefined);
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'nonexistent-repo',
           branchName: 'main',
           prompt: 'test',
@@ -733,7 +733,7 @@ describe('Server', () => {
           return Promise.resolve(result || mockCursorResult);
         });
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
@@ -776,7 +776,7 @@ describe('Server', () => {
 
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
@@ -828,7 +828,7 @@ describe('Server', () => {
 
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
@@ -891,7 +891,7 @@ describe('Server', () => {
 
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
-        const response = await request(app).post('/cursor/iterate').send({
+        const response = await request(app).post('/cursor/iterate/async').send({
           repository: 'test-repo',
           branchName: 'main',
           prompt: 'test',
