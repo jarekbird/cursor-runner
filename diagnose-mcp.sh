@@ -64,21 +64,21 @@ echo "     NODE_ENV=$NODE_ENV"
 echo ""
 
 # Try to start the server and capture output
-timeout 3 node "$MCP_SERVER" 2>&1 << 'MCP_INIT' | head -30 || {
+# MCP server uses stdio, so we'll just test if it starts without crashing
+echo "   Testing MCP server startup (will timeout after 3s, which is expected)..."
+timeout 3 node "$MCP_SERVER" </dev/null 2>&1 | head -30 || {
   EXIT_CODE=$?
   if [ $EXIT_CODE -eq 124 ]; then
-    echo "   ✓ MCP server started (timeout expected for stdio server)"
+    echo "   ✓ MCP server started (timeout after 3s is expected for stdio server)"
   else
     echo "   ✗ MCP server failed (exit code: $EXIT_CODE)"
     echo ""
     echo "   Last output:"
-    timeout 3 node "$MCP_SERVER" 2>&1 << 'MCP_INIT2' | tail -20 || true
-MCP_INIT2
-    exit 1
+    timeout 3 node "$MCP_SERVER" </dev/null 2>&1 | tail -20 || true
+    echo ""
+    echo "   → Check Redis connection and MCP server logs above"
   fi
 }
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}
-MCP_INIT
 
 # 5. Check if cursor-cli can see the config
 echo ""
