@@ -5,8 +5,8 @@
 
 import { spawn } from 'child_process';
 
-const MCP_SERVER_CMD = 'sh';
-const MCP_SERVER_ARGS = ['-c', 'cd /app/target/cursor-agents && node dist/mcp/index.js'];
+const MCP_SERVER_CMD = '/app/mcp-server-wrapper.sh';
+const MCP_SERVER_ARGS = [];
 const MCP_ENV = {
   ...process.env,
   REDIS_URL: process.env.REDIS_URL || 'redis://redis:6379/0',
