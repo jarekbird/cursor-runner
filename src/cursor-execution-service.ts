@@ -160,12 +160,25 @@ const CURSOR_AGENTS_TOOLS_PATH =
 const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
+
+Agent Management:
 - To list all agents: python3 ${CURSOR_AGENTS_TOOLS_PATH}/list_agents.py
 - To get agent status: python3 ${CURSOR_AGENTS_TOOLS_PATH}/get_agent_status.py --name <agent-name>
 - To create an agent: python3 ${CURSOR_AGENTS_TOOLS_PATH}/create_agent.py --name <name> --target-url <url> [options]
+  - Use --queue <queue-name> to assign the agent to a specific queue (defaults to "default" if not specified)
+  - Use --schedule <cron-pattern> for recurring agents (e.g., "0 8 * * *" for daily at 8 AM)
+  - Use --one-time for one-time agents that run immediately
 - To delete an agent: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_agent.py --name <agent-name>
 
+Queue Management:
+- To list all queues: python3 ${CURSOR_AGENTS_TOOLS_PATH}/list_queues.py
+- To get queue info: python3 ${CURSOR_AGENTS_TOOLS_PATH}/get_queue_info.py --queue-name <queue-name>
+- To delete an empty queue: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_queue.py --queue-name <queue-name>
+  - Note: Cannot delete the "default" queue or queues with active jobs
+
 When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate) with a prompt that this agent will later execute.
+
+Queue Organization: Agents can be organized into queues to avoid queue bloat. By default, agents are created in the "default" queue. Use descriptive queue names like "daily-tasks", "hourly-sync", or "urgent-jobs" to group related agents together.
 
 IMPORTANT: When creating one-time scripts (shell scripts, Python scripts, etc.), place them in ${SCRIPTS_PATH}. This directory is shared and persistent across container restarts. Do not create scripts in the repository directories or other temporary locations.`;
 
