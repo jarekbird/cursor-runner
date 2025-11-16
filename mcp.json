@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-sqlite",
+        "mcp-server-sqlite-npx",
         "/app/shared_db/shared.sqlite3"
       ]
     }
