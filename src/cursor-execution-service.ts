@@ -164,19 +164,27 @@ IMPORTANT: When working with tasks (creating, querying, updating, or deleting ta
 Tasks Table Schema:
 - id: INTEGER PRIMARY KEY AUTOINCREMENT
 - prompt: TEXT NOT NULL (the task prompt/description to be executed)
-- complete: BOOLEAN NOT NULL DEFAULT 0 (0 = incomplete, 1 = complete)
+- status: INTEGER NOT NULL DEFAULT 0 (task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged)
 - createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
 - updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
 - order: INTEGER DEFAULT 0 (lower numbers are processed first)
 - uuid: TEXT (unique identifier, indexed)
 
-Task Management Examples:
-- To create a task: INSERT INTO tasks (prompt, "order", complete) VALUES ('your prompt here', 0, 0)
-- To list incomplete tasks: SELECT * FROM tasks WHERE complete = 0 ORDER BY "order" ASC, id ASC
-- To mark a task as complete: UPDATE tasks SET complete = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To get next incomplete task: SELECT * FROM tasks WHERE complete = 0 ORDER BY "order" ASC, id ASC LIMIT 1
+Task Status Values:
+- 0 = ready (ready to be processed by task operator)
+- 1 = complete (task has been completed)
+- 2 = archived (task has been archived)
+- 3 = backlogged (task is in backlog, not ready for processing)
 
-The task operator agent (when enabled) automatically processes tasks from this table, sending the prompt to cursor-runner for execution.
+Task Management Examples:
+- To create a ready task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
+- To list ready tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
+- To mark a task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To archive a task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To backlog a task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To get next ready task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
+
+The task operator agent (when enabled) automatically processes tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
