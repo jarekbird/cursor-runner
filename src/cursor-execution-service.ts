@@ -157,7 +157,26 @@ type CallbackWebhookPayload =
 const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
 const CURSOR_AGENTS_TOOLS_PATH =
   process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
-const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
+const SYSTEM_PROMPT_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
+
+IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
+
+Tasks Table Schema:
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- prompt: TEXT NOT NULL (the task prompt/description to be executed)
+- complete: BOOLEAN NOT NULL DEFAULT 0 (0 = incomplete, 1 = complete)
+- createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
+- updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
+- order: INTEGER DEFAULT 0 (lower numbers are processed first)
+- uuid: TEXT (unique identifier, indexed)
+
+Task Management Examples:
+- To create a task: INSERT INTO tasks (prompt, "order", complete) VALUES ('your prompt here', 0, 0)
+- To list incomplete tasks: SELECT * FROM tasks WHERE complete = 0 ORDER BY "order" ASC, id ASC
+- To mark a task as complete: UPDATE tasks SET complete = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To get next incomplete task: SELECT * FROM tasks WHERE complete = 0 ORDER BY "order" ASC, id ASC LIMIT 1
+
+The task operator agent (when enabled) automatically processes tasks from this table, sending the prompt to cursor-runner for execution.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
@@ -175,6 +194,14 @@ Queue Management:
 - To get queue info: python3 ${CURSOR_AGENTS_TOOLS_PATH}/get_queue_info.py --queue-name <queue-name>
 - To delete an empty queue: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_queue.py --queue-name <queue-name>
   - Note: Cannot delete the "default" queue or queues with active jobs
+
+Task Operator Management:
+- To enable the task operator: python3 ${CURSOR_AGENTS_TOOLS_PATH}/enable_task_operator.py [--queue <queue-name>]
+  - The task operator automatically processes tasks from the tasks table in the database
+  - It checks for incomplete tasks (lowest order first) and sends them to cursor-runner
+  - Automatically re-enqueues itself every 5 seconds while enabled
+- To disable the task operator: python3 ${CURSOR_AGENTS_TOOLS_PATH}/disable_task_operator.py
+  - Sets the task_operator system setting to false, stopping re-enqueueing
 
 When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate/async) with a prompt that this agent will later execute.
 
@@ -291,8 +318,8 @@ export class CursorExecutionService {
    */
   prepareCommand(command: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
-    // Append system settings MCP instructions to all prompts
-    return this.commandParser.appendInstructions(commandArgs, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+    // Append system prompt instructions to all prompts
+    return this.commandParser.appendInstructions(commandArgs, SYSTEM_PROMPT_INSTRUCTIONS);
   }
 
   /**
@@ -695,8 +722,8 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
-      // Append system settings MCP instructions to resume prompt
-      const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+      // Append system prompt instructions to resume prompt
+      const resumePromptWithInstructions = resumePrompt + SYSTEM_PROMPT_INSTRUCTIONS;
 
       // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
       const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
