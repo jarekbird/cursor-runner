@@ -9,9 +9,10 @@
       ]
     },
     "cursor-agents": {
-      "command": "node",
+      "command": "sh",
       "args": [
-        "/app/target/cursor-agents/dist/mcp/index.js"
+        "-c",
+        "cd /app/target/cursor-agents && node dist/mcp/index.js"
       ],
       "env": {
         "REDIS_URL": "redis://redis:6379/0",
