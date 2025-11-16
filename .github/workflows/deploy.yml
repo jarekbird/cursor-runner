@@ -43,6 +43,12 @@ jobs:
               docker volume create shared_redis_data || true
             fi
             
+            # Create cursor-runner repositories volume if it doesn't exist
+            if ! docker volume inspect cursor_runner_repositories >/dev/null 2>&1; then
+              echo "Creating cursor_runner_repositories volume..."
+              docker volume create cursor_runner_repositories || true
+            fi
+            
             # Navigate to cursor-runner directory
             cd cursor-runner || { echo "Directory cursor-runner not found"; exit 1; }
             
@@ -51,17 +57,25 @@ jobs:
             BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
             git reset --hard origin/$BRANCH || { echo "Git reset failed"; exit 1; }
             
+            # Build the container first
+            docker compose build cursor-runner || { echo "Docker build failed"; exit 1; }
+            
             # Merge MCP configuration with existing repositories mcp.json
+            # Run the script in the cursor-runner container we just built
+            # This container has Node.js and the repositories volume mounted at /app/repositories
             echo "Merging MCP configuration..."
             if [ -f "merge-mcp-config.js" ]; then
-              chmod +x merge-mcp-config.js
-              node merge-mcp-config.js || { echo "Warning: MCP config merge failed, continuing deployment"; }
+              # Use docker compose run to use the service configuration (volumes, etc.)
+              # Override the CMD to run our merge script instead of starting the server
+              docker compose run --rm --no-deps \
+                -w /app \
+                cursor-runner \
+                node merge-mcp-config.js || { echo "Warning: MCP config merge failed, continuing deployment"; }
             else
               echo "Warning: merge-mcp-config.js not found, skipping MCP config merge"
             fi
             
-            # Build and deploy
-            docker compose build cursor-runner || { echo "Docker build failed"; exit 1; }
+            # Deploy the container
             docker compose up -d cursor-runner || { echo "Docker up failed"; exit 1; }
             echo "Deployment completed successfully"
           script_stop: true
