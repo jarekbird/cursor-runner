@@ -7,6 +7,16 @@
         "mcp-server-sqlite-npx",
         "/app/shared_db/shared.sqlite3"
       ]
+    },
+    "cursor-agents": {
+      "command": "node",
+      "args": [
+        "/app/target/cursor-agents/dist/mcp/index.js"
+      ],
+      "env": {
+        "REDIS_URL": "redis://redis:6379/0",
+        "NODE_ENV": "production"
+      }
     }
   }
 }

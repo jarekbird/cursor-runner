@@ -39,6 +39,9 @@ services:
       # Mount jarek-va codebase so cursor-runner can access it
       # Update this path to point to your jarek-va directory
       - ../jarek-va:/app/target/jarek-va
+      # Mount cursor-agents codebase so cursor-runner can run its MCP server
+      # Update this path to point to your cursor-agents directory
+      - ../cursor-agents:/app/target/cursor-agents
       # Mount repositories directory for persistence
       - cursor_runner_repositories:/app/repositories
       # Mount shared SQLite database for cross-service access
