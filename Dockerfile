@@ -67,7 +67,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # Create necessary directories
-RUN mkdir -p logs repositories
+RUN mkdir -p logs repositories /root/.cursor
 
 # Expose port
 EXPOSE 3001
