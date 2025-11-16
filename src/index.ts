@@ -79,6 +79,9 @@ class CursorRunner {
       // Validate configuration
       this.validateConfig();
 
+      // Verify MCP configuration exists
+      await this.verifyMcpConfig();
+
       // Test cursor-cli availability
       await this.cursorCLI.validate();
 
@@ -93,6 +96,36 @@ class CursorRunner {
       const errorMessage = getErrorMessage(error);
       this.logger.error('Failed to initialize cursor-runner', { error: errorMessage });
       throw error;
+    }
+  }
+
+  /**
+   * Verify MCP configuration exists and is accessible
+   */
+  async verifyMcpConfig(): Promise<void> {
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const fs = await import('fs');
+
+    const mcpConfigPath = '/root/.cursor/mcp.json';
+    const cursorAgentsMcpPath = '/app/target/cursor-agents/dist/mcp/index.js';
+
+    // Check if MCP config exists
+    if (!fs.existsSync(mcpConfigPath)) {
+      this.logger.warn('MCP config not found at /root/.cursor/mcp.json', {
+        suggestion: 'Run merge-mcp-config.js to create the MCP configuration',
+      });
+    } else {
+      this.logger.info('MCP config found', { path: mcpConfigPath });
+    }
+
+    // Check if cursor-agents MCP server exists
+    if (!fs.existsSync(cursorAgentsMcpPath)) {
+      this.logger.warn('cursor-agents MCP server not found', {
+        path: cursorAgentsMcpPath,
+        suggestion: 'Ensure cursor-agents is built and mounted at /app/target/cursor-agents',
+      });
+    } else {
+      this.logger.info('cursor-agents MCP server found', { path: cursorAgentsMcpPath });
     }
   }
 
