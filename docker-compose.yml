@@ -45,8 +45,9 @@ services:
       - shared_sqlite_db:/app/shared_db
       # Mount logs for debugging
       - ./logs:/app/logs
-      # Mount MCP configuration for cursor-cli
-      - ./mcp.json:/root/.cursor/mcp.json:ro
+      # MCP configuration is created/merged by merge-mcp-config.js during deployment
+      # The script copies the merged config to /root/.cursor/mcp.json
+      # We don't mount ./mcp.json here to allow the merge script to write the final config
       # Mount cursor-cli if available on host (optional)
       # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:

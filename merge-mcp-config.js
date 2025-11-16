@@ -5,11 +5,14 @@
  * This ensures both configurations are preserved
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
-// Get the directory where this script is located
-const SCRIPT_DIR = __dirname;
+// Get the directory where this script is located (ES module way)
+const __filename = fileURLToPath(import.meta.url);
+const SCRIPT_DIR = path.dirname(__filename);
 // Check if running in Docker container (cursor-runner container has /app/repositories mounted)
 const IS_DOCKER = fs.existsSync('/app/repositories');
 
@@ -45,11 +48,24 @@ if (IS_DOCKER) {
     // Copy cursor-runner config as base
     fs.copyFileSync(CURSOR_RUNNER_MCP, REPOSITORIES_MCP);
     console.log(`Created new MCP config at: ${REPOSITORIES_MCP}`);
+    
+    // Also copy to /root/.cursor/mcp.json for cursor-cli
+    const cursorCliMcp = '/root/.cursor/mcp.json';
+    try {
+      const cursorCliDir = path.dirname(cursorCliMcp);
+      if (!fs.existsSync(cursorCliDir)) {
+        fs.mkdirSync(cursorCliDir, { recursive: true });
+      }
+      fs.copyFileSync(REPOSITORIES_MCP, cursorCliMcp);
+      console.log(`✓ Copied config to ${cursorCliMcp} for cursor-cli`);
+    } catch (error) {
+      console.warn(`Warning: Could not copy config to ${cursorCliMcp}: ${error.message}`);
+    }
+    
     process.exit(0);
   }
 } else {
   // Running on host - try to find existing config
-  const { execSync } = require('child_process');
   let hostRepositoriesMcp = null;
   
   try {
@@ -136,9 +152,30 @@ try {
   process.exit(1);
 }
 
+// If running in Docker, also copy merged config to /root/.cursor/mcp.json for cursor-cli
+if (IS_DOCKER) {
+  const cursorCliMcp = '/root/.cursor/mcp.json';
+  try {
+    // Ensure directory exists
+    const cursorCliDir = path.dirname(cursorCliMcp);
+    if (!fs.existsSync(cursorCliDir)) {
+      fs.mkdirSync(cursorCliDir, { recursive: true });
+    }
+    // Copy merged config to cursor-cli location
+    fs.copyFileSync(existingMcp, cursorCliMcp);
+    console.log(`✓ Copied merged config to ${cursorCliMcp} for cursor-cli`);
+  } catch (error) {
+    console.warn(`Warning: Could not copy merged config to ${cursorCliMcp}: ${error.message}`);
+    console.warn('cursor-cli may not see the merged MCP configuration');
+  }
+}
+
 console.log('');
 console.log('=== Merge Summary ===');
 console.log(`Merged cursor-runner MCP config into: ${existingMcp}`);
+if (IS_DOCKER) {
+  console.log(`Also copied to /root/.cursor/mcp.json for cursor-cli`);
+}
 console.log(`Backup saved to: ${backupFile}`);
 console.log('');
 console.log('Merged configuration:');
