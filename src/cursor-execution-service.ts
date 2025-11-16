@@ -155,7 +155,9 @@ type CallbackWebhookPayload =
  */
 const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
-IMPORTANT: When building an agent, use the cursor-agents MCP connection. Cursor agents should target the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/execute) with a prompt that this agent will later execute.`;
+IMPORTANT: When building an agent, use the cursor-agents MCP connection. Cursor agents should target the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/execute) with a prompt that this agent will later execute.
+
+IMPORTANT: For the cursor-agents MCP server, you MUST use TOOLS, not resources. The cursor-agents MCP server does not expose resources. To see existing agents, use the mcp_cursor-agents_list_agents tool. Do NOT try to list resources from cursor-agents - use the tools instead (list_agents, get_agent_status, create_agent, delete_agent).`;
 
 /**
  * CursorExecutionService - Orchestrates cursor command execution
