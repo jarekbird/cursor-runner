@@ -256,7 +256,9 @@ export class GitHubAuthService {
       // Create credential file entry for GitHub
       // Format: https://username:token@github.com
       // Note: Must end with newline for git credential helper to parse correctly
+      // Also include protocol-less version for maximum compatibility
       const credentialPath = path.join(homedir(), '.git-credentials');
+      // Use exact format from the script: https://username:token@github.com
       const credentialEntry = `https://${username}:${token}@github.com\n`;
 
       logger.debug('Preparing credential entry', {
@@ -292,13 +294,37 @@ export class GitHubAuthService {
       // Verify the file was written correctly
       if (existsSync(credentialPath)) {
         const writtenContent = readFileSync(credentialPath, 'utf-8');
+        const hasGitHubEntry = writtenContent.includes('github.com');
+
         logger.info('Configured token-based authentication for GitHub', {
           username,
           credentialFile: credentialPath,
           fileExists: true,
           fileSize: writtenContent.length,
-          containsGitHub: writtenContent.includes('github.com'),
+          containsGitHub: hasGitHubEntry,
+          entryPreview: hasGitHubEntry
+            ? writtenContent
+                .split('\n')
+                .find((line) => line.includes('github.com'))
+                ?.replace(/:[^:@]+@/, ':***@') || 'not found'
+            : 'not found',
         });
+
+        // Verify git can read the credentials by checking git config
+        try {
+          const helperCheck = execSync('git config --global credential.helper', {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+          }).trim();
+          logger.debug('Credential helper verification', {
+            helper: helperCheck,
+            credentialFileExists: existsSync(credentialPath),
+          });
+        } catch (error) {
+          logger.warn('Could not verify credential helper', {
+            error: getErrorMessage(error),
+          });
+        }
       } else {
         logger.error('Failed to create credentials file', {
           credentialPath,
@@ -352,6 +378,11 @@ export class GitHubAuthService {
       // Disable interactive prompts - this is critical to prevent credential prompts
       execSync('git config --global core.askPass ""', { stdio: 'ignore' });
       logger.debug('Disabled git interactive prompts (core.askPass)');
+
+      // Set GIT_TERMINAL_PROMPT=0 in environment to prevent git from prompting
+      // This is critical for non-interactive use
+      process.env.GIT_TERMINAL_PROMPT = '0';
+      logger.debug('Set GIT_TERMINAL_PROMPT=0 in environment');
 
       // Verify credential helper is set (should be 'store' if token auth was configured)
       try {

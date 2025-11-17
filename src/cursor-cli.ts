@@ -210,12 +210,17 @@ export class CursorCLI {
 
       if (this._ptyModule) {
         try {
+          // Ensure git environment variables are set to prevent credential prompts
+          const env = {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0', // Prevent git from prompting for credentials
+          };
           child = this._ptyModule.spawn(this.cursorPath, [...args], {
             name: 'xterm-color',
             cols: 80,
             rows: 30,
             cwd,
-            env: process.env,
+            env,
           });
           usePty = true;
           logger.info('Using PTY for cursor-cli execution', {
@@ -236,10 +241,16 @@ export class CursorCLI {
 
       // Fallback to regular spawn
       if (!usePty) {
+        // Ensure git environment variables are set to prevent credential prompts
+        const env = {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0', // Prevent git from prompting for credentials
+        };
         child = spawn(this.cursorPath, [...args], {
           cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
+          env,
         });
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
