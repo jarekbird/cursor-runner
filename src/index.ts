@@ -13,6 +13,7 @@ import { TargetAppRunner } from './target-app.js';
 import { Server } from './server.js';
 import { getErrorMessage, getErrorStack } from './error-utils.js';
 import type { FormattedRequest, Phase } from './request-formatter.js';
+import { GitHubAuthService } from './github-auth.js';
 
 // Load environment variables
 dotenv.config();
@@ -78,6 +79,10 @@ class CursorRunner {
 
       // Validate configuration
       this.validateConfig();
+
+      // Initialize GitHub authentication (configure git for non-interactive use)
+      const githubAuth = new GitHubAuthService();
+      await githubAuth.initialize();
 
       // Verify MCP configuration exists
       await this.verifyMcpConfig();
