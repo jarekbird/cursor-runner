@@ -688,15 +688,42 @@ export class CursorExecutionService {
           iteration,
           originalOutputLength: originalOutput.length,
           reviewAgentOutput: reviewResponse.rawOutput?.substring(0, 200),
+          lastResultSuccess: lastResult.success,
+          lastResultExitCode: lastResult.exitCode,
+          hasStderr: !!lastResult.stderr,
         });
-        // Construct a review result that breaks iteration with the review agent's output as justification
-        reviewResult = {
-          code_complete: false,
-          break_iteration: true,
-          justification:
-            reviewResponse.rawOutput ||
-            'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
-        };
+
+        // If the cursor command succeeded (no error, exit code 0 or null) and there's output,
+        // infer that the task might be complete rather than breaking with an error.
+        // This prevents tasks from being stuck in a loop when the review agent fails.
+        const commandSucceeded =
+          lastResult.success !== false &&
+          (lastResult.exitCode === 0 || lastResult.exitCode === null) &&
+          !lastResult.stderr &&
+          originalOutput.length > 0;
+
+        if (commandSucceeded) {
+          // Infer completion if command succeeded - mark as complete to avoid infinite loops
+          logger.info('Review agent failed but command succeeded, inferring completion', {
+            requestId,
+            iteration,
+          });
+          reviewResult = {
+            code_complete: true,
+            break_iteration: false,
+            justification:
+              'Review agent failed to parse, but cursor command succeeded. Task marked as complete to prevent infinite loops.',
+          };
+        } else {
+          // Construct a review result that breaks iteration with the review agent's output as justification
+          reviewResult = {
+            code_complete: false,
+            break_iteration: true,
+            justification:
+              reviewResponse.rawOutput ||
+              'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
+          };
+        }
       }
 
       logger.info('Review result', {

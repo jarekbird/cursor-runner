@@ -83,8 +83,8 @@ export class CursorCLI {
   private readonly maxOutputSize: number;
   private _ptyModule: IPty | null = null; // Lazy-loaded
 
-  constructor() {
-    this.cursorPath = process.env.CURSOR_CLI_PATH || 'cursor';
+  constructor(cursorPath?: string) {
+    this.cursorPath = cursorPath || process.env.CURSOR_CLI_PATH || 'cursor';
     this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
     this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
   }

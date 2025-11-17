@@ -89,8 +89,12 @@ export class Server {
     this.gitService = new GitService();
     this.cursorCLI = new CursorCLI();
     this.commandParser = new CommandParserService();
+    // Create a separate CursorCLI instance for the review agent using cursor-agent
+    // This allows the review agent to use a different command than main execution
+    const reviewAgentCliPath = process.env.REVIEW_AGENT_CLI_PATH || 'cursor-agent';
+    const reviewAgentCLI = new CursorCLI(reviewAgentCliPath);
     // CursorCLI implements the CursorCLIInterface required by ReviewAgentService
-    this.reviewAgent = new ReviewAgentService(this.cursorCLI);
+    this.reviewAgent = new ReviewAgentService(reviewAgentCLI);
     this.filesystem = new FilesystemService();
     this.cursorExecution = new CursorExecutionService(
       this.gitService,

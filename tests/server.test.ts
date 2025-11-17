@@ -791,16 +791,13 @@ describe('Server', () => {
         // Wait for async processing
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Verify callback webhook was called with error and originalOutput
-        // When review agent fails to parse, we now construct a review result with break_iteration: true
-        // The justification will be the review agent's raw output
+        // Verify callback webhook was called
+        // When review agent fails to parse but command succeeded, we infer completion to prevent infinite loops
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
-            success: false,
-            error: expect.stringContaining('Invalid JSON response'),
-            reviewJustification: 'Invalid JSON response',
-            originalOutput: originalOutput,
+            success: true,
+            output: originalOutput,
             iterations: 0,
           }),
           expect.any(String)
@@ -842,16 +839,13 @@ describe('Server', () => {
         // Wait for async processing
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Verify callback webhook was called with error and originalOutput
-        // Note: When review agent throws, it's caught by review agent service and returns null,
-        // which now constructs a review result with break_iteration: true
+        // Verify callback webhook was called
+        // Note: When review agent throws but command succeeded, we infer completion to prevent infinite loops
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
-            success: false,
-            error: expect.stringContaining('Review agent error'),
-            reviewJustification: expect.stringContaining('Review agent error'),
-            originalOutput: originalOutput,
+            success: true,
+            output: originalOutput,
             iterations: 0,
           }),
           expect.any(String)

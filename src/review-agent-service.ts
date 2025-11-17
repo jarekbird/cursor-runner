@@ -109,9 +109,13 @@ ${output}`;
         options.timeout = timeout;
       }
       // Use --print for non-interactive mode (required for automation)
+      // Use --force to enable actual file operations and avoid permission prompts
       // Note: Don't use --resume as it triggers session selection menu when no session ID provided
       // Cursor maintains session context automatically within the same workspace
-      const result = await this.cursorCLI.executeCommand(['--print', reviewPrompt], options);
+      const result = await this.cursorCLI.executeCommand(
+        ['--print', '--force', reviewPrompt],
+        options
+      );
 
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex
