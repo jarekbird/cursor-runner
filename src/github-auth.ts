@@ -28,10 +28,15 @@ export class GitHubAuthService {
   /**
    * Initialize GitHub authentication
    * Configures git to work non-interactively with GitHub
+   * Matches the behavior of the git-credentials-setup.sh script
    */
   async initialize(): Promise<void> {
     try {
       logger.info('Initializing GitHub authentication...');
+
+      // Configure git user identity first (required for commits)
+      // This matches the script's order: user.name, user.email first
+      this.configureGitIdentity();
 
       // Ensure .ssh directory exists
       this.ensureSshDirectory();
@@ -40,12 +45,10 @@ export class GitHubAuthService {
       const sshConfigured = await this.configureSshAuth();
 
       // If SSH not available, try token-based authentication
+      // This will configure credential helper and credentials file
       if (!sshConfigured) {
         await this.configureTokenAuth();
       }
-
-      // Configure git user identity
-      this.configureGitIdentity();
 
       // Configure git for non-interactive use
       this.configureGitNonInteractive();
@@ -207,6 +210,7 @@ export class GitHubAuthService {
 
   /**
    * Configure token-based authentication using credential helper
+   * Matches the behavior of git-credentials-setup.sh script
    */
   private async configureTokenAuth(): Promise<void> {
     const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GIT_TOKEN;
@@ -227,11 +231,20 @@ export class GitHubAuthService {
     }
 
     try {
-      // Configure git credential helper to use token
-      // For HTTPS URLs, git will use username:token format
-      execSync(`git config --global credential.helper store`, { stdio: 'ignore' });
+      logger.info('Setting up Git credentials...');
 
-      // Create credential file with token
+      // Configure git credential helper to store credentials
+      logger.info('Configuring git credential helper...');
+      execSync('git config --global credential.helper store', { stdio: 'ignore' });
+
+      // Set up credential helper URL for GitHub specifically
+      logger.info('Configuring GitHub credential URL...');
+      execSync('git config --global credential.https://github.com.helper store', {
+        stdio: 'ignore',
+      });
+
+      // Create credential file entry for GitHub
+      // Format: https://username:token@github.com
       const credentialPath = path.join(homedir(), '.git-credentials');
       const credentialEntry = `https://${username}:${token}@github.com\n`;
 
@@ -241,18 +254,27 @@ export class GitHubAuthService {
         existingCredentials = readFileSync(credentialPath, 'utf-8');
       }
 
-      // Only add GitHub entry if it doesn't already exist
-      if (!existingCredentials.includes('github.com')) {
-        writeFileSync(credentialPath, existingCredentials + credentialEntry, {
-          mode: 0o600,
-        });
-        logger.info('Configured token-based authentication for GitHub');
-      } else {
-        logger.debug('GitHub credentials already exist in credential store');
-      }
+      // Remove existing GitHub entries (matching script behavior with grep -v)
+      const lines = existingCredentials.split('\n');
+      const filteredLines = lines.filter((line) => !line.includes('github.com'));
+      const cleanedCredentials = filteredLines.join('\n');
 
-      // Ensure correct permissions
+      // Add the credential entry
+      const updatedCredentials = cleanedCredentials
+        ? cleanedCredentials + '\n' + credentialEntry
+        : credentialEntry;
+
+      writeFileSync(credentialPath, updatedCredentials, {
+        mode: 0o600,
+      });
+
+      // Ensure correct permissions (600)
       chmodSync(credentialPath, 0o600);
+
+      logger.info('Configured token-based authentication for GitHub', {
+        username,
+        credentialFile: credentialPath,
+      });
     } catch (error) {
       logger.warn('Could not configure token-based authentication', {
         error: getErrorMessage(error),
@@ -262,6 +284,7 @@ export class GitHubAuthService {
 
   /**
    * Configure git user identity from environment variables
+   * Matches the behavior of git-credentials-setup.sh script
    */
   private configureGitIdentity(): void {
     const userName = process.env.GIT_USER_NAME || process.env.GITHUB_USERNAME;
@@ -269,11 +292,13 @@ export class GitHubAuthService {
 
     try {
       if (userName) {
+        logger.info(`Setting git user.name to: ${userName}`);
         execSync(`git config --global user.name "${userName}"`, { stdio: 'ignore' });
         logger.debug('Configured git user.name', { name: userName });
       }
 
       if (userEmail) {
+        logger.info(`Setting git user.email to: ${userEmail}`);
         execSync(`git config --global user.email "${userEmail}"`, { stdio: 'ignore' });
         logger.debug('Configured git user.email', { email: userEmail });
       }
