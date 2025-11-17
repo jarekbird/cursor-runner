@@ -45,17 +45,45 @@ export class GitHubAuthService {
       const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GIT_TOKEN;
       const username = process.env.GITHUB_USERNAME || process.env.GIT_USERNAME;
 
+      // Log what we're checking (without exposing sensitive values)
+      logger.debug('Checking for GitHub credentials', {
+        hasGITHUB_TOKEN: !!process.env.GITHUB_TOKEN,
+        hasGITHUB_PAT: !!process.env.GITHUB_PAT,
+        hasGIT_TOKEN: !!process.env.GIT_TOKEN,
+        hasGITHUB_USERNAME: !!process.env.GITHUB_USERNAME,
+        hasGIT_USERNAME: !!process.env.GIT_USERNAME,
+        tokenFound: !!token,
+        usernameFound: !!username,
+      });
+
       // Always configure token auth if credentials are provided (even if SSH exists)
       // This ensures credentials work reliably in Docker containers
       if (token && username) {
-        logger.info('Token-based credentials found, configuring token authentication...');
+        logger.info('Token-based credentials found, configuring token authentication...', {
+          username,
+          tokenLength: token.length,
+        });
         await this.configureTokenAuth();
       } else {
+        // Log what's missing
+        if (!token) {
+          logger.debug('No GitHub token found in environment', {
+            checked: ['GITHUB_TOKEN', 'GITHUB_PAT', 'GIT_TOKEN'],
+          });
+        }
+        if (!username) {
+          logger.debug('No GitHub username found in environment', {
+            checked: ['GITHUB_USERNAME', 'GIT_USERNAME'],
+          });
+        }
+
         // Try SSH key authentication if no token credentials provided
         const sshConfigured = await this.configureSshAuth();
         if (!sshConfigured) {
           logger.warn('No SSH key or token credentials found', {
             note: 'Git operations may prompt for credentials',
+            suggestion:
+              'Set GITHUB_TOKEN and GITHUB_USERNAME environment variables in docker-compose.yml',
           });
         }
       }
