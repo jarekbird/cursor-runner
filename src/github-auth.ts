@@ -41,13 +41,23 @@ export class GitHubAuthService {
       // Ensure .ssh directory exists
       this.ensureSshDirectory();
 
-      // Try SSH key authentication first (most common for automated systems)
-      const sshConfigured = await this.configureSshAuth();
+      // Check if token-based auth should be configured
+      const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GIT_TOKEN;
+      const username = process.env.GITHUB_USERNAME || process.env.GIT_USERNAME;
 
-      // If SSH not available, try token-based authentication
-      // This will configure credential helper and credentials file
-      if (!sshConfigured) {
+      // Always configure token auth if credentials are provided (even if SSH exists)
+      // This ensures credentials work reliably in Docker containers
+      if (token && username) {
+        logger.info('Token-based credentials found, configuring token authentication...');
         await this.configureTokenAuth();
+      } else {
+        // Try SSH key authentication if no token credentials provided
+        const sshConfigured = await this.configureSshAuth();
+        if (!sshConfigured) {
+          logger.warn('No SSH key or token credentials found', {
+            note: 'Git operations may prompt for credentials',
+          });
+        }
       }
 
       // Configure git for non-interactive use
@@ -245,8 +255,16 @@ export class GitHubAuthService {
 
       // Create credential file entry for GitHub
       // Format: https://username:token@github.com
+      // Note: Must end with newline for git credential helper to parse correctly
       const credentialPath = path.join(homedir(), '.git-credentials');
       const credentialEntry = `https://${username}:${token}@github.com\n`;
+
+      logger.debug('Preparing credential entry', {
+        credentialPath,
+        username,
+        tokenLength: token.length,
+        entryPreview: `https://${username}:***@github.com`,
+      });
 
       // Read existing credentials if file exists
       let existingCredentials = '';
@@ -271,10 +289,21 @@ export class GitHubAuthService {
       // Ensure correct permissions (600)
       chmodSync(credentialPath, 0o600);
 
-      logger.info('Configured token-based authentication for GitHub', {
-        username,
-        credentialFile: credentialPath,
-      });
+      // Verify the file was written correctly
+      if (existsSync(credentialPath)) {
+        const writtenContent = readFileSync(credentialPath, 'utf-8');
+        logger.info('Configured token-based authentication for GitHub', {
+          username,
+          credentialFile: credentialPath,
+          fileExists: true,
+          fileSize: writtenContent.length,
+          containsGitHub: writtenContent.includes('github.com'),
+        });
+      } else {
+        logger.error('Failed to create credentials file', {
+          credentialPath,
+        });
+      }
     } catch (error) {
       logger.warn('Could not configure token-based authentication', {
         error: getErrorMessage(error),
@@ -320,22 +349,27 @@ export class GitHubAuthService {
    */
   private configureGitNonInteractive(): void {
     try {
-      // Disable interactive prompts
+      // Disable interactive prompts - this is critical to prevent credential prompts
       execSync('git config --global core.askPass ""', { stdio: 'ignore' });
+      logger.debug('Disabled git interactive prompts (core.askPass)');
 
-      // Only set credential helper to cache if not already set to store
-      // (store is set by configureTokenAuth if token auth is used)
+      // Verify credential helper is set (should be 'store' if token auth was configured)
       try {
         const currentHelper = execSync('git config --global credential.helper', {
           encoding: 'utf-8',
           stdio: 'pipe',
         }).trim();
+        logger.debug('Current credential helper', { helper: currentHelper });
+
+        // If not set to store, set cache as fallback (but store is preferred)
         if (!currentHelper.includes('store')) {
           execSync('git config --global credential.helper cache', { stdio: 'ignore' });
+          logger.debug('Set credential helper to cache (fallback)');
         }
       } catch {
         // No credential helper set, set cache as fallback
         execSync('git config --global credential.helper cache', { stdio: 'ignore' });
+        logger.debug('Set credential helper to cache (no existing helper)');
       }
 
       // Set default branch name to avoid prompts
@@ -358,15 +392,33 @@ export class GitHubAuthService {
   private async testGitHubConnection(): Promise<void> {
     try {
       // Try to fetch from a public GitHub repository to test connectivity
-      execSync('git ls-remote --heads https://github.com/octocat/Hello-World.git 2>&1', {
-        stdio: 'ignore',
-        timeout: 10000,
+      // This will also verify credentials are working if authentication is required
+      const result = execSync(
+        'git ls-remote --heads https://github.com/octocat/Hello-World.git 2>&1',
+        {
+          encoding: 'utf-8',
+          timeout: 10000,
+        }
+      );
+      logger.debug('GitHub connectivity test passed', {
+        outputLength: result.length,
       });
-      logger.debug('GitHub connectivity test passed');
     } catch (error) {
-      logger.debug('GitHub connectivity test failed (may require authentication)', {
-        error: getErrorMessage(error),
-      });
+      const errorMessage = getErrorMessage(error);
+      // Check if it's an authentication error
+      if (errorMessage.includes('Username') || errorMessage.includes('Authentication')) {
+        logger.warn(
+          'GitHub connectivity test failed - authentication may not be configured correctly',
+          {
+            error: errorMessage,
+            note: 'Check that GITHUB_TOKEN and GITHUB_USERNAME are set in environment',
+          }
+        );
+      } else {
+        logger.debug('GitHub connectivity test failed (may require authentication)', {
+          error: errorMessage,
+        });
+      }
       // Don't throw - this is just a test
     }
   }
