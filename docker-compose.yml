@@ -16,7 +16,8 @@ services:
       # Cursor CLI Configuration
       - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
       - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
-      - CURSOR_CLI_ITERATE_TIMEOUT=${CURSOR_CLI_ITERATE_TIMEOUT:-60000}
+      - CURSOR_CLI_ITERATE_TIMEOUT=${CURSOR_CLI_ITERATE_TIMEOUT:-900000}
+      - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
       # Target Application (jarek-va) - mounted as volume
       # Note: Update this path to point to your jarek-va directory

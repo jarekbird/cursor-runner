@@ -106,6 +106,19 @@ export class CursorCLI {
   }
 
   /**
+   * Format args for logging by adding newlines around long prompts
+   */
+  private formatArgsForLogging(args: readonly string[]): readonly string[] {
+    return args.map((arg) => {
+      if (typeof arg === 'string' && arg.length > 100) {
+        // Likely a prompt - add newlines before and after for better log readability
+        return `\n\n\n\n${arg}\n\n\n\n`;
+      }
+      return arg;
+    });
+  }
+
+  /**
    * Execute a cursor-cli command
    * @param args - Command arguments
    * @param options - Execution options
@@ -133,7 +146,7 @@ export class CursorCLI {
     return new Promise<CommandResult>((resolve, reject) => {
       logger.debug('Executing cursor-cli command', {
         command: this.cursorPath,
-        args,
+        args: this.formatArgsForLogging(args),
         cwd,
       });
 
@@ -199,7 +212,7 @@ export class CursorCLI {
 
         logger.error('cursor-cli command timeout', {
           command: this.cursorPath,
-          args,
+          args: this.formatArgsForLogging(args),
           cwd,
           timeout: `${timeout}ms`,
           hasReceivedOutput,
@@ -244,7 +257,7 @@ export class CursorCLI {
         const timeSinceLastOutput = now - lastOutputTime;
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
-          args,
+          args: this.formatArgsForLogging(args),
           hasReceivedOutput,
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
@@ -256,7 +269,7 @@ export class CursorCLI {
         if (!completed && timeSinceLastOutput > idleTimeout) {
           logger.error('cursor-cli idle timeout reached', {
             command: this.cursorPath,
-            args,
+            args: this.formatArgsForLogging(args),
             cwd,
             idleTimeout: `${idleTimeout}ms`,
             hasReceivedOutput,
@@ -367,9 +380,15 @@ export class CursorCLI {
         });
 
         if (code === 0) {
-          logger.info('cursor-cli command completed successfully', { args });
+          logger.info('cursor-cli command completed successfully', {
+            args: this.formatArgsForLogging(args),
+          });
         } else {
-          logger.warn('cursor-cli command failed', { args, exitCode: code, stderr });
+          logger.warn('cursor-cli command failed', {
+            args: this.formatArgsForLogging(args),
+            exitCode: code,
+            stderr,
+          });
         }
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
