@@ -117,7 +117,7 @@ export class CursorCLI {
   ): Promise<CommandResult> {
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
-    const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '60000', 10); // 60s default
+    const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '600000', 10); // 10 minutes default
 
     // Lazy-load node-pty if available (before creating Promise)
     if (this._ptyModule === null) {
@@ -331,21 +331,12 @@ export class CursorCLI {
             hasReceivedOutput = true;
 
             const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
-
-            // Log errors more prominently, especially if they contain "submitConversationAction"
-            const isError =
-              chunk.includes('Error:') ||
-              chunk.includes('error:') ||
-              chunk.includes('submitConversationAction');
-            const logLevel = isError ? 'error' : 'warn';
-
-            logger[logLevel]('cursor-cli stderr chunk', {
+            logger.warn('cursor-cli stderr chunk', {
               command: this.cursorPath,
               args,
               chunkLength: chunk.length,
               chunkPreview: logChunk.replace(/\n/g, '\\n'),
               totalStderrLength: stderr.length + chunk.length,
-              isError,
             });
 
             stderr += chunk;

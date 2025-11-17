@@ -105,3 +105,4 @@ echo "  2. Try creating an agent using the cursor-agents MCP tools"
 echo "  3. Check cursor-cli logs for MCP connection success"
 echo ""
 
+

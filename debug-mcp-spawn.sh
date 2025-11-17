@@ -117,3 +117,4 @@ echo "  - cursor-cli might not be reading the config"
 echo "  - cursor-cli might have different PATH/env when spawning"
 echo "  - cursor-cli might need to be restarted"
 
+

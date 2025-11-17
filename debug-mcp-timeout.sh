@@ -81,3 +81,4 @@ echo "  - Check cursor-cli logs for MCP connection errors"
 echo "  - Verify cursor-cli is reading /root/.cursor/mcp.json"
 echo "  - Test MCP protocol handshake manually"
 
+
