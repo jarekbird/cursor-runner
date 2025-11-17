@@ -106,16 +106,63 @@ export class CursorCLI {
   }
 
   /**
-   * Format args for logging by adding newlines around long prompts
+   * Format args for logging - summarizes long prompts to improve readability
    */
-  private formatArgsForLogging(args: readonly string[]): readonly string[] {
-    return args.map((arg) => {
-      if (typeof arg === 'string' && arg.length > 100) {
-        // Likely a prompt - add newlines before and after for better log readability
-        return `\n\n\n\n${arg}\n\n\n\n`;
+  private formatArgsForLogging(args: readonly string[]): Record<string, unknown> {
+    const summary: Record<string, unknown> = {
+      argCount: args.length,
+      flags: [] as string[],
+      promptSummary: null as {
+        preview: string;
+        length: number;
+        lineCount: number;
+        firstLine: string;
+      } | null,
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+
+      // Collect flags (arguments starting with --)
+      if (typeof arg === 'string' && arg.startsWith('--')) {
+        (summary.flags as string[]).push(arg);
       }
-      return arg;
-    });
+
+      // Summarize long prompts (typically the last argument or very long strings)
+      if (typeof arg === 'string' && arg.length > 200) {
+        const lines = arg.split('\n');
+        const lineCount = lines.length;
+
+        // Find first non-empty line (skip leading whitespace/newlines)
+        const firstMeaningfulLine = lines.find((line) => line.trim().length > 0) || lines[0] || '';
+        const firstLinePreview = firstMeaningfulLine.trim().substring(0, 100);
+
+        // Create a short preview (first 80 chars of first meaningful line)
+        const preview =
+          firstLinePreview.length > 80
+            ? firstLinePreview.substring(0, 80) + '...'
+            : firstLinePreview;
+
+        summary.promptSummary = {
+          preview,
+          length: arg.length,
+          lineCount,
+          firstLine: firstLinePreview,
+        };
+      }
+    }
+
+    // If no long prompt found but args exist, show first few short args
+    if (!summary.promptSummary && args.length > 0) {
+      const shortArgs = args
+        .filter((arg) => typeof arg === 'string' && arg.length <= 200)
+        .slice(0, 3);
+      if (shortArgs.length > 0) {
+        summary.shortArgs = shortArgs;
+      }
+    }
+
+    return summary;
   }
 
   /**
@@ -173,7 +220,7 @@ export class CursorCLI {
           usePty = true;
           logger.info('Using PTY for cursor-cli execution', {
             command: this.cursorPath,
-            args,
+            args: this.formatArgsForLogging(args),
             cwd,
           });
         } catch (error) {
@@ -181,7 +228,7 @@ export class CursorCLI {
           logger.warn('Failed to start cursor-cli with PTY, falling back to spawn', {
             error: errorMessage,
             command: this.cursorPath,
-            args,
+            args: this.formatArgsForLogging(args),
             cwd,
           });
         }
@@ -196,7 +243,7 @@ export class CursorCLI {
         });
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
-          args,
+          args: this.formatArgsForLogging(args),
           cwd,
         });
       }
@@ -309,7 +356,7 @@ export class CursorCLI {
         const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
         logger.info('cursor-cli stdout chunk', {
           command: this.cursorPath,
-          args,
+          args: this.formatArgsForLogging(args),
           chunkLength: chunk.length,
           chunkPreview: logChunk.replace(/\n/g, '\\n'),
           totalStdoutLength: stdout.length + chunk.length,
@@ -346,7 +393,7 @@ export class CursorCLI {
             const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
             logger.warn('cursor-cli stderr chunk', {
               command: this.cursorPath,
-              args,
+              args: this.formatArgsForLogging(args),
               chunkLength: chunk.length,
               chunkPreview: logChunk.replace(/\n/g, '\\n'),
               totalStderrLength: stderr.length + chunk.length,
@@ -372,7 +419,7 @@ export class CursorCLI {
         };
 
         logger.info('cursor-cli command process closed', {
-          args,
+          args: this.formatArgsForLogging(args),
           exitCode: code,
           hasReceivedOutput,
           stdoutLength: stdout.length,
@@ -409,7 +456,7 @@ export class CursorCLI {
           clearTimeout(timeoutId);
           clearInterval(heartbeatInterval);
           logger.error('cursor-cli command error', {
-            args,
+            args: this.formatArgsForLogging(args),
             error: error.message,
             hasReceivedOutput,
             stdoutLength: stdout.length,
