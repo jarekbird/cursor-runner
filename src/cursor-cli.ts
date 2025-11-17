@@ -265,6 +265,8 @@ export class CursorCLI {
           hasReceivedOutput,
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
+          stdout: stdout,
+          stderr: stderr,
           lastOutputTime: lastOutputTime ? new Date(lastOutputTime).toISOString() : null,
         });
 
@@ -322,6 +324,8 @@ export class CursorCLI {
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
+            stdout: stdout,
+            stderr: stderr,
           });
 
           try {
@@ -352,13 +356,12 @@ export class CursorCLI {
         lastOutputTime = Date.now();
         hasReceivedOutput = true;
 
-        // Log output chunks in real-time (truncate for logging)
-        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+        // Log output chunks in real-time (full output)
         logger.info('cursor-cli stdout chunk', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
           chunkLength: chunk.length,
-          chunkPreview: logChunk.replace(/\n/g, '\\n'),
+          chunk: chunk,
           totalStdoutLength: stdout.length + chunk.length,
         });
 
@@ -390,12 +393,12 @@ export class CursorCLI {
             lastOutputTime = Date.now();
             hasReceivedOutput = true;
 
-            const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+            // Log stderr chunks in real-time (full output)
             logger.warn('cursor-cli stderr chunk', {
               command: this.cursorPath,
               args: this.formatArgsForLogging(args),
               chunkLength: chunk.length,
-              chunkPreview: logChunk.replace(/\n/g, '\\n'),
+              chunk: chunk,
               totalStderrLength: stderr.length + chunk.length,
             });
 
@@ -429,12 +432,15 @@ export class CursorCLI {
         if (code === 0) {
           logger.info('cursor-cli command completed successfully', {
             args: this.formatArgsForLogging(args),
+            stdout: stdout,
+            stderr: stderr || undefined,
           });
         } else {
           logger.warn('cursor-cli command failed', {
             args: this.formatArgsForLogging(args),
             exitCode: code,
-            stderr,
+            stdout: stdout,
+            stderr: stderr,
           });
         }
 
@@ -461,6 +467,8 @@ export class CursorCLI {
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
+            stdout: stdout,
+            stderr: stderr,
           });
           reject(error);
         });
