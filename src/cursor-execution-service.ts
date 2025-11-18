@@ -392,8 +392,8 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // Note: Don't use --resume for initial commands as it triggers session selection menu
     // --force enables file modifications
-    // --model auto uses the auto model selection instead of composer-1
-    const command = `--print --force --model auto "${prompt}"`;
+    // Model selection is handled automatically by cursor-cli when --model flag is omitted
+    const command = `--print --force "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -560,8 +560,8 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // Note: Don't use --resume for initial commands as it triggers session selection menu
     // --force enables file modifications
-    // --model auto uses the auto model selection instead of composer-1
-    const command = `--print --force --model auto "${prompt}"`;
+    // Model selection is handled automatically by cursor-cli when --model flag is omitted
+    const command = `--print --force "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -748,15 +748,8 @@ export class CursorExecutionService {
       const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
 
       // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
-      // --model auto uses the auto model selection instead of composer-1
-      const resumeArgs: string[] = [
-        '--print',
-        '--resume',
-        '--force',
-        '--model',
-        'auto',
-        resumePromptWithInstructions,
-      ];
+      // Model selection is handled automatically by cursor-cli when --model flag is omitted
+      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,

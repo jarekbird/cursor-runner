@@ -324,11 +324,12 @@ describe('Server', () => {
         // Initial commands use --print (not --resume) to avoid session selection menu
         expect(callArgs).toContain('--print');
         expect(callArgs).toContain('--force');
-        // The prompt argument comes after --force and --model auto, and will have instructions appended
+        // The prompt argument comes after --force and will have instructions appended
         // Find the index of --force and get the next non-flag argument (the prompt)
         const forceIndex = callArgs.indexOf('--force');
-        // Skip --model and auto if present
+        // Get the prompt argument (should be right after --force)
         let promptIndex = forceIndex + 1;
+        // Skip --model and its value if present (for backward compatibility)
         if (callArgs[promptIndex] === '--model') {
           promptIndex += 2; // Skip --model and its value
         }
