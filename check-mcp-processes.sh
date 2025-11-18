@@ -44,3 +44,5 @@ echo "If no MCP processes are found, cursor-cli may not be spawning them."
 echo "If processes are found, they may be hanging during initialization."
 
 
+
+

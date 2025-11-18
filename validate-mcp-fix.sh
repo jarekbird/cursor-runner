@@ -106,3 +106,5 @@ echo "  3. Check cursor-cli logs for MCP connection success"
 echo ""
 
 
+
+

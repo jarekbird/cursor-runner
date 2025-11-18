@@ -324,10 +324,15 @@ describe('Server', () => {
         // Initial commands use --print (not --resume) to avoid session selection menu
         expect(callArgs).toContain('--print');
         expect(callArgs).toContain('--force');
-        // The prompt argument comes after --force, and will have instructions appended
-        // Find the index of --force and get the next argument (the prompt)
+        // The prompt argument comes after --force and --model auto, and will have instructions appended
+        // Find the index of --force and get the next non-flag argument (the prompt)
         const forceIndex = callArgs.indexOf('--force');
-        const promptArg = callArgs[forceIndex + 1];
+        // Skip --model and auto if present
+        let promptIndex = forceIndex + 1;
+        if (callArgs[promptIndex] === '--model') {
+          promptIndex += 2; // Skip --model and its value
+        }
+        const promptArg = callArgs[promptIndex];
         expect(promptArg).toContain('Create user service with authentication');
       });
     });

@@ -112,8 +112,9 @@ ${output}`;
       // Use --force to enable actual file operations and avoid permission prompts
       // Note: Don't use --resume as it triggers session selection menu when no session ID provided
       // Cursor maintains session context automatically within the same workspace
+      // --model auto uses the auto model selection instead of composer-1
       const result = await this.cursorCLI.executeCommand(
-        ['--print', '--force', reviewPrompt],
+        ['--print', '--force', '--model', 'auto', reviewPrompt],
         options
       );
 

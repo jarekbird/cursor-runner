@@ -58,7 +58,14 @@ export class CommandParserService {
     let foundPromptFlag = false;
 
     // Flags that might appear between the prompt flag and the actual prompt text
-    const skipFlags = ['--force', '--resume', '--dry-run', '--verbose', '--quiet'] as const;
+    const skipFlags = [
+      '--force',
+      '--resume',
+      '--dry-run',
+      '--verbose',
+      '--quiet',
+      '--model',
+    ] as const;
 
     for (let i = 0; i < modifiedArgs.length; i++) {
       // Common prompt flags: --print, --prompt, -p, --instruction, --message, etc.

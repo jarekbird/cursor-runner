@@ -210,17 +210,12 @@ export class CursorCLI {
 
       if (this._ptyModule) {
         try {
-          // Ensure git environment variables are set to prevent credential prompts
-          const env = {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: '0', // Prevent git from prompting for credentials
-          };
           child = this._ptyModule.spawn(this.cursorPath, [...args], {
             name: 'xterm-color',
             cols: 80,
             rows: 30,
             cwd,
-            env,
+            env: process.env,
           });
           usePty = true;
           logger.info('Using PTY for cursor-cli execution', {
@@ -241,16 +236,10 @@ export class CursorCLI {
 
       // Fallback to regular spawn
       if (!usePty) {
-        // Ensure git environment variables are set to prevent credential prompts
-        const env = {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: '0', // Prevent git from prompting for credentials
-        };
         child = spawn(this.cursorPath, [...args], {
           cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
-          env,
         });
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
@@ -276,8 +265,6 @@ export class CursorCLI {
           hasReceivedOutput,
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
-          stdout: stdout,
-          stderr: stderr,
           lastOutputTime: lastOutputTime ? new Date(lastOutputTime).toISOString() : null,
         });
 
@@ -335,8 +322,6 @@ export class CursorCLI {
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
-            stdout: stdout,
-            stderr: stderr,
           });
 
           try {
@@ -367,12 +352,13 @@ export class CursorCLI {
         lastOutputTime = Date.now();
         hasReceivedOutput = true;
 
-        // Log output chunks in real-time (full output)
+        // Log output chunks in real-time (truncate for logging)
+        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
         logger.info('cursor-cli stdout chunk', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
           chunkLength: chunk.length,
-          chunk: chunk,
+          chunkPreview: logChunk.replace(/\n/g, '\\n'),
           totalStdoutLength: stdout.length + chunk.length,
         });
 
@@ -404,12 +390,12 @@ export class CursorCLI {
             lastOutputTime = Date.now();
             hasReceivedOutput = true;
 
-            // Log stderr chunks in real-time (full output)
+            const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
             logger.warn('cursor-cli stderr chunk', {
               command: this.cursorPath,
               args: this.formatArgsForLogging(args),
               chunkLength: chunk.length,
-              chunk: chunk,
+              chunkPreview: logChunk.replace(/\n/g, '\\n'),
               totalStderrLength: stderr.length + chunk.length,
             });
 
@@ -443,15 +429,12 @@ export class CursorCLI {
         if (code === 0) {
           logger.info('cursor-cli command completed successfully', {
             args: this.formatArgsForLogging(args),
-            stdout: stdout,
-            stderr: stderr || undefined,
           });
         } else {
           logger.warn('cursor-cli command failed', {
             args: this.formatArgsForLogging(args),
             exitCode: code,
-            stdout: stdout,
-            stderr: stderr,
+            stderr,
           });
         }
 
@@ -478,8 +461,6 @@ export class CursorCLI {
             hasReceivedOutput,
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
-            stdout: stdout,
-            stderr: stderr,
           });
           reject(error);
         });

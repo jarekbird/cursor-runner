@@ -157,34 +157,7 @@ type CallbackWebhookPayload =
 const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
 const CURSOR_AGENTS_TOOLS_PATH =
   process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
-const SYSTEM_PROMPT_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
-
-IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
-
-Tasks Table Schema:
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- prompt: TEXT NOT NULL (the task prompt/description to be executed)
-- status: INTEGER NOT NULL DEFAULT 0 (task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged)
-- createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
-- updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
-- order: INTEGER DEFAULT 0 (lower numbers are processed first)
-- uuid: TEXT (unique identifier, indexed)
-
-Task Status Values:
-- 0 = ready (ready to be processed by task operator)
-- 1 = complete (task has been completed)
-- 2 = archived (task has been archived)
-- 3 = backlogged (task is in backlog, not ready for processing)
-
-Task Management Examples:
-- To create a ready task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
-- To list ready tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
-- To mark a task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To archive a task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To backlog a task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To get next ready task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
-
-The task operator agent (when enabled) automatically processes tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
+const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
@@ -202,14 +175,6 @@ Queue Management:
 - To get queue info: python3 ${CURSOR_AGENTS_TOOLS_PATH}/get_queue_info.py --queue-name <queue-name>
 - To delete an empty queue: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_queue.py --queue-name <queue-name>
   - Note: Cannot delete the "default" queue or queues with active jobs
-
-Task Operator Management:
-- To enable the task operator: python3 ${CURSOR_AGENTS_TOOLS_PATH}/enable_task_operator.py [--queue <queue-name>]
-  - The task operator automatically processes tasks from the tasks table in the database
-  - It checks for incomplete tasks (lowest order first) and sends them to cursor-runner
-  - Automatically re-enqueues itself every 5 seconds while enabled
-- To disable the task operator: python3 ${CURSOR_AGENTS_TOOLS_PATH}/disable_task_operator.py
-  - Sets the task_operator system setting to false, stopping re-enqueueing
 
 When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate/async) with a prompt that this agent will later execute.
 
@@ -326,8 +291,8 @@ export class CursorExecutionService {
    */
   prepareCommand(command: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
-    // Append system prompt instructions to all prompts
-    return this.commandParser.appendInstructions(commandArgs, SYSTEM_PROMPT_INSTRUCTIONS);
+    // Append system settings MCP instructions to all prompts
+    return this.commandParser.appendInstructions(commandArgs, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
   }
 
   /**
@@ -427,7 +392,8 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // Note: Don't use --resume for initial commands as it triggers session selection menu
     // --force enables file modifications
-    const command = `--print --force "${prompt}"`;
+    // --model auto uses the auto model selection instead of composer-1
+    const command = `--print --force --model auto "${prompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -594,7 +560,8 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // Note: Don't use --resume for initial commands as it triggers session selection menu
     // --force enables file modifications
-    const command = `--print --force "${prompt}"`;
+    // --model auto uses the auto model selection instead of composer-1
+    const command = `--print --force --model auto "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -715,14 +682,34 @@ export class CursorExecutionService {
               'Review agent failed to parse, but cursor command succeeded. Task marked as complete to prevent infinite loops.',
           };
         } else {
-          // Construct a review result that breaks iteration with the review agent's output as justification
-          reviewResult = {
-            code_complete: false,
-            break_iteration: true,
-            justification:
-              reviewResponse.rawOutput ||
-              'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
-          };
+          // Check if this is a resource_exhausted error (should retry, not break)
+          const isResourceExhausted =
+            reviewResponse.rawOutput?.includes('resource_exhausted') ||
+            reviewResponse.rawOutput?.includes('ConnectError: [resource_exhausted]') ||
+            originalOutput.includes('resource_exhausted') ||
+            originalOutput.includes('ConnectError: [resource_exhausted]');
+
+          if (isResourceExhausted) {
+            // Resource exhausted - don't break, let retry logic handle it
+            logger.warn('Review agent failed due to resource_exhausted, will retry', {
+              requestId,
+              iteration,
+            });
+            reviewResult = {
+              code_complete: false,
+              break_iteration: false, // Don't break - allow retry
+              justification: 'Resource exhausted error detected. Will retry with backoff.',
+            };
+          } else {
+            // Construct a review result that breaks iteration with the review agent's output as justification
+            reviewResult = {
+              code_complete: false,
+              break_iteration: true,
+              justification:
+                reviewResponse.rawOutput ||
+                'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
+            };
+          }
         }
       }
 
@@ -757,11 +744,19 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
-      // Append system prompt instructions to resume prompt
-      const resumePromptWithInstructions = resumePrompt + SYSTEM_PROMPT_INSTRUCTIONS;
+      // Append system settings MCP instructions to resume prompt
+      const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
 
       // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
-      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
+      // --model auto uses the auto model selection instead of composer-1
+      const resumeArgs: string[] = [
+        '--print',
+        '--resume',
+        '--force',
+        '--model',
+        'auto',
+        resumePromptWithInstructions,
+      ];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,

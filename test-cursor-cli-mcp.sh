@@ -64,3 +64,5 @@ echo "  - Monitor processes during cursor-cli execution"
 echo "  - Verify the wrapper script works when run directly"
 
 
+
+
