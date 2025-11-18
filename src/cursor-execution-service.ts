@@ -5,6 +5,7 @@ import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
+import { ConversationService } from './conversation-service.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -19,6 +20,7 @@ export interface ExecuteParams {
   prompt: string;
   requestId: string;
   callbackUrl?: string;
+  conversationId?: string;
 }
 
 /**
@@ -31,6 +33,7 @@ export interface IterateParams {
   requestId: string;
   maxIterations?: number;
   callbackUrl?: string;
+  conversationId?: string;
 }
 
 /**
@@ -196,6 +199,7 @@ export class CursorExecutionService {
   private reviewAgent: ReviewAgentService;
   private filesystem: FilesystemService;
   private workspaceTrust: WorkspaceTrustService;
+  public conversationService: ConversationService;
 
   constructor(
     gitService: GitService,
@@ -210,6 +214,7 @@ export class CursorExecutionService {
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
     this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
+    this.conversationService = new ConversationService();
     this.scriptsPath = SCRIPTS_PATH;
     this.ensureScriptsDirectory();
   }
@@ -306,8 +311,26 @@ export class CursorExecutionService {
    * @returns Execution result
    */
   async execute(params: ExecuteParams): Promise<ExecutionResult> {
-    const { repository, branchName, prompt, requestId, callbackUrl } = params;
+    const { repository, branchName, prompt, requestId, callbackUrl, conversationId } = params;
     const startTime = Date.now();
+
+    // Get or create conversation ID (always created internally, never by external services)
+    // If not provided, uses the most recently used conversation
+    const convId = await this.conversationService.getConversationId(conversationId);
+    logger.info('Using conversation', { conversationId: convId, requestId });
+
+    // Get conversation context (built from all stored messages)
+    const contextMessages = await this.conversationService.getConversationContext(convId);
+    const contextString = this.conversationService.buildContextString(contextMessages);
+
+    // Build prompt with context - we pass the entire context string to cursor, NOT the conversation ID
+    // The conversation ID is purely an internal concept for managing context in Redis
+    const promptWithContext = contextString
+      ? `${contextString}\n\n[Current Request]\n${prompt}`
+      : prompt;
+
+    // Store only the individual user message (not the full context) to avoid duplication
+    await this.conversationService.addMessage(convId, 'user', prompt, false);
 
     // Validate request
     const validationError = this.validateRequest({ prompt });
@@ -390,12 +413,12 @@ export class CursorExecutionService {
 
     // Construct command from prompt with --force to enable actual file operations
     // --print runs in non-interactive mode (required for automation)
-    // Note: Don't use --resume for initial commands as it triggers session selection menu
+    // Note: We don't use --resume - we maintain conversation context ourselves
     // --force enables file modifications
-    const command = `--print --force "${prompt}"`;
+    const command = `--print --force "${promptWithContext}"`;
 
     // Prepare command
-    const modifiedArgs = this.prepareCommand(command);
+    let modifiedArgs = [...this.prepareCommand(command)];
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -406,9 +429,99 @@ export class CursorExecutionService {
       cwd: fullRepositoryPath,
     });
 
-    const result = await this.cursorCLI.executeCommand([...modifiedArgs], {
-      cwd: fullRepositoryPath,
-    });
+    let result: CommandResult | null = null;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount <= maxRetries) {
+      try {
+        result = await this.cursorCLI.executeCommand([...modifiedArgs], {
+          cwd: fullRepositoryPath,
+        });
+
+        // Check for context window errors
+        const output = result.stdout + result.stderr;
+        if (this.conversationService.isContextWindowError(output)) {
+          logger.warn('Context window error detected, summarizing conversation', {
+            conversationId: convId,
+            requestId,
+            retryCount,
+          });
+
+          // Summarize conversation
+          await this.summarizeConversation(convId);
+
+          // Rebuild prompt with summarized context
+          const summarizedContext = await this.conversationService.getConversationContext(convId);
+          const summarizedContextString =
+            this.conversationService.buildContextString(summarizedContext);
+          const newPromptWithContext = summarizedContextString
+            ? `${summarizedContextString}\n\n[Current Request]\n${prompt}`
+            : prompt;
+
+          // Update command with summarized context
+          const newCommand = `--print --force "${newPromptWithContext}"`;
+          modifiedArgs = [...this.prepareCommand(newCommand)];
+
+          retryCount++;
+          if (retryCount > maxRetries) {
+            logger.error('Max retries exceeded for context window errors', {
+              conversationId: convId,
+              requestId,
+            });
+            break;
+          }
+          continue;
+        }
+
+        // Success - store only the individual assistant response (not the full context)
+        await this.conversationService.addMessage(
+          convId,
+          'assistant',
+          result.stdout || result.stderr || '',
+          false
+        );
+        break;
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        const commandError = isCommandError(error) ? error : (error as CommandError);
+        const errorOutput = commandError.stdout || errorMessage;
+
+        // Check if it's a context window error
+        if (this.conversationService.isContextWindowError(errorOutput)) {
+          logger.warn('Context window error in exception, summarizing conversation', {
+            conversationId: convId,
+            requestId,
+            retryCount,
+          });
+
+          await this.summarizeConversation(convId);
+
+          // Rebuild prompt with summarized context
+          const summarizedContext = await this.conversationService.getConversationContext(convId);
+          const summarizedContextString =
+            this.conversationService.buildContextString(summarizedContext);
+          const newPromptWithContext = summarizedContextString
+            ? `${summarizedContextString}\n\n[Current Request]\n${prompt}`
+            : prompt;
+
+          const newCommand = `--print --force "${newPromptWithContext}"`;
+          modifiedArgs = [...this.prepareCommand(newCommand)];
+
+          retryCount++;
+          if (retryCount > maxRetries) {
+            throw error;
+          }
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!result) {
+      throw new Error('Failed to execute cursor command after retries');
+    }
 
     const duration = Date.now() - startTime;
     logger.info('Cursor execution completed', {
@@ -417,6 +530,7 @@ export class CursorExecutionService {
       branchName,
       success: result.success,
       duration: `${duration}ms`,
+      conversationId: convId,
     });
 
     const responseBody: SuccessResponseBody = {
@@ -465,8 +579,32 @@ export class CursorExecutionService {
    * @returns Execution result
    */
   async iterate(params: IterateParams): Promise<IterationResult> {
-    const { repository, branchName, prompt, requestId, maxIterations = 25, callbackUrl } = params;
+    const {
+      repository,
+      branchName,
+      prompt,
+      requestId,
+      maxIterations = 25,
+      callbackUrl,
+      conversationId,
+    } = params;
     const startTime = Date.now();
+
+    // Get or create conversation ID
+    const convId = await this.conversationService.getConversationId(conversationId);
+    logger.info('Using conversation for iterate', { conversationId: convId, requestId });
+
+    // Get conversation context
+    const contextMessages = await this.conversationService.getConversationContext(convId);
+    const contextString = this.conversationService.buildContextString(contextMessages);
+
+    // Build prompt with context
+    const promptWithContext = contextString
+      ? `${contextString}\n\n[Current Request]\n${prompt}`
+      : prompt;
+
+    // Store user message in conversation
+    await this.conversationService.addMessage(convId, 'user', prompt, false);
 
     // Validate request
     const validationError = this.validateRequest({ prompt });
@@ -557,10 +695,9 @@ export class CursorExecutionService {
     // Use longer timeout for iterate operations
     const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
     // --print runs in non-interactive mode (required for automation)
-    // Note: First call does NOT use --resume (it would trigger session selection menu)
+    // Note: We don't use --resume - we maintain conversation context ourselves
     // --force enables file modifications
-    // All subsequent calls in the iteration loop will use --resume
-    const command = `--print --force "${prompt}"`;
+    const command = `--print --force "${promptWithContext}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -570,64 +707,131 @@ export class CursorExecutionService {
       timeout: `${iterateTimeout}ms`,
     });
 
-    let lastResult: CommandResult;
-    try {
-      lastResult = await this.cursorCLI.executeCommand([...modifiedArgs], {
-        cwd: fullRepositoryPath,
-        timeout: iterateTimeout,
-      });
-    } catch (error) {
-      // If command failed (e.g., timeout), extract partial output from error if available
-      const commandError = isCommandError(error) ? error : (error as CommandError);
-      logger.error('Initial cursor command failed', {
-        requestId,
-        error: commandError.message,
-        hasPartialOutput: !!(commandError.stdout || commandError.stderr),
-      });
+    let lastResult: CommandResult | null = null;
+    let retryCount = 0;
+    const maxRetries = 3;
+    let currentPrompt = promptWithContext;
+    let currentArgs = [...modifiedArgs];
 
-      // Create a result object from the error with any partial output
-      lastResult = {
-        success: false,
-        exitCode: commandError.exitCode || 1,
-        stdout: commandError.stdout || '',
-        stderr: commandError.stderr || commandError.message || '',
-      };
+    while (retryCount <= maxRetries) {
+      try {
+        lastResult = await this.cursorCLI.executeCommand([...currentArgs], {
+          cwd: fullRepositoryPath,
+          timeout: iterateTimeout,
+        });
 
-      // If we have partial output, continue to review it; otherwise, throw to trigger error callback
-      if (!commandError.stdout && !commandError.stderr) {
-        throw error;
+        // Check for context window errors
+        const output = lastResult.stdout + lastResult.stderr;
+        if (this.conversationService.isContextWindowError(output)) {
+          logger.warn(
+            'Context window error detected in initial command, summarizing conversation',
+            {
+              conversationId: convId,
+              requestId,
+              retryCount,
+            }
+          );
+
+          await this.summarizeConversation(convId);
+
+          // Rebuild prompt with summarized context
+          const summarizedContext = await this.conversationService.getConversationContext(convId);
+          const summarizedContextString =
+            this.conversationService.buildContextString(summarizedContext);
+          currentPrompt = summarizedContextString
+            ? `${summarizedContextString}\n\n[Current Request]\n${prompt}`
+            : prompt;
+
+          const newCommand = `--print --force "${currentPrompt}"`;
+          currentArgs = [...this.prepareCommand(newCommand)];
+
+          retryCount++;
+          if (retryCount > maxRetries) {
+            logger.error('Max retries exceeded for context window errors in initial command', {
+              conversationId: convId,
+              requestId,
+            });
+            break;
+          }
+          continue;
+        }
+
+        // Success - store assistant response
+        await this.conversationService.addMessage(
+          convId,
+          'assistant',
+          lastResult.stdout || lastResult.stderr || '',
+          false
+        );
+        break;
+      } catch (error) {
+        // If command failed (e.g., timeout), extract partial output from error if available
+        const commandError = isCommandError(error) ? error : (error as CommandError);
+
+        // Check if it's a context window error
+        const errorOutput =
+          commandError.stdout || commandError.stderr || commandError.message || '';
+        if (this.conversationService.isContextWindowError(errorOutput)) {
+          logger.warn('Context window error in exception, summarizing conversation', {
+            conversationId: convId,
+            requestId,
+            retryCount,
+          });
+
+          await this.summarizeConversation(convId);
+
+          // Rebuild prompt with summarized context
+          const summarizedContext = await this.conversationService.getConversationContext(convId);
+          const summarizedContextString =
+            this.conversationService.buildContextString(summarizedContext);
+          currentPrompt = summarizedContextString
+            ? `${summarizedContextString}\n\n[Current Request]\n${prompt}`
+            : prompt;
+
+          const newCommand = `--print --force "${currentPrompt}"`;
+          currentArgs = [...this.prepareCommand(newCommand)];
+
+          retryCount++;
+          if (retryCount > maxRetries) {
+            // If we have partial output, continue to review it; otherwise, throw to trigger error callback
+            if (!commandError.stdout && !commandError.stderr) {
+              throw error;
+            }
+            break;
+          }
+          continue;
+        }
+
+        logger.error('Initial cursor command failed', {
+          requestId,
+          error: commandError.message,
+          hasPartialOutput: !!(commandError.stdout || commandError.stderr),
+        });
+
+        // Create a result object from the error with any partial output
+        lastResult = {
+          success: false,
+          exitCode: commandError.exitCode || 1,
+          stdout: commandError.stdout || '',
+          stderr: commandError.stderr || commandError.message || '',
+        };
+
+        // If we have partial output, continue to review it; otherwise, throw to trigger error callback
+        if (!commandError.stdout && !commandError.stderr) {
+          throw error;
+        }
+        break;
       }
+    }
+
+    if (!lastResult) {
+      throw new Error('Failed to execute initial cursor command after retries');
     }
 
     let iteration = 1;
     let iterationError: string | null = null;
     let reviewJustification: string | null = null;
     let originalOutput: string | null = null;
-    let consecutiveResourceExhaustedErrors = 0;
-
-    // Helper function for exponential backoff delay
-    const sleep = (ms: number): Promise<void> => {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    };
-
-    // Helper function to check for resource_exhausted errors
-    const isResourceExhausted = (output: string): boolean => {
-      return (
-        output.includes('resource_exhausted') ||
-        output.includes('ConnectError: [resource_exhausted]')
-      );
-    };
-
-    // Helper function to calculate exponential backoff delay
-    const getBackoffDelay = (attempt: number): number => {
-      // Exponential backoff: 2^attempt seconds, capped at 60 seconds
-      const baseDelay = 1000; // 1 second in milliseconds
-      const maxDelay = 60000; // 60 seconds max
-      const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-      // Add jitter: random 0-25% of delay to prevent thundering herd
-      const jitter = Math.random() * 0.25 * delay;
-      return Math.floor(delay + jitter);
-    };
 
     // Iteration loop
     while (iteration <= maxIterations) {
@@ -646,6 +850,15 @@ export class CursorExecutionService {
 
       // Store the original output before review (in case we need to break)
       originalOutput = lastResult.stdout || '';
+
+      // Store assistant response in conversation (before review agent processes it)
+      // This ensures we capture the cursor output, but review agent interactions are excluded
+      await this.conversationService.addMessage(
+        convId,
+        'assistant',
+        lastResult.stdout || lastResult.stderr || '',
+        false
+      );
 
       let reviewResponse: {
         result: ReviewResult | null;
@@ -671,12 +884,6 @@ export class CursorExecutionService {
         };
       }
 
-      // Check for resource_exhausted errors in review agent output or cursor command output
-      const reviewOutput = reviewResponse.rawOutput || '';
-      const cursorOutput = lastResult.stdout + lastResult.stderr;
-      const hasResourceExhausted =
-        isResourceExhausted(reviewOutput) || isResourceExhausted(cursorOutput);
-
       // If parsing failed, construct our own review result
       let reviewResult: ReviewResult | null = reviewResponse.result;
       if (!reviewResult) {
@@ -685,12 +892,9 @@ export class CursorExecutionService {
           iteration,
           originalOutputLength: originalOutput.length,
           reviewAgentOutput: reviewResponse.rawOutput?.substring(0, 200),
-          hasResourceExhausted,
         });
 
-        // If the cursor command succeeded (no error, exit code 0 or null) and there's output,
-        // infer that the task might be complete rather than breaking with an error.
-        // This prevents tasks from being stuck in a loop when the review agent fails.
+        // Check if the command succeeded - if so, infer completion to prevent infinite loops
         const commandSucceeded =
           lastResult.success !== false &&
           (lastResult.exitCode === 0 || lastResult.exitCode === null) &&
@@ -698,8 +902,7 @@ export class CursorExecutionService {
           originalOutput.length > 0;
 
         if (commandSucceeded) {
-          // Infer completion if command succeeded - mark as complete to avoid infinite loops
-          logger.info('Review agent failed but command succeeded, inferring completion', {
+          logger.info('Review agent failed to parse but command succeeded, inferring completion', {
             requestId,
             iteration,
           });
@@ -708,25 +911,6 @@ export class CursorExecutionService {
             break_iteration: false,
             justification:
               'Review agent failed to parse, but cursor command succeeded. Task marked as complete to prevent infinite loops.',
-          };
-        } else if (hasResourceExhausted) {
-          // Resource exhausted - don't break, allow retry with backoff
-          consecutiveResourceExhaustedErrors++;
-          const backoffDelay = getBackoffDelay(consecutiveResourceExhaustedErrors - 1);
-          logger.warn('Resource exhausted error detected, applying exponential backoff', {
-            requestId,
-            iteration,
-            consecutiveErrors: consecutiveResourceExhaustedErrors,
-            backoffDelayMs: backoffDelay,
-          });
-
-          // Apply exponential backoff before retrying
-          await sleep(backoffDelay);
-
-          reviewResult = {
-            code_complete: false,
-            break_iteration: false, // Don't break - allow retry
-            justification: 'Resource exhausted error detected. Retrying with exponential backoff.',
           };
         } else {
           // Construct a review result that breaks iteration with the review agent's output as justification
@@ -737,11 +921,6 @@ export class CursorExecutionService {
               reviewResponse.rawOutput ||
               'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
           };
-        }
-      } else {
-        // Review result parsed successfully - reset resource exhausted counter
-        if (!hasResourceExhausted) {
-          consecutiveResourceExhaustedErrors = 0;
         }
       }
 
@@ -776,13 +955,26 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
-      // Append system settings MCP instructions to resume prompt
-      const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+      // Get current conversation context for resume
+      const resumeContextMessages = await this.conversationService.getConversationContext(convId);
+      const resumeContextString =
+        this.conversationService.buildContextString(resumeContextMessages);
 
-      // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
-      // IMPORTANT: Always use --resume for all iterations after the first call
-      // The first call (initial command) does not use --resume, but all subsequent calls must use it
-      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
+      // Build resume prompt with context
+      const resumePromptWithContext = resumeContextString
+        ? `${resumeContextString}\n\n[Continue/Resume]\n${resumePrompt}`
+        : resumePrompt;
+
+      // Append system settings MCP instructions to resume prompt
+      const resumePromptWithInstructions =
+        resumePromptWithContext + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+
+      // Store user message (resume request) in conversation
+      await this.conversationService.addMessage(convId, 'user', resumePrompt, false);
+
+      // Execute cursor with --print (non-interactive) and --force to enable actual file operations
+      // Note: We don't use --resume - we maintain conversation context ourselves
+      const resumeArgs: string[] = ['--print', '--force', resumePromptWithInstructions];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -791,32 +983,121 @@ export class CursorExecutionService {
         timeout: `${iterateTimeout}ms`,
       });
 
-      try {
-        lastResult = await this.cursorCLI.executeCommand([...resumeArgs], {
-          cwd: fullRepositoryPath,
-          timeout: iterateTimeout,
-        });
-      } catch (error) {
-        // If command failed (e.g., timeout), extract partial output from error if available
-        const commandError = isCommandError(error) ? error : (error as CommandError);
-        logger.error('Cursor resume command failed', {
-          requestId,
-          iteration,
-          error: commandError.message,
-          hasPartialOutput: !!(commandError.stdout || commandError.stderr),
-        });
+      let resumeRetryCount = 0;
+      const maxResumeRetries = 3;
+      let currentResumePrompt = resumePromptWithInstructions;
+      let currentResumeArgs = [...resumeArgs];
 
-        // Create a result object from the error with any partial output
-        lastResult = {
-          success: false,
-          exitCode: commandError.exitCode || 1,
-          stdout: commandError.stdout || '',
-          stderr: commandError.stderr || commandError.message || '',
-        };
+      while (resumeRetryCount <= maxResumeRetries) {
+        try {
+          lastResult = await this.cursorCLI.executeCommand([...currentResumeArgs], {
+            cwd: fullRepositoryPath,
+            timeout: iterateTimeout,
+          });
 
-        // If we have no partial output, throw to break iteration
-        if (!commandError.stdout && !commandError.stderr) {
-          throw error;
+          // Check for context window errors
+          const output = lastResult.stdout + lastResult.stderr;
+          if (this.conversationService.isContextWindowError(output)) {
+            logger.warn(
+              'Context window error detected in resume command, summarizing conversation',
+              {
+                conversationId: convId,
+                requestId,
+                iteration,
+                retryCount: resumeRetryCount,
+              }
+            );
+
+            await this.summarizeConversation(convId);
+
+            // Rebuild resume prompt with summarized context
+            const summarizedContext = await this.conversationService.getConversationContext(convId);
+            const summarizedContextString =
+              this.conversationService.buildContextString(summarizedContext);
+            currentResumePrompt = summarizedContextString
+              ? `${summarizedContextString}\n\n[Continue/Resume]\n${resumePrompt}${SYSTEM_SETTINGS_MCP_INSTRUCTIONS}`
+              : resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+
+            currentResumeArgs = ['--print', '--force', currentResumePrompt];
+
+            resumeRetryCount++;
+            if (resumeRetryCount > maxResumeRetries) {
+              logger.error('Max retries exceeded for context window errors in resume command', {
+                conversationId: convId,
+                requestId,
+                iteration,
+              });
+              break;
+            }
+            continue;
+          }
+
+          // Success - store assistant response
+          await this.conversationService.addMessage(
+            convId,
+            'assistant',
+            lastResult.stdout || lastResult.stderr || '',
+            false
+          );
+          break;
+        } catch (error) {
+          // If command failed (e.g., timeout), extract partial output from error if available
+          const commandError = isCommandError(error) ? error : (error as CommandError);
+
+          // Check if it's a context window error
+          const errorOutput =
+            commandError.stdout || commandError.stderr || commandError.message || '';
+          if (this.conversationService.isContextWindowError(errorOutput)) {
+            logger.warn('Context window error in resume exception, summarizing conversation', {
+              conversationId: convId,
+              requestId,
+              iteration,
+              retryCount: resumeRetryCount,
+            });
+
+            await this.summarizeConversation(convId);
+
+            // Rebuild resume prompt with summarized context
+            const summarizedContext = await this.conversationService.getConversationContext(convId);
+            const summarizedContextString =
+              this.conversationService.buildContextString(summarizedContext);
+            currentResumePrompt = summarizedContextString
+              ? `${summarizedContextString}\n\n[Continue/Resume]\n${resumePrompt}${SYSTEM_SETTINGS_MCP_INSTRUCTIONS}`
+              : resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+
+            currentResumeArgs = ['--print', '--force', currentResumePrompt];
+
+            resumeRetryCount++;
+            if (resumeRetryCount > maxResumeRetries) {
+              // If we have partial output, continue to review it; otherwise, throw to break iteration
+              if (!commandError.stdout && !commandError.stderr) {
+                throw error;
+              }
+              break;
+            }
+            continue;
+          }
+
+          logger.error('Cursor resume command failed', {
+            requestId,
+            iteration,
+            error: commandError.message,
+            hasPartialOutput: !!(commandError.stdout || commandError.stderr),
+          });
+
+          // Create a result object from the error with any partial output
+          lastResult = {
+            success: false,
+            exitCode: commandError.exitCode || 1,
+            stdout: commandError.stdout || '',
+            stderr: commandError.stderr || commandError.message || '',
+          };
+
+          // If we have no partial output, throw to break iteration
+          if (!commandError.stdout && !commandError.stderr) {
+            throw error;
+          }
+          break;
         }
       }
 
@@ -937,6 +1218,47 @@ export class CursorExecutionService {
       status: isSuccess ? 200 : 422,
       body: responseBody,
     };
+  }
+
+  /**
+   * Summarize conversation using cursor when context window is too large
+   */
+  private async summarizeConversation(conversationId: string): Promise<void> {
+    const messages = await this.conversationService.getRawConversation(conversationId);
+
+    if (messages.length === 0) {
+      return;
+    }
+
+    // Build context string for summarization
+    const contextString = this.conversationService.buildContextString(messages);
+
+    // Create summarization prompt
+    const summarizePrompt = `Please summarize the following conversation history, reducing it to approximately 1/3 of its original length while preserving all important information, decisions, and context:
+
+${contextString}
+
+Provide a concise summary that maintains the key points and context.`;
+
+    try {
+      // Use cursor to summarize (without storing this interaction in conversation)
+      const summaryResult = await this.cursorCLI.executeCommand(
+        ['--print', '--force', summarizePrompt],
+        { cwd: '/tmp' } // Use temp directory for summarization
+      );
+
+      const summary = summaryResult.stdout || summaryResult.stderr || '';
+
+      // Store the summary using the conversation service's summarize method
+      await this.conversationService.summarizeConversation(conversationId, async () => summary);
+    } catch (error) {
+      logger.error('Failed to summarize conversation', {
+        conversationId,
+        error: getErrorMessage(error),
+      });
+      // If summarization fails, we'll just continue with the original context
+      // The next attempt might work or we'll hit max retries
+    }
   }
 
   /**

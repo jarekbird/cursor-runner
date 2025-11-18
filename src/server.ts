@@ -26,6 +26,8 @@ interface CursorExecuteRequest {
   callbackUrl?: string;
   callback_url?: string;
   maxIterations?: number;
+  conversationId?: string;
+  conversation_id?: string;
 }
 
 /**
@@ -178,6 +180,7 @@ export class Server {
             branchName: body.branchName,
             prompt: body.prompt,
             requestId,
+            conversationId: body.conversationId || body.conversation_id,
           })) as { status: number; body: unknown };
 
           res.status(result.status).json(result.body);
@@ -253,6 +256,7 @@ export class Server {
               prompt: body.prompt,
               requestId,
               callbackUrl,
+              conversationId: body.conversationId || body.conversation_id,
             })
             .catch((error: Error) => {
               logger.error('Cursor execution processing failed', {
@@ -332,6 +336,7 @@ export class Server {
             prompt: body.prompt,
             requestId,
             maxIterations: body.maxIterations || 25,
+            conversationId: body.conversationId || body.conversation_id,
           });
 
           // Convert IterationResult to HTTP response
@@ -411,6 +416,7 @@ export class Server {
               requestId,
               maxIterations: body.maxIterations || 25,
               callbackUrl,
+              conversationId: body.conversationId || body.conversation_id,
             })
             .catch((error: CommandErrorWithOutput) => {
               logger.error('Cursor iterate processing failed', {
@@ -469,6 +475,41 @@ export class Server {
         }
       }
     );
+
+    /**
+     * POST /cursor/conversation/new
+     * Force create a new conversation ID
+     * Returns the new conversation ID that will be used for subsequent requests
+     */
+    router.post('/conversation/new', async (req: Request, res: Response) => {
+      try {
+        logger.info('Force new conversation request received', {
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        const conversationId =
+          await this.cursorExecution.conversationService.forceNewConversation();
+
+        res.status(200).json({
+          success: true,
+          conversationId,
+          message: 'New conversation created',
+        });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Force new conversation request failed', {
+          error: err.message,
+          stack: err.stack,
+        });
+
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
 
     // Mount cursor routes
     this.app.use('/cursor', router);
