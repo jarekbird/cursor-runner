@@ -1,5 +1,5 @@
 import path from 'path';
-import { mkdirSync, readFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
@@ -197,77 +197,6 @@ export class CursorExecutionService {
   private filesystem: FilesystemService;
   private workspaceTrust: WorkspaceTrustService;
 
-  /**
-   * Extract session ID from cursor CLI output or workspace state
-   * @param output - Command output
-   * @param workspacePath - Workspace path to check for session files
-   * @returns Session ID if found, null otherwise
-   */
-  private async extractSessionId(output: string, workspacePath: string): Promise<string | null> {
-    // Try to extract from output (common patterns)
-    // Pattern 1: "Session ID: <id>" or "session: <id>"
-    const sessionIdPatterns = [
-      /[Ss]ession\s+[Ii][Dd]:\s*([a-zA-Z0-9_-]+)/,
-      /[Ss]ession:\s*([a-zA-Z0-9_-]+)/,
-      /sessionId["\s:=]+([a-zA-Z0-9_-]+)/i,
-    ];
-
-    for (const pattern of sessionIdPatterns) {
-      const match = output.match(pattern);
-      if (match && match[1]) {
-        logger.info('Extracted session ID from output', { sessionId: match[1] });
-        return match[1];
-      }
-    }
-
-    // Try to read from workspace state files
-    try {
-      const cursorDir = path.join(workspacePath, '.cursor');
-      if (this.filesystem.exists(cursorDir)) {
-        // Check for common session file locations
-        const sessionFilePaths = [
-          path.join(cursorDir, 'session.json'),
-          path.join(cursorDir, 'session-id.txt'),
-          path.join(cursorDir, 'state.json'),
-        ];
-
-        for (const sessionFilePath of sessionFilePaths) {
-          if (this.filesystem.exists(sessionFilePath)) {
-            const content = readFileSync(sessionFilePath, 'utf-8');
-            try {
-              const parsed = JSON.parse(content);
-              const sessionId = parsed.sessionId || parsed.session_id || parsed.id;
-              if (sessionId && typeof sessionId === 'string') {
-                logger.info('Extracted session ID from workspace file', {
-                  sessionId,
-                  file: sessionFilePath,
-                });
-                return sessionId;
-              }
-            } catch {
-              // Not JSON, try as plain text
-              const trimmed = content.trim();
-              if (trimmed) {
-                logger.info('Extracted session ID from text file', {
-                  sessionId: trimmed,
-                  file: sessionFilePath,
-                });
-                return trimmed;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      logger.debug('Failed to read session ID from workspace files', {
-        error: getErrorMessage(error),
-        workspacePath,
-      });
-    }
-
-    return null;
-  }
-
   constructor(
     gitService: GitService,
     cursorCLI: CursorCLI,
@@ -463,7 +392,6 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // Note: Don't use --resume for initial commands as it triggers session selection menu
     // --force enables file modifications
-    // Model selection is handled automatically by cursor-cli when --model flag is omitted
     const command = `--print --force "${prompt}"`;
 
     // Prepare command
@@ -629,9 +557,9 @@ export class CursorExecutionService {
     // Use longer timeout for iterate operations
     const iterateTimeout = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10); // 15 minutes default
     // --print runs in non-interactive mode (required for automation)
-    // Note: Don't use --resume for initial commands as it triggers session selection menu
+    // Note: First call does NOT use --resume (it would trigger session selection menu)
     // --force enables file modifications
-    // Model selection is handled automatically by cursor-cli when --model flag is omitted
+    // All subsequent calls in the iteration loop will use --resume
     const command = `--print --force "${prompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
@@ -675,18 +603,31 @@ export class CursorExecutionService {
     let iterationError: string | null = null;
     let reviewJustification: string | null = null;
     let originalOutput: string | null = null;
-    let sessionId: string | null = null;
+    let consecutiveResourceExhaustedErrors = 0;
 
-    // Extract session ID from initial command output
-    sessionId = await this.extractSessionId(
-      lastResult.stdout + lastResult.stderr,
-      fullRepositoryPath
-    );
-    if (sessionId) {
-      logger.info('Session ID extracted from initial command', { requestId, sessionId });
-    } else {
-      logger.debug('No session ID found in initial command output', { requestId });
-    }
+    // Helper function for exponential backoff delay
+    const sleep = (ms: number): Promise<void> => {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    };
+
+    // Helper function to check for resource_exhausted errors
+    const isResourceExhausted = (output: string): boolean => {
+      return (
+        output.includes('resource_exhausted') ||
+        output.includes('ConnectError: [resource_exhausted]')
+      );
+    };
+
+    // Helper function to calculate exponential backoff delay
+    const getBackoffDelay = (attempt: number): number => {
+      // Exponential backoff: 2^attempt seconds, capped at 60 seconds
+      const baseDelay = 1000; // 1 second in milliseconds
+      const maxDelay = 60000; // 60 seconds max
+      const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+      // Add jitter: random 0-25% of delay to prevent thundering herd
+      const jitter = Math.random() * 0.25 * delay;
+      return Math.floor(delay + jitter);
+    };
 
     // Iteration loop
     while (iteration <= maxIterations) {
@@ -730,6 +671,12 @@ export class CursorExecutionService {
         };
       }
 
+      // Check for resource_exhausted errors in review agent output or cursor command output
+      const reviewOutput = reviewResponse.rawOutput || '';
+      const cursorOutput = lastResult.stdout + lastResult.stderr;
+      const hasResourceExhausted =
+        isResourceExhausted(reviewOutput) || isResourceExhausted(cursorOutput);
+
       // If parsing failed, construct our own review result
       let reviewResult: ReviewResult | null = reviewResponse.result;
       if (!reviewResult) {
@@ -738,9 +685,7 @@ export class CursorExecutionService {
           iteration,
           originalOutputLength: originalOutput.length,
           reviewAgentOutput: reviewResponse.rawOutput?.substring(0, 200),
-          lastResultSuccess: lastResult.success,
-          lastResultExitCode: lastResult.exitCode,
-          hasStderr: !!lastResult.stderr,
+          hasResourceExhausted,
         });
 
         // If the cursor command succeeded (no error, exit code 0 or null) and there's output,
@@ -764,35 +709,39 @@ export class CursorExecutionService {
             justification:
               'Review agent failed to parse, but cursor command succeeded. Task marked as complete to prevent infinite loops.',
           };
-        } else {
-          // Check if this is a resource_exhausted error (should retry, not break)
-          const isResourceExhausted =
-            reviewResponse.rawOutput?.includes('resource_exhausted') ||
-            reviewResponse.rawOutput?.includes('ConnectError: [resource_exhausted]') ||
-            originalOutput.includes('resource_exhausted') ||
-            originalOutput.includes('ConnectError: [resource_exhausted]');
+        } else if (hasResourceExhausted) {
+          // Resource exhausted - don't break, allow retry with backoff
+          consecutiveResourceExhaustedErrors++;
+          const backoffDelay = getBackoffDelay(consecutiveResourceExhaustedErrors - 1);
+          logger.warn('Resource exhausted error detected, applying exponential backoff', {
+            requestId,
+            iteration,
+            consecutiveErrors: consecutiveResourceExhaustedErrors,
+            backoffDelayMs: backoffDelay,
+          });
 
-          if (isResourceExhausted) {
-            // Resource exhausted - don't break, let retry logic handle it
-            logger.warn('Review agent failed due to resource_exhausted, will retry', {
-              requestId,
-              iteration,
-            });
-            reviewResult = {
-              code_complete: false,
-              break_iteration: false, // Don't break - allow retry
-              justification: 'Resource exhausted error detected. Will retry with backoff.',
-            };
-          } else {
-            // Construct a review result that breaks iteration with the review agent's output as justification
-            reviewResult = {
-              code_complete: false,
-              break_iteration: true,
-              justification:
-                reviewResponse.rawOutput ||
-                'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
-            };
-          }
+          // Apply exponential backoff before retrying
+          await sleep(backoffDelay);
+
+          reviewResult = {
+            code_complete: false,
+            break_iteration: false, // Don't break - allow retry
+            justification: 'Resource exhausted error detected. Retrying with exponential backoff.',
+          };
+        } else {
+          // Construct a review result that breaks iteration with the review agent's output as justification
+          reviewResult = {
+            code_complete: false,
+            break_iteration: true,
+            justification:
+              reviewResponse.rawOutput ||
+              'Failed to parse review agent output. This may indicate an authentication error or review agent failure.',
+          };
+        }
+      } else {
+        // Review result parsed successfully - reset resource exhausted counter
+        if (!hasResourceExhausted) {
+          consecutiveResourceExhaustedErrors = 0;
         }
       }
 
@@ -830,31 +779,10 @@ export class CursorExecutionService {
       // Append system settings MCP instructions to resume prompt
       const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
 
-      // Build resume command args
-      // Use --resume with session ID if we have one, otherwise use --print --force
-      // Model selection is handled automatically by cursor-cli when --model flag is omitted
-      const resumeArgs: string[] = ['--print', '--force'];
-      if (sessionId) {
-        resumeArgs.push('--resume', sessionId);
-        logger.info('Using --resume with session ID', { requestId, iteration, sessionId });
-      } else {
-        // Try to extract session ID from last result if we don't have one yet
-        const extractedSessionId = await this.extractSessionId(
-          lastResult.stdout + lastResult.stderr,
-          fullRepositoryPath
-        );
-        if (extractedSessionId) {
-          sessionId = extractedSessionId;
-          resumeArgs.push('--resume', sessionId);
-          logger.info('Extracted and using session ID', { requestId, iteration, sessionId });
-        } else {
-          logger.debug('No session ID available, using --print --force without --resume', {
-            requestId,
-            iteration,
-          });
-        }
-      }
-      resumeArgs.push(resumePromptWithInstructions);
+      // Execute cursor with --print (non-interactive), --resume and --force to enable actual file operations
+      // IMPORTANT: Always use --resume for all iterations after the first call
+      // The first call (initial command) does not use --resume, but all subsequent calls must use it
+      const resumeArgs: string[] = ['--print', '--resume', '--force', resumePromptWithInstructions];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -868,22 +796,6 @@ export class CursorExecutionService {
           cwd: fullRepositoryPath,
           timeout: iterateTimeout,
         });
-
-        // Extract and update session ID from command output if not already set
-        if (!sessionId) {
-          const extractedSessionId = await this.extractSessionId(
-            lastResult.stdout + lastResult.stderr,
-            fullRepositoryPath
-          );
-          if (extractedSessionId) {
-            sessionId = extractedSessionId;
-            logger.info('Session ID extracted from command output', {
-              requestId,
-              iteration,
-              sessionId,
-            });
-          }
-        }
       } catch (error) {
         // If command failed (e.g., timeout), extract partial output from error if available
         const commandError = isCommandError(error) ? error : (error as CommandError);
