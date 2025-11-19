@@ -140,6 +140,7 @@ export class Server {
     this.setupCursorRoutes();
 
     // Conversation history UI and API
+    // Must be after other routes to avoid conflicts
     this.setupConversationRoutes();
 
     // Error handling middleware (must be after all routes)
