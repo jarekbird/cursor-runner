@@ -290,6 +290,31 @@ export class CursorExecutionService {
   }
 
   /**
+   * Check for API key errors in cursor-cli output and log prominently
+   * @param output - Combined stdout/stderr output from cursor-cli
+   * @param requestId - Request ID for logging context
+   */
+  private checkForApiKeyErrors(output: string, requestId: string): void {
+    const apiKeyErrorPatterns = [
+      /API key.*invalid/i,
+      /invalid.*API key/i,
+      /API key.*is invalid/i,
+      /The provided API key is invalid/i,
+    ];
+
+    const hasApiKeyError = apiKeyErrorPatterns.some((pattern) => pattern.test(output));
+
+    if (hasApiKeyError) {
+      logger.error('Cursor API key error detected', {
+        requestId,
+        message:
+          'CURSOR_API_KEY environment variable is invalid or not set. Please set a valid CURSOR_API_KEY in your environment configuration.',
+        hint: 'Check your docker-compose.yml or .env file for CURSOR_API_KEY configuration',
+      });
+    }
+  }
+
+  /**
    * Prepare command with instructions
    * @param command - Original command string
    * @returns Prepared command arguments
@@ -410,11 +435,11 @@ export class CursorExecutionService {
     // Store user message in conversation
     await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
-    // Construct command from prompt with --force and --model auto
+    // Construct command from prompt with --force
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --model auto uses automatic model selection
-    const command = `--print --force --model auto "${fullPrompt}"`;
+    // Model selection is handled automatically by cursor-cli when --model flag is omitted
+    const command = `--print --force "${fullPrompt}"`;
 
     // Prepare command
     const modifiedArgs = this.prepareCommand(command);
@@ -452,6 +477,9 @@ export class CursorExecutionService {
       });
       await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
     }
+
+    // Check for API key errors and log prominently
+    this.checkForApiKeyErrors(combinedOutput, requestId);
 
     const duration = Date.now() - startTime;
     logger.info('Cursor execution completed', {
@@ -631,8 +659,8 @@ export class CursorExecutionService {
       isNaN(iterateTimeoutValue) || iterateTimeoutValue <= 0 ? 900000 : iterateTimeoutValue; // 15 minutes default
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --model auto uses automatic model selection
-    const command = `--print --force --model auto "${initialFullPrompt}"`;
+    // Model selection is handled automatically by cursor-cli when --model flag is omitted
+    const command = `--print --force "${initialFullPrompt}"`;
     const modifiedArgs = this.prepareCommand(command);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -670,6 +698,9 @@ export class CursorExecutionService {
         });
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
+
+      // Check for API key errors and log prominently
+      this.checkForApiKeyErrors(combinedOutput, requestId);
     } catch (error) {
       // If command failed (e.g., timeout), extract partial output from error if available
       const commandError = isCommandError(error) ? error : (error as CommandError);
@@ -707,6 +738,9 @@ export class CursorExecutionService {
         });
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
+
+      // Check for API key errors in error output
+      this.checkForApiKeyErrors(combinedErrorOutput, requestId);
 
       // If we have partial output, continue to review it; otherwise, throw to trigger error callback
       if (!commandError.stdout && !commandError.stderr) {
@@ -831,9 +865,10 @@ export class CursorExecutionService {
         fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePromptWithInstructions}`;
       }
 
-      // Execute cursor with --print (non-interactive), --force and --model auto
+      // Execute cursor with --print (non-interactive) and --force
+      // Model selection is handled automatically by cursor-cli when --model flag is omitted
       // Never use --resume, instead pass full conversation context
-      const resumeArgs: string[] = ['--print', '--force', '--model', 'auto', fullResumePrompt];
+      const resumeArgs: string[] = ['--print', '--force', fullResumePrompt];
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -1062,7 +1097,8 @@ ${contextString}
 Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
-      const summarizeCommand = `--print --force --model auto "${summarizePrompt}"`;
+      // Model selection is handled automatically by cursor-cli when --model flag is omitted
+      const summarizeCommand = `--print --force "${summarizePrompt}"`;
       const summarizeArgs = this.prepareCommand(summarizeCommand);
 
       logger.info('Summarizing conversation using cursor', {
