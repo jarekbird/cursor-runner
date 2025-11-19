@@ -76,7 +76,9 @@ jobs:
             fi
             
             # Deploy the container
-            docker compose up -d cursor-runner || { echo "Docker up failed"; exit 1; }
+            # Force recreate to ensure Traefik picks up new labels
+            # DOMAIN_NAME should be set in the environment (same as jarek-va)
+            DOMAIN_NAME=$DOMAIN_NAME docker compose up -d --force-recreate cursor-runner || { echo "Docker up failed"; exit 1; }
             echo "Deployment completed successfully"
           script_stop: true
           debug: true
