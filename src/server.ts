@@ -830,7 +830,7 @@ export class Server {
             refreshBtn.disabled = true;
             
             try {
-                const response = await fetch('api/list');
+                const response = await fetch('/conversations/api/list');
                 if (!response.ok) {
                     throw new Error('Failed to load conversations');
                 }
@@ -891,7 +891,7 @@ export class Server {
             detail.classList.add('active');
             
             try {
-                const response = await fetch(\`api/\${conversationId}\`);
+                const response = await fetch(\`/conversations/api/\${conversationId}\`);
                 if (!response.ok) {
                     throw new Error('Failed to load conversation');
                 }
