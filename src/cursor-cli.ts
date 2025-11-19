@@ -85,8 +85,11 @@ export class CursorCLI {
 
   constructor(cursorPath?: string) {
     this.cursorPath = cursorPath || process.env.CURSOR_CLI_PATH || 'cursor';
-    this.timeout = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10); // 5 minutes default
-    this.maxOutputSize = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
+    const timeoutValue = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10);
+    this.timeout = isNaN(timeoutValue) || timeoutValue <= 0 ? 300000 : timeoutValue; // 5 minutes default
+    const maxOutputSizeValue = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10);
+    this.maxOutputSize =
+      isNaN(maxOutputSizeValue) || maxOutputSizeValue <= 0 ? 10485760 : maxOutputSizeValue; // 10MB default
   }
 
   /**
@@ -177,7 +180,9 @@ export class CursorCLI {
   ): Promise<CommandResult> {
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
-    const idleTimeout = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '600000', 10); // 10 minutes default
+    const idleTimeoutValue = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '600000', 10);
+    const idleTimeout =
+      isNaN(idleTimeoutValue) || idleTimeoutValue <= 0 ? 600000 : idleTimeoutValue; // 10 minutes default
 
     // Lazy-load node-pty if available (before creating Promise)
     if (this._ptyModule === null) {
@@ -253,7 +258,8 @@ export class CursorCLI {
         return;
       }
 
-      // Set timeout
+      // Set timeout (ensure it's a valid positive number)
+      const validTimeout = isNaN(timeout) || timeout <= 0 ? this.timeout : timeout;
       const timeoutId = setTimeout(() => {
         if (completed) return;
 
@@ -261,7 +267,7 @@ export class CursorCLI {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
           cwd,
-          timeout: `${timeout}ms`,
+          timeout: `${validTimeout}ms`,
           hasReceivedOutput,
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
@@ -290,13 +296,13 @@ export class CursorCLI {
         }
 
         completed = true;
-        const timeoutError: CommandError = new Error(`Command timeout after ${timeout}ms`);
+        const timeoutError: CommandError = new Error(`Command timeout after ${validTimeout}ms`);
         // Attach partial output to error so it can be retrieved by caller
         timeoutError.stdout = stdout;
         timeoutError.stderr = stderr;
         timeoutError.exitCode = null;
         reject(timeoutError);
-      }, timeout);
+      }, validTimeout);
 
       // Log heartbeat every 30 seconds to show process is still running
       const heartbeatInterval = setInterval(() => {

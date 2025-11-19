@@ -302,6 +302,7 @@ export class ConversationService {
 
   /**
    * Build context string from conversation messages for cursor prompt
+   * Prefixes messages with "user:" or "cursor:" to indicate sender
    */
   buildContextString(messages: ConversationMessage[]): string {
     if (messages.length === 0) {
@@ -310,8 +311,8 @@ export class ConversationService {
 
     return messages
       .map((msg) => {
-        const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
-        return `[${roleLabel}]: ${msg.content}`;
+        const prefix = msg.role === 'user' ? 'user:' : 'cursor:';
+        return `${prefix} ${msg.content}`;
       })
       .join('\n\n');
   }

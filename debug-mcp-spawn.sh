@@ -120,3 +120,4 @@ echo "  - cursor-cli might need to be restarted"
 
 
 
+

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # cursor-runner Node.js application service
   cursor-runner:
