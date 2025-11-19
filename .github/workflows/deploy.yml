@@ -77,8 +77,24 @@ jobs:
             
             # Deploy the container
             # Force recreate to ensure Traefik picks up new labels
-            # DOMAIN_NAME should be set in the environment (same as jarek-va)
-            DOMAIN_NAME=$DOMAIN_NAME docker compose up -d --force-recreate cursor-runner || { echo "Docker up failed"; exit 1; }
+            # Load DOMAIN_NAME from .env file if it exists
+            if [ -f ".env" ]; then
+              echo "Loading environment variables from .env file..."
+              set -a  # Automatically export all variables
+              source .env
+              set +a  # Stop automatically exporting
+              echo "DOMAIN_NAME loaded: ${DOMAIN_NAME:-not set}"
+            else
+              echo "Warning: .env file not found, DOMAIN_NAME may not be set"
+            fi
+            
+            # Force recreate container with DOMAIN_NAME from environment
+            DOMAIN_NAME=${DOMAIN_NAME:-} docker compose up -d --force-recreate cursor-runner || { echo "Docker up failed"; exit 1; }
+            
+            # Wait a few seconds for the service to start
+            echo "Waiting for service to start..."
+            sleep 10
+            
             echo "Deployment completed successfully"
           script_stop: true
           debug: true
