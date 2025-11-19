@@ -446,10 +446,10 @@ export class CursorExecutionService {
     await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
     // Construct command as array to avoid parsing issues with newlines in prompt
+    // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --model auto uses automatic model selection
-    const commandArgs = ['--print', '--force', '--model', 'auto', fullPrompt];
+    const commandArgs = ['--model', 'auto', '--print', '--force', fullPrompt];
 
     // Prepare command with instructions
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
@@ -667,10 +667,10 @@ export class CursorExecutionService {
     const iterateTimeoutValue = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10);
     const iterateTimeout =
       isNaN(iterateTimeoutValue) || iterateTimeoutValue <= 0 ? 900000 : iterateTimeoutValue; // 15 minutes default
+    // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --model auto uses automatic model selection
-    const commandArgs = ['--print', '--force', '--model', 'auto', initialFullPrompt];
+    const commandArgs = ['--model', 'auto', '--print', '--force', initialFullPrompt];
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -873,9 +873,9 @@ export class CursorExecutionService {
         fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePrompt}`;
       }
 
-      // Execute cursor with --print (non-interactive), --force and --model auto
+      // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
-      const resumeCommandArgs = ['--print', '--force', '--model', 'auto', fullResumePrompt];
+      const resumeCommandArgs = ['--model', 'auto', '--print', '--force', fullResumePrompt];
       const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
       logger.info('Executing cursor resume command', {
         requestId,
@@ -1105,7 +1105,7 @@ ${contextString}
 Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
-      const summarizeCommandArgs = ['--print', '--force', '--model', 'auto', summarizePrompt];
+      const summarizeCommandArgs = ['--model', 'auto', '--print', '--force', summarizePrompt];
       const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
 
       logger.info('Summarizing conversation using cursor', {

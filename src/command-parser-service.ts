@@ -78,12 +78,22 @@ export class CommandParserService {
       ) {
         // Find the next non-flag argument (the prompt text)
         // Skip over flags like --force, --resume, etc.
+        // Also skip --model and its value
         let promptIndex = i + 1;
-        while (
-          promptIndex < modifiedArgs.length &&
-          (skipFlags as readonly string[]).includes(modifiedArgs[promptIndex])
-        ) {
-          promptIndex++;
+        while (promptIndex < modifiedArgs.length) {
+          const currentArg = modifiedArgs[promptIndex];
+
+          // If it's a skip flag, skip it
+          if ((skipFlags as readonly string[]).includes(currentArg)) {
+            promptIndex++;
+            // If we just skipped --model, also skip its value
+            if (currentArg === '--model' && promptIndex < modifiedArgs.length) {
+              promptIndex++;
+            }
+          } else {
+            // Found the prompt text
+            break;
+          }
         }
 
         if (promptIndex < modifiedArgs.length) {
