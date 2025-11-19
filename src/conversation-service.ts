@@ -420,6 +420,66 @@ export class ConversationService {
   }
 
   /**
+   * List all conversations from Redis
+   * Returns array of conversation summaries
+   */
+  async listConversations(): Promise<ConversationContext[]> {
+    if (!this.redisAvailable) {
+      return [];
+    }
+
+    try {
+      // Get all keys matching the conversation pattern
+      const keys = await this.redis.keys('cursor:conversation:*');
+
+      // Fetch all conversations in parallel
+      const promises = keys.map(async (key) => {
+        try {
+          const data = await this.redis.get(key);
+          if (data) {
+            return JSON.parse(data) as ConversationContext;
+          }
+          return null;
+        } catch (error) {
+          logger.warn('Failed to parse conversation', {
+            key,
+            error: getErrorMessage(error),
+          });
+          return null;
+        }
+      });
+
+      const results = await Promise.all(promises);
+      return results.filter((conv): conv is ConversationContext => conv !== null);
+    } catch (error) {
+      logger.warn('Failed to list conversations from Redis', {
+        error: getErrorMessage(error),
+      });
+      this.redisAvailable = false;
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific conversation by ID
+   */
+  async getConversationById(conversationId: string): Promise<ConversationContext | null> {
+    if (!this.redisAvailable) {
+      return null;
+    }
+
+    try {
+      return await this.getConversation(conversationId);
+    } catch (error) {
+      logger.warn('Failed to get conversation by ID', {
+        conversationId,
+        error: getErrorMessage(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Close Redis connection
    */
   async close(): Promise<void> {

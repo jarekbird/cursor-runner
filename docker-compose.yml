@@ -60,6 +60,24 @@ services:
       # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:
       - virtual-assistant-network
+    labels:
+      - "traefik.enable=true"
+      # Path-based routing - accessible at /conversations/* on the same domain
+      # Priority ensures this router is evaluated before the general Rails app router
+      - "traefik.http.routers.cursor-runner-conversations.priority=10"
+      - "traefik.http.routers.cursor-runner-conversations.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations`)"
+      - "traefik.http.routers.cursor-runner-conversations.entrypoints=websecure"
+      - "traefik.http.routers.cursor-runner-conversations.tls.certresolver=letsencrypt"
+      - "traefik.http.services.cursor-runner-conversations.loadbalancer.server.port=3001"
+      # Strip /conversations prefix before forwarding to the service
+      - "traefik.http.middlewares.cursor-runner-conversations-stripprefix.stripprefix.prefixes=/conversations"
+      # Security headers middleware
+      - "traefik.http.middlewares.cursor-runner-conversations-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.cursor-runner-conversations-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.cursor-runner-conversations-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.cursor-runner-conversations-headers.headers.stsPreload=true"
+      # Apply both strip prefix and security headers
+      - "traefik.http.routers.cursor-runner-conversations.middlewares=cursor-runner-conversations-stripprefix,cursor-runner-conversations-headers"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
