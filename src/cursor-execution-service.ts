@@ -326,6 +326,16 @@ export class CursorExecutionService {
   }
 
   /**
+   * Prepare command arguments array with instructions
+   * @param args - Command arguments array
+   * @returns Prepared command arguments with instructions appended
+   */
+  prepareCommandArgs(args: readonly string[]): readonly string[] {
+    // Append system settings MCP instructions to all prompts
+    return this.commandParser.appendInstructions(args, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+  }
+
+  /**
    * Execute a single cursor command
    * @param params - Execution parameters
    * @param params.repository - Repository name (optional, uses repositories directory if not provided)
@@ -435,14 +445,14 @@ export class CursorExecutionService {
     // Store user message in conversation
     await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
-    // Construct command from prompt with --force and --model auto
+    // Construct command as array to avoid parsing issues with newlines in prompt
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
     // --model auto uses automatic model selection
-    const command = `--print --force --model auto "${fullPrompt}"`;
+    const commandArgs = ['--print', '--force', '--model', 'auto', fullPrompt];
 
-    // Prepare command
-    const modifiedArgs = this.prepareCommand(command);
+    // Prepare command with instructions
+    const modifiedArgs = this.prepareCommandArgs(commandArgs);
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -660,8 +670,8 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
     // --model auto uses automatic model selection
-    const command = `--print --force --model auto "${initialFullPrompt}"`;
-    const modifiedArgs = this.prepareCommand(command);
+    const commandArgs = ['--print', '--force', '--model', 'auto', initialFullPrompt];
+    const modifiedArgs = this.prepareCommandArgs(commandArgs);
 
     logger.info('Executing initial cursor command for iterate', {
       requestId,
@@ -856,18 +866,17 @@ export class CursorExecutionService {
       const resumePrompt =
         'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
 
-      // Append system settings MCP instructions to resume prompt
-      const resumePromptWithInstructions = resumePrompt + SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
-
       // Build full prompt with conversation context
-      let fullResumePrompt = resumePromptWithInstructions;
+      // System settings MCP instructions will be appended by prepareCommandArgs
+      let fullResumePrompt = resumePrompt;
       if (contextString) {
-        fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePromptWithInstructions}`;
+        fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePrompt}`;
       }
 
       // Execute cursor with --print (non-interactive), --force and --model auto
       // Never use --resume, instead pass full conversation context
-      const resumeArgs: string[] = ['--print', '--force', '--model', 'auto', fullResumePrompt];
+      const resumeCommandArgs = ['--print', '--force', '--model', 'auto', fullResumePrompt];
+      const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -1096,8 +1105,8 @@ ${contextString}
 Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
-      const summarizeCommand = `--print --force --model auto "${summarizePrompt}"`;
-      const summarizeArgs = this.prepareCommand(summarizeCommand);
+      const summarizeCommandArgs = ['--print', '--force', '--model', 'auto', summarizePrompt];
+      const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
 
       logger.info('Summarizing conversation using cursor', {
         conversationId,
