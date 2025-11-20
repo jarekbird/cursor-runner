@@ -139,7 +139,7 @@ export class Server {
     // Cursor execution routes
     this.setupCursorRoutes();
 
-    // Conversation history UI and API
+    // Conversation history API endpoints (UI is served by jarek-va-ui)
     // Must be after other routes to avoid conflicts
     this.setupConversationRoutes();
 
@@ -580,384 +580,18 @@ export class Server {
   }
 
   /**
-   * Setup conversation history UI and API routes
+   * Setup conversation history API routes
+   * UI is served by jarek-va-ui at /conversations
+   * API endpoints are at /conversations/api/* (routed to cursor-runner via Traefik)
    */
   setupConversationRoutes(): void {
     const router: Router = express.Router();
 
     /**
-     * GET /conversations
-     * Serve the conversation history UI
-     */
-    router.get('/', (req: Request, res: Response) => {
-      res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversation History - Cursor Runner</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
-            color: #333;
-            line-height: 1.6;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        header {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            color: #7f8c8d;
-            font-size: 14px;
-        }
-        .controls {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        button {
-            background: #3498db;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #2980b9;
-        }
-        button:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-        }
-        .search-box {
-            flex: 1;
-            min-width: 200px;
-        }
-        .search-box input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .conversations-list {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        .conversation-item {
-            padding: 15px 20px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .conversation-item:hover {
-            background: #f8f9fa;
-        }
-        .conversation-item:last-child {
-            border-bottom: none;
-        }
-        .conversation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .conversation-id {
-            font-family: monospace;
-            font-size: 12px;
-            color: #7f8c8d;
-        }
-        .conversation-date {
-            font-size: 12px;
-            color: #95a5a6;
-        }
-        .conversation-preview {
-            font-size: 14px;
-            color: #555;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .conversation-stats {
-            font-size: 12px;
-            color: #95a5a6;
-            margin-top: 5px;
-        }
-        .conversation-detail {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-top: 20px;
-            display: none;
-        }
-        .conversation-detail.active {
-            display: block;
-        }
-        .detail-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #eee;
-        }
-        .detail-title {
-            font-size: 18px;
-            color: #2c3e50;
-        }
-        .close-btn {
-            background: #e74c3c;
-            padding: 8px 16px;
-            font-size: 12px;
-        }
-        .close-btn:hover {
-            background: #c0392b;
-        }
-        .messages {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .message {
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid;
-        }
-        .message.user {
-            background: #e3f2fd;
-            border-color: #2196f3;
-        }
-        .message.assistant {
-            background: #f1f8e9;
-            border-color: #8bc34a;
-        }
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 12px;
-            font-weight: bold;
-            color: #555;
-        }
-        .message-content {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
-        }
-        .error {
-            background: #fee;
-            color: #c33;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-        .empty {
-            text-align: center;
-            padding: 40px;
-            color: #95a5a6;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Conversation History</h1>
-            <div class="subtitle">View and browse Redis conversation history from cursor-runner</div>
-        </header>
-        
-        <div class="controls">
-            <button id="refreshBtn" onclick="loadConversations()">Refresh</button>
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Search conversations..." onkeyup="filterConversations()">
-            </div>
-        </div>
-        
-        <div id="loading" class="loading">Loading conversations...</div>
-        <div id="error" class="error" style="display: none;"></div>
-        <div id="conversationsList" class="conversations-list" style="display: none;"></div>
-        <div id="conversationDetail" class="conversation-detail"></div>
-    </div>
-
-    <script>
-        let allConversations = [];
-        
-        async function loadConversations() {
-            const loading = document.getElementById('loading');
-            const error = document.getElementById('error');
-            const list = document.getElementById('conversationsList');
-            const refreshBtn = document.getElementById('refreshBtn');
-            
-            loading.style.display = 'block';
-            error.style.display = 'none';
-            list.style.display = 'none';
-            refreshBtn.disabled = true;
-            
-            try {
-                const response = await fetch('/conversations/api/list');
-                if (!response.ok) {
-                    throw new Error('Failed to load conversations');
-                }
-                const conversations = await response.json();
-                allConversations = conversations;
-                displayConversations(conversations);
-            } catch (err) {
-                error.textContent = 'Error: ' + err.message;
-                error.style.display = 'block';
-            } finally {
-                loading.style.display = 'none';
-                refreshBtn.disabled = false;
-            }
-        }
-        
-        function displayConversations(conversations) {
-            const list = document.getElementById('conversationsList');
-            
-            if (conversations.length === 0) {
-                list.innerHTML = '<div class="empty">No conversations found</div>';
-                list.style.display = 'block';
-                return;
-            }
-            
-            // Sort by last accessed time (most recent first)
-            conversations.sort((a, b) => 
-                new Date(b.lastAccessedAt) - new Date(a.lastAccessedAt)
-            );
-            
-            list.innerHTML = conversations.map(conv => {
-                const messageCount = conv.messages ? conv.messages.length : 0;
-                const preview = conv.messages && conv.messages.length > 0
-                    ? conv.messages[conv.messages.length - 1].content.substring(0, 100)
-                    : 'No messages';
-                const createdAt = new Date(conv.createdAt).toLocaleString();
-                const lastAccessed = new Date(conv.lastAccessedAt).toLocaleString();
-                
-                return \`
-                    <div class="conversation-item" onclick="showConversation('\${conv.conversationId}')">
-                        <div class="conversation-header">
-                            <span class="conversation-id">\${conv.conversationId}</span>
-                            <span class="conversation-date">Last: \${lastAccessed}</span>
-                        </div>
-                        <div class="conversation-preview">\${escapeHtml(preview)}</div>
-                        <div class="conversation-stats">
-                            \${messageCount} messages • Created: \${createdAt}
-                        </div>
-                    </div>
-                \`;
-            }).join('');
-            
-            list.style.display = 'block';
-        }
-        
-        async function showConversation(conversationId) {
-            const detail = document.getElementById('conversationDetail');
-            detail.innerHTML = '<div class="loading">Loading conversation...</div>';
-            detail.classList.add('active');
-            
-            try {
-                const response = await fetch(\`/conversations/api/\${conversationId}\`);
-                if (!response.ok) {
-                    throw new Error('Failed to load conversation');
-                }
-                const conversation = await response.json();
-                
-                detail.innerHTML = \`
-                    <div class="detail-header">
-                        <div class="detail-title">Conversation: \${conversation.conversationId}</div>
-                        <button class="close-btn" onclick="closeConversation()">Close</button>
-                    </div>
-                    <div class="messages">
-                        \${conversation.messages && conversation.messages.length > 0
-                            ? conversation.messages.map(msg => \`
-                                <div class="message \${msg.role}">
-                                    <div class="message-header">
-                                        <span>\${msg.role === 'user' ? 'User' : 'Assistant'}</span>
-                                        <span>\${new Date(msg.timestamp).toLocaleString()}</span>
-                                    </div>
-                                    <div class="message-content">\${escapeHtml(msg.content)}</div>
-                                </div>
-                            \`).join('')
-                            : '<div class="empty">No messages in this conversation</div>'
-                        }
-                    </div>
-                \`;
-            } catch (err) {
-                detail.innerHTML = \`<div class="error">Error: \${err.message}</div>\`;
-            }
-        }
-        
-        function closeConversation() {
-            document.getElementById('conversationDetail').classList.remove('active');
-        }
-        
-        function filterConversations() {
-            const search = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = allConversations.filter(conv => {
-                const id = conv.conversationId.toLowerCase();
-                const content = conv.messages 
-                    ? conv.messages.map(m => m.content).join(' ').toLowerCase()
-                    : '';
-                return id.includes(search) || content.includes(search);
-            });
-            displayConversations(filtered);
-        }
-        
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Load conversations on page load
-        loadConversations();
-    </script>
-</body>
-</html>
-      `);
-    });
-
-    /**
      * GET /conversations/api/list
      * Get list of all conversations
      */
-    router.get('/api/list', async (req: Request, res: Response) => {
+    router.get('/list', async (req: Request, res: Response) => {
       try {
         const conversations = await this.cursorExecution.conversationService.listConversations();
         res.json(conversations);
@@ -978,7 +612,7 @@ export class Server {
      * GET /conversations/api/:conversationId
      * Get a specific conversation by ID
      */
-    router.get('/api/:conversationId', async (req: Request, res: Response) => {
+    router.get('/:conversationId', async (req: Request, res: Response) => {
       try {
         const { conversationId } = req.params;
         const conversation =
@@ -1007,8 +641,12 @@ export class Server {
       }
     });
 
-    // Mount conversation routes at root since Traefik strips /conversations prefix
-    this.app.use('/', router);
+    // Mount conversation API routes at /api
+    // Traefik routes /conversations/api/* to cursor-runner (priority 20, higher than jarek-va-ui)
+    // Traefik strips /conversations prefix, so /conversations/api/list becomes /api/list
+    // Router mounted at /api with routes /list and /:conversationId
+    // Final routes: /api/list and /api/:conversationId (accessible as /conversations/api/list from frontend)
+    this.app.use('/api', router);
   }
 
   /**
