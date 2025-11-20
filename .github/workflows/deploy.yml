@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -77,30 +79,14 @@ jobs:
             
             # Deploy the container
             # Force recreate to ensure Traefik picks up new labels
-            # Load DOMAIN_NAME from .env file if it exists
-            # Use a safer method that only processes valid KEY=VALUE pairs
-            if [ -f ".env" ]; then
-              echo "Loading environment variables from .env file..."
-              # Only export lines that match KEY=VALUE pattern (no comments, no invalid lines)
-              # This safely handles .env files with comments or malformed entries
-              # Process each line individually to handle values with spaces
-              while IFS= read -r line || [ -n "$line" ]; do
-                # Skip empty lines and comments
-                if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
-                  continue
-                fi
-                # Only process lines that match KEY=VALUE pattern (must start with letter/underscore, contain =)
-                if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-                  export "$line" 2>/dev/null || true
-                fi
-              done < .env
-              echo "DOMAIN_NAME loaded: ${DOMAIN_NAME:-not set}"
-            else
-              echo "Warning: .env file not found, DOMAIN_NAME may not be set"
-            fi
+            # DOMAIN_NAME is optional - used for Traefik routing labels
+            # Should be just the domain name (e.g., "jarekva.com") without protocol
+            # Can be set via GitHub secret DOMAIN_NAME or environment variable
+            export DOMAIN_NAME=${DOMAIN_NAME:-jarekva.com}
+            echo "Using DOMAIN_NAME: $DOMAIN_NAME"
             
             # Force recreate container with DOMAIN_NAME from environment
-            DOMAIN_NAME=${DOMAIN_NAME:-} docker compose up -d --force-recreate cursor-runner || { echo "Docker up failed"; exit 1; }
+            docker compose up -d --force-recreate cursor-runner || { echo "Docker up failed"; exit 1; }
             
             # Wait a few seconds for the service to start
             echo "Waiting for service to start..."
