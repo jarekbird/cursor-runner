@@ -379,20 +379,31 @@ export class ConversationService {
     conversationId: string,
     context: ConversationContext
   ): Promise<void> {
-    if (!this.redisAvailable) {
+    // Check connection before saving
+    const isConnected = await this.checkRedisConnection();
+    if (!isConnected) {
+      logger.warn('Cannot save conversation, Redis not available', {
+        conversationId,
+        redisStatus: this.redis.status,
+      });
       return;
     }
 
     try {
-      await this.redis.setex(
-        `cursor:conversation:${conversationId}`,
-        this.TTL,
-        JSON.stringify(context)
-      );
+      const key = `cursor:conversation:${conversationId}`;
+      await this.redis.setex(key, this.TTL, JSON.stringify(context));
+      logger.debug('Saved conversation to Redis', {
+        conversationId,
+        key,
+        messageCount: context.messages.length,
+        ttl: this.TTL,
+      });
     } catch (error) {
-      logger.warn('Failed to save conversation to Redis', {
+      logger.error('Failed to save conversation to Redis', {
         conversationId,
         error: getErrorMessage(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        redisStatus: this.redis.status,
       });
       this.redisAvailable = false;
     }
@@ -420,17 +431,78 @@ export class ConversationService {
   }
 
   /**
+   * Check Redis connection and update availability status
+   */
+  private async checkRedisConnection(): Promise<boolean> {
+    try {
+      const status = this.redis.status;
+      if (status === 'ready' || status === 'connect') {
+        // Try to ping to verify connection is actually working
+        const pingResult = await this.redis.ping();
+        if (pingResult === 'PONG') {
+          if (!this.redisAvailable) {
+            logger.info('Redis connection restored', { status });
+            this.redisAvailable = true;
+          }
+          return true;
+        }
+      }
+
+      // Try to reconnect if not connected
+      if (status === 'end' || status === 'close') {
+        logger.info('Attempting to reconnect to Redis', { previousStatus: status });
+        try {
+          await this.redis.connect();
+          const pingResult = await this.redis.ping();
+          if (pingResult === 'PONG') {
+            this.redisAvailable = true;
+            return true;
+          }
+        } catch (reconnectError) {
+          logger.warn('Redis reconnection failed', {
+            error: getErrorMessage(reconnectError),
+          });
+        }
+      }
+
+      this.redisAvailable = false;
+      return false;
+    } catch (error) {
+      logger.warn('Redis connection check failed', {
+        error: getErrorMessage(error),
+      });
+      this.redisAvailable = false;
+      return false;
+    }
+  }
+
+  /**
    * List all conversations from Redis
    * Returns array of conversation summaries
    */
   async listConversations(): Promise<ConversationContext[]> {
-    if (!this.redisAvailable) {
+    // Check Redis connection status before proceeding
+    const isConnected = await this.checkRedisConnection();
+
+    if (!isConnected) {
+      logger.warn('Cannot list conversations, Redis not available', {
+        redisStatus: this.redis.status,
+        redisAvailable: this.redisAvailable,
+      });
       return [];
     }
 
     try {
       // Get all keys matching the conversation pattern
       const keys = await this.redis.keys('cursor:conversation:*');
+      logger.debug('Found conversation keys in Redis', { keyCount: keys.length });
+
+      if (keys.length === 0) {
+        logger.info('No conversations found in Redis', {
+          pattern: 'cursor:conversation:*',
+        });
+        return [];
+      }
 
       // Fetch all conversations in parallel
       const promises = keys.map(async (key) => {
@@ -450,10 +522,17 @@ export class ConversationService {
       });
 
       const results = await Promise.all(promises);
-      return results.filter((conv): conv is ConversationContext => conv !== null);
+      const conversations = results.filter((conv): conv is ConversationContext => conv !== null);
+      logger.info('Listed conversations from Redis', {
+        totalKeys: keys.length,
+        validConversations: conversations.length,
+      });
+      return conversations;
     } catch (error) {
-      logger.warn('Failed to list conversations from Redis', {
+      logger.error('Failed to list conversations from Redis', {
         error: getErrorMessage(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        redisStatus: this.redis.status,
       });
       this.redisAvailable = false;
       return [];

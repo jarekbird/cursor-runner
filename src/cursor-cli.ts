@@ -73,6 +73,48 @@ export interface GenerationResult {
 }
 
 /**
+ * Simple semaphore for concurrency control
+ */
+class Semaphore {
+  private count: number;
+  private waiting: Array<() => void> = [];
+
+  constructor(count: number) {
+    this.count = count;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.count > 0) {
+      this.count--;
+      return;
+    }
+
+    return new Promise<void>((resolve) => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.waiting.length > 0) {
+      const resolve = this.waiting.shift();
+      if (resolve) {
+        resolve();
+      }
+    } else {
+      this.count++;
+    }
+  }
+
+  getAvailable(): number {
+    return this.count;
+  }
+
+  getWaiting(): number {
+    return this.waiting.length;
+  }
+}
+
+/**
  * CursorCLI - Wrapper for cursor-cli execution
  *
  * Handles execution of cursor-cli commands with timeouts and error handling.
@@ -82,6 +124,7 @@ export class CursorCLI {
   private readonly timeout: number;
   private readonly maxOutputSize: number;
   private _ptyModule: IPty | null = null; // Lazy-loaded
+  private readonly semaphore: Semaphore;
 
   constructor(cursorPath?: string) {
     this.cursorPath = cursorPath || process.env.CURSOR_CLI_PATH || 'cursor';
@@ -90,6 +133,18 @@ export class CursorCLI {
     const maxOutputSizeValue = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10);
     this.maxOutputSize =
       isNaN(maxOutputSizeValue) || maxOutputSizeValue <= 0 ? 10485760 : maxOutputSizeValue; // 10MB default
+
+    // Concurrency limit - default to 5, configurable via CURSOR_CLI_MAX_CONCURRENT
+    const maxConcurrentValue = parseInt(process.env.CURSOR_CLI_MAX_CONCURRENT || '5', 10);
+    const maxConcurrent =
+      isNaN(maxConcurrentValue) || maxConcurrentValue <= 0 ? 5 : maxConcurrentValue;
+    this.semaphore = new Semaphore(maxConcurrent);
+
+    logger.info('CursorCLI initialized', {
+      maxConcurrent,
+      timeout: this.timeout,
+      maxOutputSize: this.maxOutputSize,
+    });
   }
 
   /**
@@ -178,6 +233,29 @@ export class CursorCLI {
     args: readonly string[] = [],
     options: ExecuteCommandOptions = {}
   ): Promise<CommandResult> {
+    // Acquire semaphore to limit concurrency
+    const available = this.semaphore.getAvailable();
+    const waiting = this.semaphore.getWaiting();
+
+    if (waiting > 0 || available <= 0) {
+      logger.info('Waiting for cursor-cli execution slot', {
+        available,
+        waiting,
+        args: this.formatArgsForLogging(args),
+      });
+    }
+
+    await this.semaphore.acquire();
+
+    // Track that we've acquired the semaphore
+    const currentAvailable = this.semaphore.getAvailable();
+    const currentWaiting = this.semaphore.getWaiting();
+    logger.debug('Acquired cursor-cli execution slot', {
+      available: currentAvailable,
+      waiting: currentWaiting,
+      args: this.formatArgsForLogging(args),
+    });
+
     const cwd = options.cwd || process.cwd();
     const timeout = options.timeout || this.timeout;
     const idleTimeoutValue = parseInt(process.env.CURSOR_CLI_IDLE_TIMEOUT || '600000', 10);
@@ -201,6 +279,14 @@ export class CursorCLI {
         args: this.formatArgsForLogging(args),
         cwd,
       });
+
+      // Wrapper to ensure semaphore is released on rejection
+      const safeReject = (error: unknown): void => {
+        if (!completed) {
+          this.semaphore.release();
+        }
+        reject(error);
+      };
 
       let stdout = '';
       let stderr = '';
@@ -254,7 +340,7 @@ export class CursorCLI {
       }
 
       if (!child) {
-        reject(new Error('Failed to create child process'));
+        safeReject(new Error('Failed to create child process'));
         return;
       }
 
@@ -301,7 +387,7 @@ export class CursorCLI {
         timeoutError.stdout = stdout;
         timeoutError.stderr = stderr;
         timeoutError.exitCode = null;
-        reject(timeoutError);
+        safeReject(timeoutError);
       }, validTimeout);
 
       // Log heartbeat every 30 seconds to show process is still running
@@ -348,7 +434,7 @@ export class CursorCLI {
           idleError.stdout = stdout;
           idleError.stderr = stderr;
           idleError.exitCode = null;
-          reject(idleError);
+          safeReject(idleError);
         }
       }, 30000);
 
@@ -377,7 +463,7 @@ export class CursorCLI {
             // Ignore
           }
           completed = true;
-          reject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
+          safeReject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
         }
 
@@ -445,6 +531,8 @@ export class CursorCLI {
         }
 
         // Always resolve with result, even on failure, so caller can access stdout/stderr
+        // Release semaphore before resolving
+        this.semaphore.release();
         resolve(result);
       };
 
@@ -468,7 +556,7 @@ export class CursorCLI {
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
           });
-          reject(error);
+          safeReject(error);
         });
       }
     });
