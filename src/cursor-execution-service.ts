@@ -161,7 +161,9 @@ type CallbackWebhookPayload =
 const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
 const CURSOR_AGENTS_TOOLS_PATH =
   process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
-const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
+const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any prompt, you MUST clear all git changes (staged and unstaged) in the repository. Use \`git reset --hard HEAD\` to discard all local changes and \`git clean -fd\` to remove untracked files. This ensures a clean working state before starting any task.
+
+IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
 IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
 
