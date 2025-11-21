@@ -815,6 +815,27 @@ export class CursorExecutionService {
         };
       }
 
+      // Store review agent messages in conversation history when DEBUG is enabled
+      const debugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+      if (debugEnabled) {
+        // Store review agent prompt as user message
+        await this.conversationService.addMessage(
+          actualConversationId,
+          'user',
+          `[Review Agent] Evaluating output for completion status`,
+          true
+        );
+        // Store review agent response as assistant message
+        if (reviewResponse.rawOutput) {
+          await this.conversationService.addMessage(
+            actualConversationId,
+            'assistant',
+            `[Review Agent] ${reviewResponse.rawOutput}`,
+            true
+          );
+        }
+      }
+
       // If parsing failed, construct our own review result
       let reviewResult: ReviewResult | null = reviewResponse.result;
       if (!reviewResult) {

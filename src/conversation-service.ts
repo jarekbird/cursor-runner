@@ -163,7 +163,7 @@ export class ConversationService {
   }
 
   /**
-   * Add a message to the conversation (excluding review agent messages)
+   * Add a message to the conversation (excluding review agent messages unless DEBUG is true)
    *
    * IMPORTANT: Only stores the individual message content, NOT the full context.
    * The full context is built dynamically from all stored messages when needed.
@@ -175,8 +175,11 @@ export class ConversationService {
     content: string,
     isReviewAgent: boolean = false
   ): Promise<void> {
-    if (isReviewAgent) {
-      // Don't store review agent messages
+    // Check if DEBUG is enabled - if so, include review agent messages
+    const debugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+
+    if (isReviewAgent && !debugEnabled) {
+      // Don't store review agent messages unless DEBUG is enabled
       return;
     }
 
