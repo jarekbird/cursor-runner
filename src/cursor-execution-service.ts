@@ -131,6 +131,7 @@ interface ReviewResult {
   code_complete: boolean;
   break_iteration: boolean;
   justification?: string;
+  continuationPrompt?: string;
 }
 
 /**
@@ -789,7 +790,11 @@ export class CursorExecutionService {
         reviewResponse = await this.reviewAgent.reviewOutput(
           lastResult.stdout,
           fullRepositoryPath,
-          iterateTimeout || null
+          iterateTimeout || null,
+          {
+            taskPrompt: prompt,
+            branchName,
+          }
         );
       } catch (reviewError) {
         // If review agent throws an error, construct a review result from the error
@@ -862,9 +867,19 @@ export class CursorExecutionService {
         await this.conversationService.getConversationContext(actualConversationId);
       const contextString = this.conversationService.buildContextString(conversationMessages);
 
-      // Prepare resume prompt with conversation context
-      const resumePrompt =
-        'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
+      // Use continuation prompt from review agent if available, otherwise use default resume prompt
+      const continuationPrompt = reviewResult.continuationPrompt;
+      const resumePrompt = continuationPrompt
+        ? continuationPrompt
+        : 'If an error or issue occurred above, please resume this solution by debugging or resolving previous issues as much as possible. Try new approaches.';
+
+      if (continuationPrompt) {
+        logger.info('Using continuation prompt from review agent', {
+          requestId,
+          iteration,
+          promptPreview: continuationPrompt.substring(0, 200),
+        });
+      }
 
       // Build full prompt with conversation context
       // System settings MCP instructions will be appended by prepareCommandArgs

@@ -1,5 +1,8 @@
 import { logger } from './logger.js';
 import { getErrorMessage } from './error-utils.js';
+import { GitCompletionChecker, CompletionCheckResult } from './git-completion-checker.js';
+import { readFileSync, existsSync } from 'fs';
+import path from 'path';
 
 /**
  * Review result structure returned by the review agent
@@ -8,6 +11,7 @@ interface ReviewResult {
   code_complete: boolean;
   break_iteration: boolean;
   justification: string;
+  continuationPrompt?: string; // Prompt to drive worker agent to completion
 }
 
 /**
@@ -16,6 +20,15 @@ interface ReviewResult {
 interface ReviewOutputResult {
   result: ReviewResult | null;
   rawOutput: string;
+}
+
+/**
+ * Options for reviewOutput method
+ */
+export interface ReviewOutputOptions {
+  taskPrompt?: string; // Original task prompt
+  definitionOfDone?: string; // Custom definition of done from task/files
+  branchName?: string; // Branch name for context
 }
 
 /**
@@ -50,12 +63,123 @@ interface CursorCLIInterface {
  * ReviewAgentService - Uses cursor as a review agent to evaluate code completion
  *
  * Analyzes cursor output to determine if code generation is complete.
+ * Uses definition of done (from task/files or default) to evaluate completion.
  */
 export class ReviewAgentService {
   protected cursorCLI: CursorCLIInterface;
+  private gitCompletionChecker: GitCompletionChecker;
 
   constructor(cursorCLI: CursorCLIInterface) {
     this.cursorCLI = cursorCLI;
+    this.gitCompletionChecker = new GitCompletionChecker();
+  }
+
+  /**
+   * Extract definition of done from task files
+   * Looks for definition of done in common locations:
+   * - .cursorrules file
+   * - Task markdown files
+   * - Definition of done section in files
+   */
+  private extractDefinitionOfDone(cwd: string, taskPrompt?: string): string | undefined {
+    // Check for definition of done in .cursorrules
+    const cursorRulesPath = path.join(cwd, '.cursorrules');
+    if (existsSync(cursorRulesPath)) {
+      try {
+        const content = readFileSync(cursorRulesPath, 'utf-8');
+        const dodMatch = content.match(/definition\s+of\s+done[:-]?\s*(.+?)(?:\n\n|\n##|$)/is);
+        if (dodMatch && dodMatch[1]) {
+          return dodMatch[1].trim();
+        }
+      } catch (error) {
+        logger.warn('Failed to read .cursorrules for definition of done', {
+          error: getErrorMessage(error),
+        });
+      }
+    }
+
+    // Check task prompt for definition of done
+    if (taskPrompt) {
+      const dodMatch = taskPrompt.match(/definition\s+of\s+done[:-]?\s*(.+?)(?:\n\n|\n##|$)/is);
+      if (dodMatch && dodMatch[1]) {
+        return dodMatch[1].trim();
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Generate a continuation prompt using cursor to drive worker agent to completion
+   * @param output - Previous agent output
+   * @param taskPrompt - Original task prompt
+   * @param definitionOfDone - Definition of done
+   * @param completionCheck - Result of completion check
+   * @param cwd - Working directory
+   * @param timeout - Optional timeout override
+   * @returns Generated continuation prompt or null if generation failed
+   */
+  private async generateContinuationPrompt(
+    output: string,
+    taskPrompt: string,
+    definitionOfDone: string,
+    completionCheck: CompletionCheckResult,
+    cwd: string,
+    timeout: number | null = null
+  ): Promise<string | null> {
+    const promptGenerationPrompt = `You are a review agent. Based on the worker agent's output and the definition of done, generate a prompt that will drive the worker agent to complete the task.
+
+Task Prompt:
+${taskPrompt}
+
+Definition of Done:
+${definitionOfDone}
+
+Completion Status:
+- Has Pull Request: ${completionCheck.hasPullRequest}
+- Has Pushed Commits: ${completionCheck.hasPushedCommits}
+- Is Complete: ${completionCheck.isComplete}
+- Reason: ${completionCheck.reason}
+
+Previous Worker Agent Output:
+${output.substring(0, 5000)}${output.length > 5000 ? '...' : ''}
+
+Generate a clear, actionable prompt that will guide the worker agent to complete the task according to the definition of done. The prompt should:
+1. Be specific about what needs to be done
+2. Reference the definition of done
+3. Address any gaps identified in the completion check
+4. Be concise but complete
+
+Return ONLY the prompt text, no explanations, no JSON, just the prompt that should be given to the worker agent.`;
+
+    try {
+      const executeOptions: ExecuteCommandOptions = { cwd };
+      if (timeout) {
+        executeOptions.timeout = timeout;
+      }
+
+      // IMPORTANT: This call to cursor for prompt generation is NOT recorded in conversation history.
+      // The review agent's internal calls should not pollute the conversation context.
+      const result = await this.cursorCLI.executeCommand(
+        ['--print', '--force', promptGenerationPrompt],
+        executeOptions
+      );
+
+      // Clean the output
+      // eslint-disable-next-line no-control-regex
+      const ansiEscapeRegex = /\u001b\[[0-9;]*[a-zA-Z]/g;
+      const cleanedOutput = result.stdout
+        .replace(ansiEscapeRegex, '')
+        .replace(/\r\n/g, '\n')
+        .trim();
+
+      return cleanedOutput || null;
+    } catch (error) {
+      logger.warn('Failed to generate continuation prompt', {
+        error: getErrorMessage(error),
+      });
+      return null;
+    }
   }
 
   /**
@@ -63,6 +187,7 @@ export class ReviewAgentService {
    * @param output - Output to review
    * @param cwd - Working directory
    * @param timeout - Optional timeout override
+   * @param options - Optional review options (task prompt, definition of done, branch name)
    * @returns Review result with parsed result and raw output
    *   - result: Parsed review result or null if parsing failed
    *   - rawOutput: Raw output from review agent
@@ -70,20 +195,62 @@ export class ReviewAgentService {
   async reviewOutput(
     output: string,
     cwd: string,
-    timeout: number | null = null
+    timeout: number | null = null,
+    reviewOptions: ReviewOutputOptions = {}
   ): Promise<ReviewOutputResult> {
+    // Extract definition of done if not provided
+    const definitionOfDone =
+      reviewOptions.definitionOfDone || this.extractDefinitionOfDone(cwd, reviewOptions.taskPrompt);
+
+    // Default definition of done: PR created OR code pushed to origin
+    const defaultDefinitionOfDone =
+      'A Pull Request was created OR code was pushed to origin with the task complete';
+
+    const definitionToUse = definitionOfDone || defaultDefinitionOfDone;
+
+    // Check completion using git status
+    let completionCheck: CompletionCheckResult;
+    try {
+      completionCheck = this.gitCompletionChecker.checkCompletion(cwd, definitionToUse);
+    } catch (error) {
+      logger.warn('Failed to check git completion status', {
+        error: getErrorMessage(error),
+        cwd,
+      });
+      // Fallback: assume not complete if we can't check
+      completionCheck = {
+        isComplete: false,
+        reason: 'Unable to check git completion status',
+        hasPullRequest: false,
+        hasPushedCommits: false,
+      };
+    }
+
+    // Build review prompt with definition of done context
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return ONLY a valid JSON object with no additional text, explanations, or formatting. 
 
 CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
 
-Evaluate whether the task was completed and if there are permission issues that require breaking iterations.
+Evaluate whether the task was completed according to the definition of done and if there are permission issues that require breaking iterations.
+
+DEFINITION OF DONE:
+${definitionToUse}
+
+COMPLETION STATUS CHECK:
+- Has Pull Request: ${completionCheck.hasPullRequest}
+- Has Pushed Commits: ${completionCheck.hasPushedCommits}
+- Git Check Result: ${completionCheck.isComplete ? 'Complete' : 'Not Complete'}
+- Reason: ${completionCheck.reason}
 
 IMPORTANT COMPLETION RULES:
-- If the output is a simple text response (greeting, answer to a question, conversational reply), mark code_complete: true
+- The task is complete ONLY if it meets the definition of done criteria
+- If the definition of done requires a Pull Request or code pushed to origin, check the completion status above
+- If the output is a simple text response (greeting, answer to a question, conversational reply) AND meets definition of done, mark code_complete: true
 - If the output is asking a question or requesting clarification, mark code_complete: true
-- If the output contains code changes, file modifications, or indicates work is still in progress, mark code_complete: false
-- If the output is just informational, explanatory, or a direct response without code/commands, mark code_complete: true
-- If the output indicates the task is complete and no further work is needed, mark code_complete: true
+- If the output contains code changes, file modifications, but does NOT meet definition of done, mark code_complete: false
+- If the output is just informational, explanatory, or a direct response without code/commands AND meets definition of done, mark code_complete: true
+- If the output indicates the task is complete and meets definition of done, mark code_complete: true
+- If the output shows work was done but definition of done is not met (e.g., no PR created, code not pushed), mark code_complete: false
 
 PERMISSION DETECTION RULES (CRITICAL):
 - If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
@@ -97,25 +264,27 @@ Return ONLY this JSON structure (no other text):
 {
   "code_complete": true,
   "break_iteration": false,
-  "justification": "Task completed successfully"
+  "justification": "Task completed successfully according to definition of done"
 }
 
 Previous agent output:
 ${output}`;
 
     try {
-      const options: ExecuteCommandOptions = { cwd };
+      const executeOptions: ExecuteCommandOptions = { cwd };
       if (timeout) {
-        options.timeout = timeout;
+        executeOptions.timeout = timeout;
       }
       // Use --print for non-interactive mode (required for automation)
       // Use --force to enable actual file operations and avoid permission prompts
       // Note: Don't use --resume as it triggers session selection menu when no session ID provided
       // Cursor maintains session context automatically within the same workspace
       // Model selection is handled automatically by cursor-cli when --model flag is omitted
+      // IMPORTANT: This call to cursor is NOT recorded in conversation history.
+      // The review agent's calls are internal and should not pollute the conversation context.
       const result = await this.cursorCLI.executeCommand(
         ['--print', '--force', reviewPrompt],
-        options
+        executeOptions
       );
 
       // Clean the output - remove ANSI escape sequences and trim whitespace
@@ -172,8 +341,38 @@ ${output}`;
         if (typeof parsed.break_iteration !== 'boolean') {
           parsed.break_iteration = false;
         }
+
+        // If task is not complete according to definition of done, generate continuation prompt
+        let continuationPrompt: string | undefined;
+        if (!parsed.code_complete && !parsed.break_iteration && reviewOptions.taskPrompt) {
+          try {
+            const generatedPrompt = await this.generateContinuationPrompt(
+              output,
+              reviewOptions.taskPrompt,
+              definitionToUse,
+              completionCheck,
+              cwd,
+              timeout
+            );
+            if (generatedPrompt) {
+              continuationPrompt = generatedPrompt;
+            }
+          } catch (error) {
+            logger.warn('Failed to generate continuation prompt', {
+              error: getErrorMessage(error),
+            });
+          }
+        }
+
+        const result: ReviewResult = {
+          code_complete: parsed.code_complete,
+          break_iteration: parsed.break_iteration || false,
+          justification: parsed.justification || 'No justification provided',
+          ...(continuationPrompt && { continuationPrompt }),
+        };
+
         return {
-          result: parsed as ReviewResult,
+          result,
           rawOutput: cleanedOutput,
         };
       } catch (parseError) {
