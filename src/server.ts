@@ -60,6 +60,8 @@ interface CommandErrorWithOutput extends Error {
 
 /**
  * Error response for callback webhooks
+ * Note: This interface is kept for reference but the actual error callbacks
+ * now use a more complete structure matching CallbackWebhookPayload
  */
 interface ErrorCallbackResponse {
   success: false;
@@ -67,6 +69,9 @@ interface ErrorCallbackResponse {
   error: string;
   timestamp: string;
   output?: string;
+  iterations?: number;
+  maxIterations?: number;
+  exitCode?: number;
 }
 
 /**
@@ -445,12 +450,15 @@ export class Server {
               });
               // If callback URL exists, try to notify about the error
               if (callbackUrl) {
-                // Include any partial output from the error
+                // Use the same structure as iterate() method for consistency
+                // This ensures cursor-agents receives consistent callback format
                 const errorResponse: ErrorCallbackResponse = {
                   success: false,
                   requestId,
                   error: error.message,
                   timestamp: new Date().toISOString(),
+                  iterations: 0, // No iterations completed if error occurred before/during iterate
+                  maxIterations: body.maxIterations || 25,
                 };
 
                 // Include partial output if available (e.g., from timeout)
@@ -459,6 +467,9 @@ export class Server {
                 }
                 if (error.stderr) {
                   errorResponse.error = error.stderr || error.message;
+                }
+                if (error.exitCode !== undefined && error.exitCode !== null) {
+                  errorResponse.exitCode = error.exitCode;
                 }
 
                 this.cursorExecution
