@@ -881,6 +881,10 @@ export class CursorExecutionService {
         });
       }
 
+      // Store the continuation/resume prompt in conversation history as a user message
+      // This ensures the review agent's guidance is recorded in the conversation
+      await this.conversationService.addMessage(actualConversationId, 'user', resumePrompt, false);
+
       // Build full prompt with conversation context
       // System settings MCP instructions will be appended by prepareCommandArgs
       let fullResumePrompt = resumePrompt;

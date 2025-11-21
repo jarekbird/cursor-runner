@@ -75,6 +75,103 @@ export class ReviewAgentService {
   }
 
   /**
+   * Determine if task is a simple request/question or requires code/file writing
+   * @param taskPrompt - The task prompt
+   * @param output - The worker agent's output
+   * @returns true if task requires code/files to be written, false if it's a simple request/question
+   */
+  private isCodeWritingTask(taskPrompt?: string, output?: string): boolean {
+    if (!taskPrompt && !output) {
+      return true; // Default to code writing task if we can't determine
+    }
+
+    const combinedText = `${taskPrompt || ''} ${output || ''}`.toLowerCase();
+
+    // Keywords that indicate code/file writing
+    const codeWritingKeywords = [
+      'write',
+      'create',
+      'implement',
+      'add',
+      'build',
+      'develop',
+      'code',
+      'file',
+      'function',
+      'class',
+      'module',
+      'service',
+      'component',
+      'script',
+      'program',
+      'feature',
+      'fix',
+      'refactor',
+      'update',
+      'modify',
+      'change',
+      'edit',
+      'delete',
+      'remove',
+      'test',
+      'spec',
+    ];
+
+    // Keywords that indicate simple request/question
+    const simpleRequestKeywords = [
+      'what',
+      'how',
+      'why',
+      'when',
+      'where',
+      'who',
+      'explain',
+      'describe',
+      'tell me',
+      'show me',
+      'help',
+      'question',
+      'answer',
+      'clarify',
+      'understand',
+      'meaning',
+      'definition',
+    ];
+
+    // Count matches
+    const codeWritingMatches = codeWritingKeywords.filter((keyword) =>
+      combinedText.includes(keyword)
+    ).length;
+    const simpleRequestMatches = simpleRequestKeywords.filter((keyword) =>
+      combinedText.includes(keyword)
+    ).length;
+
+    // If output contains code blocks, file paths, or git operations, it's likely a code writing task
+    const hasCodeIndicators =
+      combinedText.includes('```') ||
+      combinedText.includes('def ') ||
+      combinedText.includes('function ') ||
+      combinedText.includes('class ') ||
+      combinedText.includes('import ') ||
+      combinedText.includes('require(') ||
+      combinedText.includes('git ') ||
+      combinedText.match(/\.(js|ts|py|rb|java|cpp|go|rs|php|html|css|json|yaml|yml|md|sh|sql)/);
+
+    // If there are code indicators, it's definitely a code writing task
+    if (hasCodeIndicators) {
+      return true;
+    }
+
+    // If simple request keywords significantly outnumber code writing keywords, it's a simple request
+    if (simpleRequestMatches > codeWritingMatches * 2) {
+      return false;
+    }
+
+    // Default to code writing task if code writing keywords are present or if ambiguous
+    return codeWritingMatches > 0;
+  }
+
+  /**
    * Extract definition of done from task files
    * Looks for definition of done in common locations:
    * - .cursorrules file
@@ -202,25 +299,45 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
     const definitionOfDone =
       reviewOptions.definitionOfDone || this.extractDefinitionOfDone(cwd, reviewOptions.taskPrompt);
 
-    // Default definition of done: PR created OR code pushed to origin
-    const defaultDefinitionOfDone =
-      'A Pull Request was created OR code was pushed to origin with the task complete';
+    // Determine if this is a code writing task or simple request/question
+    const isCodeTask = this.isCodeWritingTask(reviewOptions.taskPrompt, output);
+
+    // Default definition of done based on task type
+    let defaultDefinitionOfDone: string;
+    if (isCodeTask) {
+      // For code/file writing tasks: PR created OR code pushed to origin
+      defaultDefinitionOfDone =
+        'A Pull Request was created OR code was pushed to origin with the task complete';
+    } else {
+      // For simple requests/questions: request completed or question answered
+      defaultDefinitionOfDone = 'The request was completed or the question was answered';
+    }
 
     const definitionToUse = definitionOfDone || defaultDefinitionOfDone;
 
-    // Check completion using git status
+    // Check completion using git status (only for code writing tasks)
     let completionCheck: CompletionCheckResult;
-    try {
-      completionCheck = this.gitCompletionChecker.checkCompletion(cwd, definitionToUse);
-    } catch (error) {
-      logger.warn('Failed to check git completion status', {
-        error: getErrorMessage(error),
-        cwd,
-      });
-      // Fallback: assume not complete if we can't check
+    if (isCodeTask) {
+      try {
+        completionCheck = this.gitCompletionChecker.checkCompletion(cwd, definitionToUse);
+      } catch (error) {
+        logger.warn('Failed to check git completion status', {
+          error: getErrorMessage(error),
+          cwd,
+        });
+        // Fallback: assume not complete if we can't check
+        completionCheck = {
+          isComplete: false,
+          reason: 'Unable to check git completion status',
+          hasPullRequest: false,
+          hasPushedCommits: false,
+        };
+      }
+    } else {
+      // For simple requests/questions, git check is not applicable
       completionCheck = {
-        isComplete: false,
-        reason: 'Unable to check git completion status',
+        isComplete: false, // Will be determined by review agent based on output
+        reason: 'Simple request/question - completion determined by response quality',
         hasPullRequest: false,
         hasPushedCommits: false,
       };
@@ -242,15 +359,18 @@ COMPLETION STATUS CHECK:
 - Git Check Result: ${completionCheck.isComplete ? 'Complete' : 'Not Complete'}
 - Reason: ${completionCheck.reason}
 
+TASK TYPE: ${isCodeTask ? 'Code/File Writing Task' : 'Simple Request/Question'}
+
 IMPORTANT COMPLETION RULES:
 - The task is complete ONLY if it meets the definition of done criteria
-- If the definition of done requires a Pull Request or code pushed to origin, check the completion status above
-- If the output is a simple text response (greeting, answer to a question, conversational reply) AND meets definition of done, mark code_complete: true
+- For code/file writing tasks: If the definition of done requires a Pull Request or code pushed to origin, check the completion status above. The task is NOT complete unless PR is created OR code is pushed to origin.
+- For simple requests/questions: The task is complete if the request was fulfilled or the question was answered adequately. No git operations are required.
+- If the output is a simple text response (greeting, answer to a question, conversational reply) AND it's a simple request/question, mark code_complete: true
 - If the output is asking a question or requesting clarification, mark code_complete: true
-- If the output contains code changes, file modifications, but does NOT meet definition of done, mark code_complete: false
-- If the output is just informational, explanatory, or a direct response without code/commands AND meets definition of done, mark code_complete: true
+- If the output contains code changes, file modifications for a code writing task, but does NOT meet definition of done (no PR, code not pushed), mark code_complete: false
+- If the output is just informational, explanatory, or a direct response without code/commands AND it's a simple request/question, mark code_complete: true
 - If the output indicates the task is complete and meets definition of done, mark code_complete: true
-- If the output shows work was done but definition of done is not met (e.g., no PR created, code not pushed), mark code_complete: false
+- If the output shows work was done for a code writing task but definition of done is not met (e.g., no PR created, code not pushed), mark code_complete: false
 
 PERMISSION DETECTION RULES (CRITICAL):
 - If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
