@@ -299,45 +299,29 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
     const definitionOfDone =
       reviewOptions.definitionOfDone || this.extractDefinitionOfDone(cwd, reviewOptions.taskPrompt);
 
-    // Determine if this is a code writing task or simple request/question
-    const isCodeTask = this.isCodeWritingTask(reviewOptions.taskPrompt, output);
+    // Default definition of done for code writing tasks (used as fallback)
+    const codeWritingDefinitionOfDone =
+      'A Pull Request was created OR code was pushed to origin with the task complete';
 
-    // Default definition of done based on task type
-    let defaultDefinitionOfDone: string;
-    if (isCodeTask) {
-      // For code/file writing tasks: PR created OR code pushed to origin
-      defaultDefinitionOfDone =
-        'A Pull Request was created OR code was pushed to origin with the task complete';
-    } else {
-      // For simple requests/questions: request completed or question answered
-      defaultDefinitionOfDone = 'The request was completed or the question was answered';
-    }
+    // Use custom definition if provided, otherwise will let cursor choose from defaults
+    const definitionToUse = definitionOfDone;
 
-    const definitionToUse = definitionOfDone || defaultDefinitionOfDone;
-
-    // Check completion using git status (only for code writing tasks)
+    // Always check git completion status (will be relevant for code writing tasks)
     let completionCheck: CompletionCheckResult;
-    if (isCodeTask) {
-      try {
-        completionCheck = this.gitCompletionChecker.checkCompletion(cwd, definitionToUse);
-      } catch (error) {
-        logger.warn('Failed to check git completion status', {
-          error: getErrorMessage(error),
-          cwd,
-        });
-        // Fallback: assume not complete if we can't check
-        completionCheck = {
-          isComplete: false,
-          reason: 'Unable to check git completion status',
-          hasPullRequest: false,
-          hasPushedCommits: false,
-        };
-      }
-    } else {
-      // For simple requests/questions, git check is not applicable
+    try {
+      completionCheck = this.gitCompletionChecker.checkCompletion(
+        cwd,
+        definitionToUse || codeWritingDefinitionOfDone
+      );
+    } catch (error) {
+      logger.warn('Failed to check git completion status', {
+        error: getErrorMessage(error),
+        cwd,
+      });
+      // Fallback: assume not complete if we can't check
       completionCheck = {
-        isComplete: false, // Will be determined by review agent based on output
-        reason: 'Simple request/question - completion determined by response quality',
+        isComplete: false,
+        reason: 'Unable to check git completion status',
         hasPullRequest: false,
         hasPushedCommits: false,
       };
@@ -350,16 +334,28 @@ CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, n
 
 Evaluate whether the task was completed according to the definition of done and if there are permission issues that require breaking iterations.
 
-DEFINITION OF DONE:
+${
+  definitionToUse
+    ? `CUSTOM DEFINITION OF DONE:
 ${definitionToUse}
 
-COMPLETION STATUS CHECK:
+`
+    : `DEFINITION OF DONE (choose the appropriate one based on task type):
+
+If this is a CODE/FILE WRITING TASK (involves writing, creating, modifying, or implementing code, files, features, etc.), use this definition:
+"A Pull Request was created OR code was pushed to origin with the task complete"
+
+If this is a SIMPLE REQUEST/QUESTION (asking questions, requesting information, explanations, clarifications, etc.), use this definition:
+"The request was completed or the question was answered"
+
+You must determine which type of task this is and apply the appropriate definition of done.
+
+`
+}COMPLETION STATUS CHECK:
 - Has Pull Request: ${completionCheck.hasPullRequest}
 - Has Pushed Commits: ${completionCheck.hasPushedCommits}
 - Git Check Result: ${completionCheck.isComplete ? 'Complete' : 'Not Complete'}
 - Reason: ${completionCheck.reason}
-
-TASK TYPE: ${isCodeTask ? 'Code/File Writing Task' : 'Simple Request/Question'}
 
 IMPORTANT COMPLETION RULES:
 - The task is complete ONLY if it meets the definition of done criteria
@@ -469,8 +465,8 @@ ${output}`;
           try {
             const generatedPrompt = await this.generateContinuationPrompt(
               output,
-              reviewOptions.taskPrompt,
-              definitionToUse,
+              reviewOptions.taskPrompt || '',
+              definitionToUse || codeWritingDefinitionOfDone,
               completionCheck,
               cwd,
               timeout
