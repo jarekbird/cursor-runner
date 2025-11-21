@@ -342,11 +342,18 @@ ${definitionToUse}
 `
     : `DEFINITION OF DONE (choose the appropriate one based on task type):
 
-If this is a CODE/FILE WRITING TASK (involves writing, creating, modifying, or implementing code, files, features, etc.), use this definition:
+If this is a CODE/FILE WRITING TASK (involves writing, creating, modifying, or implementing SOURCE CODE FILES that need to be committed to git), use this definition:
 "A Pull Request was created OR code was pushed to origin with the task complete"
 
-If this is a SIMPLE REQUEST/QUESTION (asking questions, requesting information, explanations, clarifications, etc.), use this definition:
+If this is a SIMPLE REQUEST/QUESTION, DATA OPERATION, or DATABASE TASK (asking questions, requesting information, explanations, clarifications, database queries/updates, data manipulation, executing scripts/commands that don't create source code files, etc.), use this definition:
 "The request was completed or the question was answered"
+
+IMPORTANT TASK TYPE GUIDELINES:
+- Database operations (SQL queries, updates, inserts, deletes) are NOT code writing tasks
+- Data manipulation tasks are NOT code writing tasks
+- Executing commands/scripts to perform operations (without creating source code files) are NOT code writing tasks
+- Tasks that only involve reading, querying, or updating data are NOT code writing tasks
+- Only tasks that create/modify SOURCE CODE FILES (that should be committed to git) are code writing tasks
 
 You must determine which type of task this is and apply the appropriate definition of done.
 
