@@ -363,6 +363,7 @@ TASK TYPE: ${isCodeTask ? 'Code/File Writing Task' : 'Simple Request/Question'}
 
 IMPORTANT COMPLETION RULES:
 - The task is complete ONLY if it meets the definition of done criteria
+- If the agent reports that the project/task was already done before the task was initiated, mark code_complete: true (the task is considered complete since the desired state already exists)
 - For code/file writing tasks: If the definition of done requires a Pull Request or code pushed to origin, check the completion status above. The task is NOT complete unless PR is created OR code is pushed to origin.
 - For simple requests/questions: The task is complete if the request was fulfilled or the question was answered adequately. No git operations are required.
 - If the output is a simple text response (greeting, answer to a question, conversational reply) AND it's a simple request/question, mark code_complete: true
