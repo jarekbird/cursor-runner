@@ -1,6 +1,5 @@
 import { logger } from './logger.js';
 import { getErrorMessage } from './error-utils.js';
-import { GitCompletionChecker, CompletionCheckResult } from './git-completion-checker.js';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 
@@ -68,11 +67,9 @@ interface CursorCLIInterface {
  */
 export class ReviewAgentService {
   protected cursorCLI: CursorCLIInterface;
-  private gitCompletionChecker: GitCompletionChecker;
 
   constructor(cursorCLI: CursorCLIInterface) {
     this.cursorCLI = cursorCLI;
-    this.gitCompletionChecker = new GitCompletionChecker();
   }
 
   /**
@@ -212,7 +209,6 @@ export class ReviewAgentService {
    * @param output - Previous agent output
    * @param taskPrompt - Original task prompt
    * @param definitionOfDone - Definition of done
-   * @param completionCheck - Result of completion check
    * @param cwd - Working directory
    * @param timeout - Optional timeout override
    * @returns Generated continuation prompt or null if generation failed
@@ -221,7 +217,6 @@ export class ReviewAgentService {
     output: string,
     taskPrompt: string,
     definitionOfDone: string,
-    completionCheck: CompletionCheckResult,
     cwd: string,
     timeout: number | null = null
   ): Promise<string | null> {
@@ -233,19 +228,13 @@ ${taskPrompt}
 Definition of Done:
 ${definitionOfDone}
 
-Completion Status:
-- Has Pull Request: ${completionCheck.hasPullRequest}
-- Has Pushed Commits: ${completionCheck.hasPushedCommits}
-- Is Complete: ${completionCheck.isComplete}
-- Reason: ${completionCheck.reason}
-
 Previous Worker Agent Output:
 ${output.substring(0, 5000)}${output.length > 5000 ? '...' : ''}
 
 Generate a clear, actionable prompt that will guide the worker agent to complete the task according to the definition of done. The prompt should:
 1. Be specific about what needs to be done
 2. Reference the definition of done
-3. Address any gaps identified in the completion check
+3. Address any gaps - check if the output reports "Code pushed to origin" or mentions a Pull Request was created (for code writing tasks)
 4. Be concise but complete
 
 Return ONLY the prompt text, no explanations, no JSON, just the prompt that should be given to the worker agent.`;
@@ -301,33 +290,8 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
     const definitionOfDone =
       reviewOptions.definitionOfDone || this.extractDefinitionOfDone(cwd, reviewOptions.taskPrompt);
 
-    // Default definition of done for code writing tasks (used as fallback)
-    const codeWritingDefinitionOfDone =
-      'A Pull Request was created OR code was pushed to origin with the task complete';
-
     // Use custom definition if provided, otherwise will let cursor choose from defaults
     const definitionToUse = definitionOfDone;
-
-    // Always check git completion status (will be relevant for code writing tasks)
-    let completionCheck: CompletionCheckResult;
-    try {
-      completionCheck = this.gitCompletionChecker.checkCompletion(
-        cwd,
-        definitionToUse || codeWritingDefinitionOfDone
-      );
-    } catch (error) {
-      logger.warn('Failed to check git completion status', {
-        error: getErrorMessage(error),
-        cwd,
-      });
-      // Fallback: assume not complete if we can't check
-      completionCheck = {
-        isComplete: false,
-        reason: 'Unable to check git completion status',
-        hasPullRequest: false,
-        hasPushedCommits: false,
-      };
-    }
 
     // Build review prompt with definition of done context
     const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return ONLY a valid JSON object with no additional text, explanations, or formatting. 
@@ -360,23 +324,22 @@ IMPORTANT TASK TYPE GUIDELINES:
 You must determine which type of task this is and apply the appropriate definition of done.
 
 `
-}COMPLETION STATUS CHECK:
-- Has Pull Request: ${completionCheck.hasPullRequest}
-- Has Pushed Commits: ${completionCheck.hasPushedCommits}
-- Git Check Result: ${completionCheck.isComplete ? 'Complete' : 'Not Complete'}
-- Reason: ${completionCheck.reason}
-
-IMPORTANT COMPLETION RULES:
+}IMPORTANT COMPLETION RULES:
 - The task is complete ONLY if it meets the definition of done criteria
 - If the agent reports that the project/task was already done before the task was initiated, mark code_complete: true (the task is considered complete since the desired state already exists)
-- For code/file writing tasks: If the definition of done requires a Pull Request or code pushed to origin, check the completion status above. The task is NOT complete unless PR is created OR code is pushed to origin.
+- For code/file writing tasks: Check the cursor-cli output text for explicit reports of completion actions:
+  * Look for "Code pushed to origin" - this indicates code was pushed and task may be complete
+  * Look for "Pull Request created" or "PR created" or similar PR-related statements - this indicates a PR was created and task may be complete
+  * Look for "No code pushed to origin" - this means code was NOT pushed, so if definition of done requires push/PR, task is NOT complete
+  * The cursor-cli is instructed to report these actions explicitly in its output - check the output text, do NOT run git commands
+  * If the output reports "Code pushed to origin" OR mentions a Pull Request was created, AND the code/files were created/modified as required, mark code_complete: true
+  * If the output reports "No code pushed to origin" AND no PR was mentioned, AND definition of done requires push/PR, mark code_complete: false
+  * If the output contains code changes or file modifications but does NOT report push/PR and definition of done requires it, mark code_complete: false
 - For simple requests/questions: The task is complete if the request was fulfilled or the question was answered adequately. No git operations are required.
 - If the output is a simple text response (greeting, answer to a question, conversational reply) AND it's a simple request/question, mark code_complete: true
 - If the output is asking a question or requesting clarification, mark code_complete: true
-- If the output contains code changes, file modifications for a code writing task, but does NOT meet definition of done (no PR, code not pushed), mark code_complete: false
 - If the output is just informational, explanatory, or a direct response without code/commands AND it's a simple request/question, mark code_complete: true
 - If the output indicates the task is complete and meets definition of done, mark code_complete: true
-- If the output shows work was done for a code writing task but definition of done is not met (e.g., no PR created, code not pushed), mark code_complete: false
 
 PERMISSION DETECTION RULES (CRITICAL):
 - If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
@@ -508,8 +471,8 @@ ${output}`;
             const generatedPrompt = await this.generateContinuationPrompt(
               output,
               reviewOptions.taskPrompt || '',
-              definitionToUse || codeWritingDefinitionOfDone,
-              completionCheck,
+              definitionToUse ||
+                'The code/files were created or modified as required and the task objectives were met',
               cwd,
               timeout
             );
