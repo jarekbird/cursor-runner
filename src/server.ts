@@ -606,6 +606,15 @@ export class Server {
   setupConversationRoutes(): void {
     const router: Router = express.Router();
 
+    // Middleware to prevent browser caching of API responses
+    // This prevents browsers from caching HTML responses during deployments
+    router.use((req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      next();
+    });
+
     /**
      * GET /conversations/api/list
      * Get list of all conversations
