@@ -163,6 +163,8 @@ const CURSOR_AGENTS_TOOLS_PATH =
   process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
 const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any prompt, you MUST clear all git changes (staged and unstaged) in the repository. Use \`git reset --hard HEAD\` to discard all local changes and \`git clean -fd\` to remove untracked files. This ensures a clean working state before starting any task.
 
+IMPORTANT: If you push any code to origin during this task, you MUST explicitly report this in your output. State clearly: "Code pushed to origin" or "No code pushed to origin" at the end of your response. This information is critical for task completion tracking.
+
 IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
 IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
