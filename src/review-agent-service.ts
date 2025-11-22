@@ -308,18 +308,21 @@ ${definitionToUse}
 `
     : `DEFINITION OF DONE (choose the appropriate one based on task type):
 
-If this is a CODE/FILE WRITING TASK (involves writing, creating, modifying, or implementing SOURCE CODE FILES that need to be committed to git), use this definition:
-"A Pull Request was created OR code was pushed to origin with the task complete"
+1. CODE/FILE WRITING TASKS (involves writing, creating, modifying, or implementing SOURCE CODE FILES that need to be committed to git):
+   "A Pull Request was created OR code was pushed to origin with the task complete"
 
-If this is a SIMPLE REQUEST/QUESTION, DATA OPERATION, or DATABASE TASK (asking questions, requesting information, explanations, clarifications, database queries/updates, data manipulation, executing scripts/commands that don't create source code files, etc.), use this definition:
-"The request was completed or the question was answered"
+2. SYSTEM/ENVIRONMENT OPERATION TASKS (installing dependencies, running builds, installing packages, running migrations, executing install scripts, etc.):
+   "The required operation must complete successfully with no errors, and the expected artifacts must be created. If any part of the operation fails, the task is NOT complete."
+   
+   IMPORTANT: Installing dependencies requires packages to actually be installed successfully. Updating package.json is NOT enough. If the output mentions environmental issues, errors, warnings, or failed operations, the task is NOT complete.
 
-IMPORTANT TASK TYPE GUIDELINES:
-- Database operations (SQL queries, updates, inserts, deletes) are NOT code writing tasks
-- Data manipulation tasks are NOT code writing tasks
-- Executing commands/scripts to perform operations (without creating source code files) are NOT code writing tasks
-- Tasks that only involve reading, querying, or updating data are NOT code writing tasks
+3. SIMPLE REQUESTS/QUESTIONS/DATA OPERATIONS (asking questions, requesting information, explanations, clarifications, database queries/updates, data manipulation, executing scripts/commands that don't create source code files, etc.):
+   "The request was completed or the question was answered"
+
+TASK TYPE GUIDELINES:
 - Only tasks that create/modify SOURCE CODE FILES (that should be committed to git) are code writing tasks
+- Non-code tasks (database queries, data manipulation, executing commands, reading/updating data) are NOT code writing tasks and do not require git push/PR
+- Installing dependencies is a SYSTEM/ENVIRONMENT OPERATION TASK, not a simple request
 
 You must determine which type of task this is and apply the appropriate definition of done.
 
@@ -327,19 +330,9 @@ You must determine which type of task this is and apply the appropriate definiti
 }IMPORTANT COMPLETION RULES:
 - The task is complete ONLY if it meets the definition of done criteria
 - If the agent reports that the project/task was already done before the task was initiated, mark code_complete: true (the task is considered complete since the desired state already exists)
-- For code/file writing tasks: Check the cursor-cli output text for explicit reports of completion actions:
-  * Look for "Code pushed to origin" - this indicates code was pushed and task may be complete
-  * Look for "Pull Request created" or "PR created" or similar PR-related statements - this indicates a PR was created and task may be complete
-  * Look for "No code pushed to origin" - this means code was NOT pushed, so if definition of done requires push/PR, task is NOT complete
-  * The cursor-cli is instructed to report these actions explicitly in its output - check the output text, do NOT run git commands
-  * If the output reports "Code pushed to origin" OR mentions a Pull Request was created, AND the code/files were created/modified as required, mark code_complete: true
-  * If the output reports "No code pushed to origin" AND no PR was mentioned, AND definition of done requires push/PR, mark code_complete: false
-  * If the output contains code changes or file modifications but does NOT report push/PR and definition of done requires it, mark code_complete: false
-- For simple requests/questions: The task is complete if the request was fulfilled or the question was answered adequately. No git operations are required.
-- If the output is a simple text response (greeting, answer to a question, conversational reply) AND it's a simple request/question, mark code_complete: true
-- If the output is asking a question or requesting clarification, mark code_complete: true
-- If the output is just informational, explanatory, or a direct response without code/commands AND it's a simple request/question, mark code_complete: true
-- If the output indicates the task is complete and meets definition of done, mark code_complete: true
+- For code/file writing tasks: Completion requires an explicit "Code pushed to origin" or PR creation in the output. If neither is present, code_complete must be false. Check the cursor-cli output text for these reports - do NOT run git commands.
+- For system/environment operation tasks: The operation must succeed without errors. If the output mentions failures, errors, warnings, or incomplete operations, mark code_complete: false.
+- For simple requests/questions: The task is complete if the response fulfills the request. No git operations are required.
 
 PERMISSION DETECTION RULES (CRITICAL):
 - If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
