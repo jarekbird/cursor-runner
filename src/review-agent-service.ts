@@ -417,10 +417,40 @@ ${output}`;
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex
       const ansiEscapeRegex = /\u001b\[[0-9;]*[a-zA-Z]/g;
-      const cleanedOutput = result.stdout
+      let cleanedOutput = result.stdout
         .replace(ansiEscapeRegex, '') // Remove ANSI escape codes
         .replace(/\r\n/g, '\n') // Normalize line endings
         .trim();
+
+      // Filter out conversation history that cursor may include
+      // Look for patterns that indicate conversation history (user:/cursor: prefixes)
+      // The review agent should only return JSON, so we remove everything before the JSON
+      const conversationHistoryPattern = /^(user:|cursor:).*$/gm;
+      const lines = cleanedOutput.split('\n');
+
+      // Find the first line that contains a JSON object start (look for {)
+      let jsonStartLineIndex = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const trimmedLine = lines[i].trim();
+        // Look for lines that start with { or contain { and are likely JSON
+        if (
+          trimmedLine.startsWith('{') ||
+          (trimmedLine.includes('{') && trimmedLine.match(/^\s*\{/))
+        ) {
+          jsonStartLineIndex = i;
+          break;
+        }
+      }
+
+      // If we found a JSON start line, only keep from that line onwards (removes conversation history)
+      // This ensures we only return the review agent's JSON response, not the full conversation
+      if (jsonStartLineIndex >= 0) {
+        cleanedOutput = lines.slice(jsonStartLineIndex).join('\n');
+      } else {
+        // If no clear JSON start found, try to remove conversation history patterns
+        // This is a fallback in case the JSON is on the same line as other content
+        cleanedOutput = cleanedOutput.replace(conversationHistoryPattern, '').trim();
+      }
 
       // Try to find JSON object in the output
       // First, try to find a complete JSON object by matching braces
@@ -454,7 +484,7 @@ ${output}`;
         return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
       }
 
-      // Extract the JSON substring
+      // Extract the JSON substring - this is what we'll use as rawOutput
       const jsonString = cleanedOutput.substring(jsonStart, jsonEnd);
 
       try {
@@ -462,7 +492,9 @@ ${output}`;
         // Validate required fields
         if (typeof parsed.code_complete !== 'boolean') {
           logger.warn('Review JSON missing required fields', { parsed });
-          return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
+          // Return only the JSON part if found, otherwise return cleaned output
+          const jsonOnly = jsonStart >= 0 && jsonEnd >= 0 ? jsonString : cleanedOutput;
+          return { result: null, rawOutput: jsonOnly, prompt: reviewPrompt };
         }
         // Set break_iteration default to false if not provided
         if (typeof parsed.break_iteration !== 'boolean') {
@@ -500,7 +532,8 @@ ${output}`;
 
         return {
           result,
-          rawOutput: cleanedOutput,
+          // Only return the JSON part, not the full output with conversation history
+          rawOutput: jsonString,
           prompt: reviewPrompt, // Include the prompt that was sent
         };
       } catch (parseError) {
@@ -510,7 +543,9 @@ ${output}`;
           jsonString: jsonString.substring(0, 200),
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
+        // Return only the JSON part if found, otherwise return cleaned output
+        const jsonOnly = jsonStart >= 0 && jsonEnd >= 0 ? jsonString : cleanedOutput;
+        return { result: null, rawOutput: jsonOnly, prompt: reviewPrompt };
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);

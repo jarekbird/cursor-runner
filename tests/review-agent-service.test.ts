@@ -113,7 +113,9 @@ More log output`;
       const response = (await reviewAgent.reviewOutput('test output', '/path/to/repo')) as any;
 
       expect(response.result).toBeNull();
-      expect(response.rawOutput).toBe(stdout.trim());
+      // rawOutput now contains only the extracted JSON part (filters out conversation history)
+      expect(response.rawOutput).toContain('{');
+      expect(response.rawOutput).toContain('code_complete');
     });
 
     it('should handle missing JSON in output', async () => {
