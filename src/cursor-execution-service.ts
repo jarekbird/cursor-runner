@@ -6,7 +6,6 @@ import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
 import { ConversationService } from './conversation-service.js';
-import { isSystemSettingEnabled } from './system-settings.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -861,19 +860,6 @@ export class CursorExecutionService {
         };
       }
 
-      // Store review agent messages in conversation history when DEBUG is enabled
-      // Read from system settings database, fallback to env var
-      const debugEnabled = isSystemSettingEnabled('debug');
-      if (debugEnabled && reviewResponse.prompt) {
-        // Store what we sent to cursor for review (right before sending)
-        await this.conversationService.addMessage(
-          actualConversationId,
-          'user',
-          `[Review Agent Request] ${reviewResponse.prompt}`,
-          true
-        );
-      }
-
       // If parsing failed, construct our own review result
       let reviewResult: ReviewResult | null = reviewResponse.result;
       if (!reviewResult) {
@@ -893,6 +879,19 @@ export class CursorExecutionService {
             'Failed to parse review agent output. Inferring completion to prevent infinite loops.',
         };
       }
+
+      // Always store the review agent's JSON output in conversation history
+      const reviewAgentOutput = JSON.stringify({
+        code_complete: reviewResult.code_complete,
+        break_iteration: reviewResult.break_iteration,
+        justification: reviewResult.justification || '',
+      });
+      await this.conversationService.addMessage(
+        actualConversationId,
+        'assistant',
+        `[Review Agent Response] ${reviewAgentOutput}`,
+        false
+      );
 
       logger.info('Review result', {
         requestId,
