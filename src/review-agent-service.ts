@@ -17,9 +17,10 @@ interface ReviewResult {
 /**
  * Result of reviewOutput method
  */
-interface ReviewOutputResult {
+export interface ReviewOutputResult {
   result: ReviewResult | null;
   rawOutput: string;
+  prompt?: string; // The prompt that was sent to cursor for review
 }
 
 /**
@@ -257,6 +258,7 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
 
       // IMPORTANT: This call to cursor for prompt generation is NOT recorded in conversation history.
       // The review agent's internal calls should not pollute the conversation context.
+
       const result = await this.cursorCLI.executeCommand(
         ['--print', '--force', promptGenerationPrompt],
         executeOptions
@@ -406,6 +408,7 @@ ${output}`;
       // Model selection is handled automatically by cursor-cli when --model flag is omitted
       // IMPORTANT: This call to cursor is NOT recorded in conversation history.
       // The review agent's calls are internal and should not pollute the conversation context.
+
       const result = await this.cursorCLI.executeCommand(
         ['--print', '--force', reviewPrompt],
         executeOptions
@@ -426,7 +429,7 @@ ${output}`;
         logger.warn('No JSON object found in review output', {
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return { result: null, rawOutput: cleanedOutput };
+        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
       }
 
       // Find the matching closing brace
@@ -448,7 +451,7 @@ ${output}`;
         logger.warn('Incomplete JSON object in review output', {
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return { result: null, rawOutput: cleanedOutput };
+        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
       }
 
       // Extract the JSON substring
@@ -459,7 +462,7 @@ ${output}`;
         // Validate required fields
         if (typeof parsed.code_complete !== 'boolean') {
           logger.warn('Review JSON missing required fields', { parsed });
-          return { result: null, rawOutput: cleanedOutput };
+          return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
         }
         // Set break_iteration default to false if not provided
         if (typeof parsed.break_iteration !== 'boolean') {
@@ -498,6 +501,7 @@ ${output}`;
         return {
           result,
           rawOutput: cleanedOutput,
+          prompt: reviewPrompt, // Include the prompt that was sent
         };
       } catch (parseError) {
         const error = parseError instanceof Error ? parseError : new Error(String(parseError));
@@ -506,7 +510,7 @@ ${output}`;
           jsonString: jsonString.substring(0, 200),
           outputPreview: cleanedOutput.substring(0, 200),
         });
-        return { result: null, rawOutput: cleanedOutput };
+        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -515,6 +519,7 @@ ${output}`;
       return {
         result: null,
         rawOutput: `Review agent error: ${errorMessage}`,
+        prompt: undefined, // No prompt available on error
       };
     }
   }

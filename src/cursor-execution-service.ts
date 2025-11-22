@@ -9,7 +9,7 @@ import { ConversationService } from './conversation-service.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
-import type { ReviewAgentService } from './review-agent-service.js';
+import type { ReviewAgentService, ReviewOutputResult } from './review-agent-service.js';
 
 /**
  * Parameters for execute method
@@ -473,9 +473,6 @@ export class CursorExecutionService {
       fullPrompt = `${contextString}\n\n[Current Request]: ${prompt}`;
     }
 
-    // Store user message in conversation
-    await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
-
     // Construct command as array to avoid parsing issues with newlines in prompt
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
@@ -494,11 +491,14 @@ export class CursorExecutionService {
       cwd: fullRepositoryPath,
     });
 
+    // Store what we're sending to cursor in Redis (right before sending)
+    await this.conversationService.addMessage(actualConversationId, 'user', fullPrompt, false);
+
     const result = await this.cursorCLI.executeCommand([...modifiedArgs], {
       cwd: fullRepositoryPath,
     });
 
-    // Store cursor response in conversation
+    // Store what we received from cursor in Redis (right after receiving)
     const assistantOutput = result.stdout || result.stderr || '';
     if (assistantOutput) {
       await this.conversationService.addMessage(
@@ -690,9 +690,6 @@ export class CursorExecutionService {
       initialFullPrompt = `${initialContextString}\n\n[Current Request]: ${prompt}`;
     }
 
-    // Store user message in conversation
-    await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
-
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
     const iterateTimeoutValue = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10);
@@ -712,6 +709,14 @@ export class CursorExecutionService {
       timeout: `${iterateTimeout}ms`,
     });
 
+    // Store what we're sending to cursor in Redis (right before sending)
+    await this.conversationService.addMessage(
+      actualConversationId,
+      'user',
+      initialFullPrompt,
+      false
+    );
+
     let lastResult: CommandResult;
     try {
       lastResult = await this.cursorCLI.executeCommand([...modifiedArgs], {
@@ -719,7 +724,7 @@ export class CursorExecutionService {
         timeout: iterateTimeout,
       });
 
-      // Store cursor response in conversation
+      // Store what we received from cursor in Redis (right after receiving)
       const assistantOutput = lastResult.stdout || lastResult.stderr || '';
       if (assistantOutput) {
         await this.conversationService.addMessage(
@@ -812,10 +817,7 @@ export class CursorExecutionService {
       // Store the original output before review (in case we need to break)
       originalOutput = lastResult.stdout || '';
 
-      let reviewResponse: {
-        result: ReviewResult | null;
-        rawOutput: string;
-      };
+      let reviewResponse: ReviewOutputResult;
       try {
         reviewResponse = await this.reviewAgent.reviewOutput(
           lastResult.stdout,
@@ -842,25 +844,26 @@ export class CursorExecutionService {
             justification: `Review agent error: ${getErrorMessage(error)}. Inferring completion to prevent infinite loops.`,
           },
           rawOutput: `Review agent execution error: ${getErrorMessage(error)}`,
+          prompt: undefined, // No prompt available on error
         };
       }
 
       // Store review agent messages in conversation history when DEBUG is enabled
       const debugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
-      if (debugEnabled) {
-        // Store review agent prompt as user message
+      if (debugEnabled && reviewResponse.prompt) {
+        // Store what we sent to cursor for review (right before sending)
         await this.conversationService.addMessage(
           actualConversationId,
           'user',
-          `[Review Agent] Evaluating output for completion status`,
+          `[Review Agent Request] ${reviewResponse.prompt}`,
           true
         );
-        // Store review agent response as assistant message
+        // Store what we received from cursor for review (right after receiving)
         if (reviewResponse.rawOutput) {
           await this.conversationService.addMessage(
             actualConversationId,
             'assistant',
-            `[Review Agent] ${reviewResponse.rawOutput}`,
+            `[Review Agent Response] ${reviewResponse.rawOutput}`,
             true
           );
         }
@@ -957,18 +960,26 @@ export class CursorExecutionService {
       });
 
       try {
+        // Store what we're sending to cursor in Redis (right before sending)
+        await this.conversationService.addMessage(
+          actualConversationId,
+          'user',
+          fullResumePrompt,
+          false
+        );
+
         lastResult = await this.cursorCLI.executeCommand([...resumeArgs], {
           cwd: fullRepositoryPath,
           timeout: iterateTimeout,
         });
 
-        // Store cursor response in conversation
-        const assistantOutput = lastResult.stdout || lastResult.stderr || '';
-        if (assistantOutput) {
+        // Store what we received from cursor in Redis (right after receiving)
+        const resumeAssistantOutput = lastResult.stdout || lastResult.stderr || '';
+        if (resumeAssistantOutput) {
           await this.conversationService.addMessage(
             actualConversationId,
             'assistant',
-            assistantOutput,
+            resumeAssistantOutput,
             false
           );
         }
