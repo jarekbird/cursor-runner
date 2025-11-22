@@ -965,13 +965,9 @@ export class CursorExecutionService {
       });
 
       try {
-        // Store what we're sending to cursor in Redis (right before sending)
-        await this.conversationService.addMessage(
-          actualConversationId,
-          'user',
-          resumePrompt,
-          false
-        );
+        // Note: resumePrompt was already stored at line 945, so we don't store it again here
+        // The actual prompt sent to cursor is fullResumePrompt (with context), but we only
+        // store the new prompt content (resumePrompt) to avoid duplicating context
 
         lastResult = await this.cursorCLI.executeCommand([...resumeArgs], {
           cwd: fullRepositoryPath,
