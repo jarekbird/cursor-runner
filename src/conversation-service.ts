@@ -306,13 +306,21 @@ export class ConversationService {
   /**
    * Build context string from conversation messages for cursor prompt
    * Prefixes messages with "user:" or "cursor:" to indicate sender
+   * Excludes review agent messages (messages starting with [Review Agent)
    */
   buildContextString(messages: ConversationMessage[]): string {
     if (messages.length === 0) {
       return '';
     }
 
-    return messages
+    // Filter out review agent messages - they should not be included in worker agent context
+    const workerMessages = messages.filter(
+      (msg) =>
+        !msg.content.startsWith('[Review Agent Request]') &&
+        !msg.content.startsWith('[Review Agent Response]')
+    );
+
+    return workerMessages
       .map((msg) => {
         const prefix = msg.role === 'user' ? 'user:' : 'cursor:';
         return `${prefix} ${msg.content}`;
