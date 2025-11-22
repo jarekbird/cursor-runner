@@ -803,11 +803,20 @@ export class CursorExecutionService {
 
     // Iteration loop
     while (iteration <= maxIterations) {
+      // Log memory usage at start of iteration (especially for iteration 16)
+      const used = process.memoryUsage();
       logger.info('Iteration started', {
         requestId,
         iteration,
         repository,
         branchName,
+        memory: {
+          rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
+          external: `${Math.round(used.external / 1024 / 1024)}MB`,
+        },
+        uptime: process.uptime(),
       });
 
       // Review the output
@@ -860,15 +869,6 @@ export class CursorExecutionService {
           `[Review Agent Request] ${reviewResponse.prompt}`,
           true
         );
-        // Store what we received from cursor for review (right after receiving)
-        if (reviewResponse.rawOutput) {
-          await this.conversationService.addMessage(
-            actualConversationId,
-            'assistant',
-            `[Review Agent Response] ${reviewResponse.rawOutput}`,
-            true
-          );
-        }
       }
 
       // If parsing failed, construct our own review result
@@ -967,7 +967,7 @@ export class CursorExecutionService {
         await this.conversationService.addMessage(
           actualConversationId,
           'user',
-          fullResumePrompt,
+          resumePrompt,
           false
         );
 
@@ -1042,6 +1042,20 @@ export class CursorExecutionService {
           throw error;
         }
       }
+
+      // Log memory usage at end of iteration (especially for iteration 16)
+      const usedAfter = process.memoryUsage();
+      logger.info('Iteration completed', {
+        requestId,
+        iteration,
+        memory: {
+          rss: `${Math.round(usedAfter.rss / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(usedAfter.heapTotal / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(usedAfter.heapUsed / 1024 / 1024)}MB`,
+          external: `${Math.round(usedAfter.external / 1024 / 1024)}MB`,
+        },
+        uptime: process.uptime(),
+      });
 
       iteration++;
     }

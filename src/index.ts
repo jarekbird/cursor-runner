@@ -145,7 +145,32 @@ class CursorRunner {
    */
   async shutdown(): Promise<void> {
     try {
-      this.logger.info('Shutting down cursor-runner...');
+      // Log memory usage before shutdown
+      const used = process.memoryUsage();
+
+      // Capture call stack to identify what's calling shutdown
+      const stack = new Error().stack;
+      const stackLines = stack?.split('\n').slice(2, 10) || []; // Skip Error() and shutdown() itself
+
+      // Use console.error for high visibility
+      console.error('<<< shutdown() called >>>', {
+        timestamp: new Date().toISOString(),
+        pid: process.pid,
+        uptime: `${Math.round(process.uptime())}s`,
+        callStack: stackLines,
+      });
+
+      this.logger.info('Shutting down cursor-runner...', {
+        memory: {
+          rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
+          external: `${Math.round(used.external / 1024 / 1024)}MB`,
+        },
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        callStack: stackLines,
+      });
       await this.server.stop();
       this.logger.info('cursor-runner shut down successfully');
     } catch (error) {
@@ -264,22 +289,155 @@ export { CursorRunner };
 if (import.meta.url === `file://${__filename}` && !process.env.JEST_WORKER_ID) {
   const runner = new CursorRunner();
 
-  // Handle graceful shutdown
+  // Add signal logging to diagnose shutdown triggers
+  // Hostinger's orchestration layer may send SIGTERM for resource limits, health checks, or container management
   process.on('SIGTERM', async () => {
+    // Use console.error for high visibility (appears in logs even if logger is buffered)
+    console.error('<<< Received SIGTERM from system >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: `${Math.round(process.uptime())}s`,
+      possibleCauses: [
+        'Hostinger resource limit exceeded (RAM/CPU/Disk I/O)',
+        'Hostinger health check failure',
+        'Hostinger container orchestration restart',
+        'Docker health check failure',
+      ],
+    });
+    logger.error('<<< Received SIGTERM signal >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
     await runner.shutdown();
     // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
+    console.error('<<< Received SIGINT from system >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: `${Math.round(process.uptime())}s`,
+    });
+    logger.error('<<< Received SIGINT signal >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
     await runner.shutdown();
     // eslint-disable-next-line no-process-exit
     process.exit(0);
   });
 
+  process.on('SIGHUP', () => {
+    console.error('<<< Received SIGHUP from system >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: `${Math.round(process.uptime())}s`,
+    });
+    logger.info('<<< Received SIGHUP signal >>>', {
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
+  });
+
+  // Add uncaught exception handler
+  process.on('uncaughtException', (error: Error) => {
+    logger.error('Uncaught Exception:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
+    // Don't exit immediately - let the process continue but log the error
+  });
+
+  // Add unhandled rejection handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  process.on('unhandledRejection', (reason: unknown, _promise: Promise<unknown>) => {
+    const errorMessage = reason instanceof Error ? reason.message : String(reason);
+    const errorStack = reason instanceof Error ? reason.stack : undefined;
+    logger.error('Unhandled Rejection:', {
+      error: errorMessage,
+      stack: errorStack,
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
+    // Don't exit immediately - let the process continue but log the error
+  });
+
+  // Add process exit handler
+  process.on('exit', (code: number) => {
+    logger.info('Process exiting', {
+      code,
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: process.uptime(),
+    });
+  });
+
+  // Log memory usage periodically (every 5 minutes)
+  setInterval(
+    () => {
+      const used = process.memoryUsage();
+      logger.info('Memory usage:', {
+        rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
+        heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
+        heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
+        external: `${Math.round(used.external / 1024 / 1024)}MB`,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+      });
+    },
+    5 * 60 * 1000
+  ); // Every 5 minutes
+
+  // Keep process alive - prevent Node.js from exiting when event loop is empty
+  // This ensures the HTTP server keeps running even if no active requests
+  const keepAliveInterval = setInterval(() => {
+    // This interval keeps the event loop active
+    // We'll clear it on shutdown
+  }, 1000);
+
+  // Clear keep-alive interval on shutdown
+  const originalShutdown = runner.shutdown.bind(runner);
+  runner.shutdown = async function () {
+    clearInterval(keepAliveInterval);
+    return originalShutdown();
+  };
+
   runner.initialize().catch((error) => {
     console.error('Failed to start cursor-runner:', error);
+    logger.error('Failed to start cursor-runner', {
+      error: getErrorMessage(error),
+      stack: getErrorStack(error),
+      timestamp: new Date().toISOString(),
+    });
     // eslint-disable-next-line no-process-exit
     process.exit(1);
   });
+
+  // Add logging to track if process exits without explicit exit call
+  const originalExit = process.exit;
+  process.exit = function (code?: number): never {
+    const stack = new Error().stack;
+    const stackLines = stack?.split('\n').slice(2, 10) || [];
+    console.error('<<< process.exit() called directly >>>', {
+      code,
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      uptime: `${Math.round(process.uptime())}s`,
+      callStack: stackLines,
+    });
+    logger.error('process.exit() called directly', {
+      code,
+      timestamp: new Date().toISOString(),
+      callStack: stackLines,
+    });
+    return originalExit.call(process, code);
+  };
 }
