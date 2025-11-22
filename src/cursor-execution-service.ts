@@ -6,6 +6,7 @@ import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
 import { ConversationService } from './conversation-service.js';
+import { GitCompletionChecker } from './git-completion-checker.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -231,6 +232,7 @@ export class CursorExecutionService {
   private filesystem: FilesystemService;
   private workspaceTrust: WorkspaceTrustService;
   public conversationService: ConversationService;
+  private gitCompletionChecker: GitCompletionChecker;
 
   constructor(
     gitService: GitService,
@@ -247,6 +249,7 @@ export class CursorExecutionService {
     this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
     this.conversationService = new ConversationService();
     this.scriptsPath = SCRIPTS_PATH;
+    this.gitCompletionChecker = new GitCompletionChecker();
     this.ensureScriptsDirectory();
   }
 
@@ -348,22 +351,45 @@ export class CursorExecutionService {
   /**
    * Prepare command with instructions
    * @param command - Original command string
+   * @param repositoryPath - Optional repository path to check if code was pushed
    * @returns Prepared command arguments
    */
-  prepareCommand(command: string): readonly string[] {
+  prepareCommand(command: string, repositoryPath?: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
     // Append system settings MCP instructions to all prompts
-    return this.commandParser.appendInstructions(commandArgs, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+    return this.prepareCommandArgs(commandArgs, repositoryPath);
   }
 
   /**
    * Prepare command arguments array with instructions
    * @param args - Command arguments array
+   * @param repositoryPath - Optional repository path to check if code was pushed
    * @returns Prepared command arguments with instructions appended
    */
-  prepareCommandArgs(args: readonly string[]): readonly string[] {
+  prepareCommandArgs(args: readonly string[], repositoryPath?: string): readonly string[] {
+    // Build system instructions, including git push status if repository path is provided
+    let instructions = SYSTEM_SETTINGS_MCP_INSTRUCTIONS;
+
+    if (repositoryPath) {
+      try {
+        const completionCheck = this.gitCompletionChecker.checkCompletion(repositoryPath);
+        if (completionCheck.hasPushedCommits) {
+          instructions += `\n\nIMPORTANT: Code has been pushed to origin. The current branch is in sync with the remote repository.`;
+        } else {
+          instructions += `\n\nIMPORTANT: Code has NOT been pushed to origin yet. If the task requires pushing code, you must push your changes using \`git push origin <branch-name>\` or use the deploy script.`;
+        }
+      } catch (error) {
+        // If we can't check git status, don't include the information
+        // This is not critical, so we just log a warning
+        logger.debug('Could not check git push status for system prompt', {
+          error: getErrorMessage(error),
+          repositoryPath,
+        });
+      }
+    }
+
     // Append system settings MCP instructions to all prompts
-    return this.commandParser.appendInstructions(args, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+    return this.commandParser.appendInstructions(args, instructions);
   }
 
   /**
@@ -480,7 +506,7 @@ export class CursorExecutionService {
     const commandArgs = ['--model', 'auto', '--print', '--force', fullPrompt];
 
     // Prepare command with instructions
-    const modifiedArgs = this.prepareCommandArgs(commandArgs);
+    const modifiedArgs = this.prepareCommandArgs(commandArgs, fullRepositoryPath);
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -699,7 +725,7 @@ export class CursorExecutionService {
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
     const commandArgs = ['--model', 'auto', '--print', '--force', initialFullPrompt];
-    const modifiedArgs = this.prepareCommandArgs(commandArgs);
+    const modifiedArgs = this.prepareCommandArgs(commandArgs, fullRepositoryPath);
 
     logger.info('Executing initial cursor command for iterate', {
       requestId,
@@ -949,7 +975,7 @@ export class CursorExecutionService {
       // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
       const resumeCommandArgs = ['--model', 'auto', '--print', '--force', fullResumePrompt];
-      const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
+      const resumeArgs = this.prepareCommandArgs(resumeCommandArgs, fullRepositoryPath);
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -1187,7 +1213,7 @@ Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
       const summarizeCommandArgs = ['--model', 'auto', '--print', '--force', summarizePrompt];
-      const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
+      const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs, cwd);
 
       logger.info('Summarizing conversation using cursor', {
         conversationId,
