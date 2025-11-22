@@ -6,6 +6,7 @@ import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
 import { ConversationService } from './conversation-service.js';
+import { isSystemSettingEnabled } from './system-settings.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -860,7 +861,8 @@ export class CursorExecutionService {
       }
 
       // Store review agent messages in conversation history when DEBUG is enabled
-      const debugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+      // Read from system settings database, fallback to env var
+      const debugEnabled = isSystemSettingEnabled('debug');
       if (debugEnabled && reviewResponse.prompt) {
         // Store what we sent to cursor for review (right before sending)
         await this.conversationService.addMessage(

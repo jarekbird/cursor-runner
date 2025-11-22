@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { randomUUID } from 'crypto';
 import { logger } from './logger.js';
 import { getErrorMessage } from './error-utils.js';
+import { isSystemSettingEnabled } from './system-settings.js';
 
 interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -175,8 +176,8 @@ export class ConversationService {
     content: string,
     isReviewAgent: boolean = false
   ): Promise<void> {
-    // Check if DEBUG is enabled - if so, include review agent messages
-    const debugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+    // Check if DEBUG is enabled - read from system settings database, fallback to env var
+    const debugEnabled = isSystemSettingEnabled('debug');
 
     if (isReviewAgent && !debugEnabled) {
       // Don't store review agent messages unless DEBUG is enabled
