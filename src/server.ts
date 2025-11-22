@@ -117,16 +117,6 @@ export class Server {
   setupMiddleware(): void {
     // JSON body parser
     this.app.use(express.json());
-
-    // Request logging
-    this.app.use((req: Request, res: Response, next: NextFunction) => {
-      logger.info('HTTP Request', {
-        method: req.method,
-        path: req.path,
-        ip: req.ip,
-      });
-      next();
-    });
   }
 
   /**

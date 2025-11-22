@@ -104,12 +104,6 @@ if (!fs.existsSync(CURSOR_RUNNER_MCP)) {
   process.exit(1);
 }
 
-// Create backup of existing config
-const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-const backupFile = `${existingMcp}.backup.${timestamp}`;
-fs.copyFileSync(existingMcp, backupFile);
-console.log(`Created backup: ${backupFile}`);
-
 // Read existing config
 let existing;
 try {
@@ -176,7 +170,6 @@ console.log(`Merged cursor-runner MCP config into: ${existingMcp}`);
 if (IS_DOCKER) {
   console.log(`Also copied to /root/.cursor/mcp.json for cursor-cli`);
 }
-console.log(`Backup saved to: ${backupFile}`);
 console.log('');
 console.log('Merged configuration:');
 console.log(JSON.stringify(existing, null, 2));
