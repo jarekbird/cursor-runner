@@ -125,6 +125,11 @@ export class Server {
   setupRoutes(): void {
     // Health check
     this.app.get('/health', (req: Request, res: Response) => {
+      logger.info('Health check requested', {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        service: 'cursor-runner',
+      });
       res.json({ status: 'ok', service: 'cursor-runner' });
     });
 
