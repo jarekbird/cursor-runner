@@ -170,6 +170,11 @@ IMPORTANT: When updating system settings (SystemSetting model), you MUST use the
 
 IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
 
+IMPORTANT: When working with conversation history in Redis (clearing, querying, or managing conversations), you MUST use the cursor-runner-shared-redis MCP connection. Conversation history is stored in Redis with keys like:
+- cursor:conversation:{conversationId} - Individual conversation data
+- cursor:last_conversation_id - Last conversation ID
+To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.
+
 Tasks Table Schema:
 - id: INTEGER PRIMARY KEY AUTOINCREMENT
 - prompt: TEXT NOT NULL (the task prompt/description to be executed)
