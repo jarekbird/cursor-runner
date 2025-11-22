@@ -939,7 +939,16 @@ export class CursorExecutionService {
 
       // Store the continuation/resume prompt in conversation history as a user message
       // This ensures the review agent's guidance is recorded in the conversation
-      await this.conversationService.addMessage(actualConversationId, 'user', resumePrompt, false);
+      // However, when DEBUG is enabled, we've already stored the review agent's request/response,
+      // so we don't need to store the continuation prompt separately to avoid duplication
+      if (!debugEnabled) {
+        await this.conversationService.addMessage(
+          actualConversationId,
+          'user',
+          resumePrompt,
+          false
+        );
+      }
 
       // Build full prompt with conversation context
       // System settings MCP instructions will be appended by prepareCommandArgs
