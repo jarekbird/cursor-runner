@@ -718,12 +718,8 @@ export class CursorExecutionService {
     });
 
     // Store what we're sending to cursor in Redis (right before sending)
-    await this.conversationService.addMessage(
-      actualConversationId,
-      'user',
-      initialFullPrompt,
-      false
-    );
+    // Only store the current request, not the full context (which is built dynamically)
+    await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
     let lastResult: CommandResult;
     try {
