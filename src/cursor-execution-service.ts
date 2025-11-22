@@ -575,7 +575,7 @@ export class CursorExecutionService {
    * @param params.branchName - Optional branch name (for logging/tracking)
    * @param params.prompt - Prompt string
    * @param params.requestId - Request ID
-   * @param params.maxIterations - Maximum iterations (default: 25)
+   * @param params.maxIterations - Maximum iterations (default: 5)
    * @param params.callbackUrl - Optional callback URL to notify when complete
    * @returns Execution result
    */
@@ -585,7 +585,7 @@ export class CursorExecutionService {
       branchName,
       prompt,
       requestId,
-      maxIterations = 25,
+      maxIterations = 5,
       callbackUrl,
       conversationId,
     } = params;

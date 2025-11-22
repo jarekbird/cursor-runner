@@ -352,7 +352,7 @@ export class Server {
             branchName: body.branchName,
             prompt: body.prompt,
             requestId,
-            maxIterations: body.maxIterations || 25,
+            maxIterations: body.maxIterations || 5,
             conversationId: body.conversationId || body.conversation_id,
           });
 
@@ -431,7 +431,7 @@ export class Server {
               branchName: body.branchName,
               prompt: body.prompt,
               requestId,
-              maxIterations: body.maxIterations || 25,
+              maxIterations: body.maxIterations || 5,
               callbackUrl,
               conversationId: body.conversationId || body.conversation_id,
             })
@@ -453,7 +453,7 @@ export class Server {
                   error: error.message,
                   timestamp: new Date().toISOString(),
                   iterations: 0, // No iterations completed if error occurred before/during iterate
-                  maxIterations: body.maxIterations || 25,
+                  maxIterations: body.maxIterations || 5,
                 };
 
                 // Include partial output if available (e.g., from timeout)

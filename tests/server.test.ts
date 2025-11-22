@@ -364,7 +364,7 @@ describe('Server', () => {
             error: 'prompt is required',
             repository: 'test-repo',
             iterations: 0,
-            maxIterations: 25,
+            maxIterations: 5,
             exitCode: 1,
           }),
           expect.any(String)
@@ -398,7 +398,7 @@ describe('Server', () => {
             repository: 'nonexistent-repo',
             error: expect.stringContaining('Repository not found locally'),
             iterations: 0,
-            maxIterations: 25,
+            maxIterations: 5,
             exitCode: 1,
           }),
           expect.any(String)
