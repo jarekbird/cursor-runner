@@ -1099,6 +1099,17 @@ export class CursorExecutionService {
         errorResponseBody.originalOutput = originalOutput;
       }
 
+      // Store the final output in conversation history (even on error, there may be useful output)
+      const finalOutput = lastResult.stdout || lastResult.stderr || '';
+      if (finalOutput) {
+        await this.conversationService.addMessage(
+          actualConversationId,
+          'assistant',
+          finalOutput,
+          false
+        );
+      }
+
       // If callback URL is provided, call it asynchronously (don't wait)
       if (callbackUrl) {
         this.callbackWebhook(callbackUrl, errorResponseBody, requestId).catch((error) => {
@@ -1148,6 +1159,17 @@ export class CursorExecutionService {
         // Fallback to lastResult.stdout if originalOutput wasn't captured
         responseBody.originalOutput = lastResult.stdout || '';
       }
+    }
+
+    // Store the final output in conversation history
+    const finalOutput = lastResult.stdout || lastResult.stderr || '';
+    if (finalOutput) {
+      await this.conversationService.addMessage(
+        actualConversationId,
+        'assistant',
+        finalOutput,
+        false
+      );
     }
 
     // Include branchName in response if provided
