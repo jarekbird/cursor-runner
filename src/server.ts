@@ -165,6 +165,14 @@ export class Server {
   }
 
   /**
+   * Detect if a request is from telegram based on requestId pattern
+   * Telegram requests have requestId starting with "telegram-"
+   */
+  private detectQueueType(requestId: string): 'telegram' | 'default' {
+    return requestId.startsWith('telegram-') ? 'telegram' : 'default';
+  }
+
+  /**
    * Setup cursor execution routes
    */
   setupCursorRoutes(): void {
@@ -191,6 +199,9 @@ export class Server {
             userAgent: req.get('user-agent'),
           });
 
+          // Detect queue type based on requestId pattern
+          const queueType = this.detectQueueType(requestId);
+
           // Process execution synchronously - wait for completion
           const result = (await this.cursorExecution.execute({
             repository: body.repository,
@@ -198,6 +209,7 @@ export class Server {
             prompt: body.prompt,
             requestId,
             conversationId: body.conversationId || body.conversation_id,
+            queueType,
           })) as { status: number; body: unknown };
 
           res.status(result.status).json(result.body);
@@ -265,6 +277,9 @@ export class Server {
             timestamp: new Date().toISOString(),
           });
 
+          // Detect queue type based on requestId pattern
+          const queueType = this.detectQueueType(requestId);
+
           // Process execution asynchronously
           this.cursorExecution
             .execute({
@@ -274,6 +289,7 @@ export class Server {
               requestId,
               callbackUrl,
               conversationId: body.conversationId || body.conversation_id,
+              queueType,
             })
             .catch((error: Error) => {
               logger.error('Cursor execution processing failed', {
@@ -346,6 +362,9 @@ export class Server {
             userAgent: req.get('user-agent'),
           });
 
+          // Detect queue type based on requestId pattern
+          const queueType = this.detectQueueType(requestId);
+
           // Process iteration synchronously - wait for completion
           const result = await this.cursorExecution.iterate({
             repository: body.repository,
@@ -354,6 +373,7 @@ export class Server {
             requestId,
             maxIterations: body.maxIterations || 5,
             conversationId: body.conversationId || body.conversation_id,
+            queueType,
           });
 
           // Convert IterationResult to HTTP response
@@ -423,6 +443,9 @@ export class Server {
             timestamp: new Date().toISOString(),
           });
 
+          // Detect queue type based on requestId pattern
+          const queueType = this.detectQueueType(requestId);
+
           // Process iteration asynchronously (fire and forget)
           // The callback webhook will be called when complete
           this.cursorExecution
@@ -434,6 +457,7 @@ export class Server {
               maxIterations: body.maxIterations || 5,
               callbackUrl,
               conversationId: body.conversationId || body.conversation_id,
+              queueType,
             })
             .catch((error: CommandErrorWithOutput) => {
               logger.error('Cursor iterate processing failed', {
@@ -503,21 +527,27 @@ export class Server {
      * POST /cursor/conversation/new
      * Force create a new conversation ID
      * Returns the new conversation ID that will be used for subsequent requests
+     * Body: { queueType?: 'telegram' | 'default' } (optional, defaults to 'default')
      */
     router.post('/conversation/new', async (req: Request, res: Response) => {
       try {
+        const body = req.body as { queueType?: 'telegram' | 'default' };
+        const queueType = body.queueType || 'default';
+
         logger.info('Force new conversation request received', {
           ip: req.ip,
           userAgent: req.get('user-agent'),
+          queueType,
         });
 
         const conversationId =
-          await this.cursorExecution.conversationService.forceNewConversation();
+          await this.cursorExecution.conversationService.forceNewConversation(queueType);
 
         res.status(200).json({
           success: true,
           conversationId,
           message: 'New conversation created',
+          queueType,
         });
       } catch (error) {
         const err = error as Error;

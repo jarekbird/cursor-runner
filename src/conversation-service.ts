@@ -18,6 +18,8 @@ interface ConversationContext {
   lastAccessedAt: string;
 }
 
+export type QueueType = 'default' | 'telegram';
+
 /**
  * Service for managing conversation context in Redis
  * Stores conversation history with automatic summarization when context window is too large
@@ -26,6 +28,7 @@ export class ConversationService {
   private redis: Redis;
   private readonly TTL = 3600; // 1 hour in seconds
   private readonly LAST_CONVERSATION_KEY = 'cursor:last_conversation_id';
+  private readonly TELEGRAM_LAST_CONVERSATION_KEY = 'cursor:telegram:last_conversation_id';
 
   private redisAvailable: boolean = false;
 
@@ -63,12 +66,26 @@ export class ConversationService {
   }
 
   /**
+   * Get the Redis key for the last conversation ID based on queue type
+   */
+  private getLastConversationKey(queueType: QueueType = 'default'): string {
+    return queueType === 'telegram'
+      ? this.TELEGRAM_LAST_CONVERSATION_KEY
+      : this.LAST_CONVERSATION_KEY;
+  }
+
+  /**
    * Get or create a conversation ID
    * Conversation IDs are always created internally by cursor-runner (never by external services)
-   * If no conversationId is provided, returns the last conversation ID
+   * If no conversationId is provided, returns the last conversation ID for the specified queue type
    * If no last conversation exists, creates a new one automatically
+   * @param conversationId - Optional explicit conversation ID to use
+   * @param queueType - Queue type to use when getting last conversation ID (default: 'default')
    */
-  async getConversationId(conversationId?: string): Promise<string> {
+  async getConversationId(
+    conversationId?: string,
+    queueType: QueueType = 'default'
+  ): Promise<string> {
     if (!this.redisAvailable) {
       // If Redis is not available, generate a new ID each time
       // This means context won't persist, but the system will still work
@@ -82,8 +99,9 @@ export class ConversationService {
         return conversationId;
       }
 
-      // Get last conversation ID (most recently used conversation)
-      const lastId = await this.redis.get(this.LAST_CONVERSATION_KEY);
+      // Get last conversation ID for the specified queue type
+      const lastConversationKey = this.getLastConversationKey(queueType);
+      const lastId = await this.redis.get(lastConversationKey);
       if (lastId) {
         await this.updateLastAccessed(lastId);
         return lastId;
@@ -91,12 +109,13 @@ export class ConversationService {
 
       // Create new conversation if none exists
       const newId = randomUUID();
-      await this.redis.set(this.LAST_CONVERSATION_KEY, newId);
-      await this.createConversation(newId);
+      await this.redis.set(lastConversationKey, newId);
+      await this.createConversation(newId, queueType);
       return newId;
     } catch (error) {
       logger.warn('Redis operation failed, using new conversation ID', {
         error: getErrorMessage(error),
+        queueType,
       });
       this.redisAvailable = false;
       return conversationId || randomUUID();
@@ -105,8 +124,13 @@ export class ConversationService {
 
   /**
    * Create a new conversation
+   * @param conversationId - The conversation ID to create
+   * @param queueType - Queue type to update when creating conversation (default: 'default')
    */
-  async createConversation(conversationId: string): Promise<void> {
+  async createConversation(
+    conversationId: string,
+    queueType: QueueType = 'default'
+  ): Promise<void> {
     if (!this.redisAvailable) {
       return;
     }
@@ -125,13 +149,15 @@ export class ConversationService {
         JSON.stringify(context)
       );
 
-      // Update last conversation ID
-      await this.redis.set(this.LAST_CONVERSATION_KEY, conversationId);
+      // Update last conversation ID for the specified queue type
+      const lastConversationKey = this.getLastConversationKey(queueType);
+      await this.redis.set(lastConversationKey, conversationId);
 
-      logger.info('Created new conversation', { conversationId });
+      logger.info('Created new conversation', { conversationId, queueType });
     } catch (error) {
       logger.warn('Failed to create conversation in Redis', {
         conversationId,
+        queueType,
         error: getErrorMessage(error),
       });
       this.redisAvailable = false;
@@ -141,8 +167,9 @@ export class ConversationService {
   /**
    * Force create a new conversation (clears the last conversation ID)
    * This is useful when you want to explicitly start a fresh conversation
+   * @param queueType - Queue type to use when creating conversation (default: 'default')
    */
-  async forceNewConversation(): Promise<string> {
+  async forceNewConversation(queueType: QueueType = 'default'): Promise<string> {
     const newId = randomUUID();
 
     if (!this.redisAvailable) {
@@ -150,13 +177,15 @@ export class ConversationService {
     }
 
     try {
-      await this.redis.set(this.LAST_CONVERSATION_KEY, newId);
-      await this.createConversation(newId);
-      logger.info('Forced new conversation creation', { conversationId: newId });
+      const lastConversationKey = this.getLastConversationKey(queueType);
+      await this.redis.set(lastConversationKey, newId);
+      await this.createConversation(newId, queueType);
+      logger.info('Forced new conversation creation', { conversationId: newId, queueType });
       return newId;
     } catch (error) {
       logger.warn('Failed to force new conversation in Redis, returning new ID anyway', {
         error: getErrorMessage(error),
+        queueType,
       });
       this.redisAvailable = false;
       return newId;
@@ -363,7 +392,8 @@ export class ConversationService {
 
       if (!data) {
         // Create new conversation if it doesn't exist
-        await this.createConversation(conversationId);
+        // Default to 'default' queue type for backward compatibility
+        await this.createConversation(conversationId, 'default');
         return this.getConversation(conversationId);
       }
 

@@ -5,7 +5,7 @@ import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
-import { ConversationService } from './conversation-service.js';
+import { ConversationService, type QueueType } from './conversation-service.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -21,6 +21,7 @@ export interface ExecuteParams {
   requestId: string;
   callbackUrl?: string;
   conversationId?: string;
+  queueType?: QueueType;
 }
 
 /**
@@ -34,6 +35,7 @@ export interface IterateParams {
   maxIterations?: number;
   callbackUrl?: string;
   conversationId?: string;
+  queueType?: QueueType;
 }
 
 /**
@@ -384,7 +386,8 @@ export class CursorExecutionService {
    * @returns Execution result
    */
   async execute(params: ExecuteParams): Promise<ExecutionResult> {
-    const { repository, branchName, prompt, requestId, callbackUrl, conversationId } = params;
+    const { repository, branchName, prompt, requestId, callbackUrl, conversationId, queueType } =
+      params;
     const startTime = Date.now();
 
     // Validate request
@@ -467,7 +470,10 @@ export class CursorExecutionService {
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Get or create conversation ID (uses last conversation if none provided, creates new if none exists)
-    const actualConversationId = await this.conversationService.getConversationId(conversationId);
+    const actualConversationId = await this.conversationService.getConversationId(
+      conversationId,
+      queueType
+    );
 
     // Get conversation context and build context string
     const conversationMessages =
@@ -593,6 +599,7 @@ export class CursorExecutionService {
       maxIterations = 5,
       callbackUrl,
       conversationId,
+      queueType,
     } = params;
     const startTime = Date.now();
 
@@ -682,7 +689,10 @@ export class CursorExecutionService {
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
     // Get or create conversation ID (uses last conversation if none provided, creates new if none exists)
-    const actualConversationId = await this.conversationService.getConversationId(conversationId);
+    const actualConversationId = await this.conversationService.getConversationId(
+      conversationId,
+      queueType
+    );
 
     // Get conversation context and build context string
     const initialConversationMessages =
