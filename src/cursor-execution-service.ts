@@ -330,6 +330,34 @@ export class CursorExecutionService {
   }
 
   /**
+   * Check for resource_exhausted (rate limit) errors and log prominently
+   * @param output - Combined stdout/stderr output from cursor-cli
+   * @param requestId - Request ID for logging context
+   */
+  private checkForResourceExhaustedErrors(output: string, requestId: string): void {
+    const resourceExhaustedPatterns = [
+      /resource_exhausted/i,
+      /rate.*limit/i,
+      /quota.*exceeded/i,
+      /too.*many.*requests/i,
+      /ConnectError.*resource_exhausted/i,
+    ];
+
+    const hasResourceExhaustedError = resourceExhaustedPatterns.some((pattern) =>
+      pattern.test(output)
+    );
+
+    if (hasResourceExhaustedError) {
+      logger.error('RESOURCE_EXHAUSTED ERROR DETECTED - Rate limit or quota exceeded', {
+        requestId,
+        error: 'Resource exhausted - API rate limit or quota exceeded',
+        suggestion:
+          'This may be due to too many concurrent requests or API quota limits. Consider reducing CURSOR_CLI_MAX_CONCURRENT or waiting before retrying.',
+      });
+    }
+  }
+
+  /**
    * Check for API key errors in cursor-cli output and log prominently
    * @param output - Combined stdout/stderr output from cursor-cli
    * @param requestId - Request ID for logging context
@@ -531,6 +559,12 @@ export class CursorExecutionService {
       });
       await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
     }
+
+    // Check for resource_exhausted errors and log prominently
+    this.checkForResourceExhaustedErrors(combinedOutput, requestId);
+
+    // Check for resource_exhausted errors and log prominently
+    this.checkForResourceExhaustedErrors(combinedOutput, requestId);
 
     // Check for API key errors and log prominently
     this.checkForApiKeyErrors(combinedOutput, requestId);
@@ -758,6 +792,9 @@ export class CursorExecutionService {
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
 
+      // Check for resource_exhausted errors and log prominently
+      this.checkForResourceExhaustedErrors(combinedOutput, requestId);
+
       // Check for API key errors and log prominently
       this.checkForApiKeyErrors(combinedOutput, requestId);
     } catch (error) {
@@ -797,6 +834,9 @@ export class CursorExecutionService {
         });
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
+
+      // Check for resource_exhausted errors in error output
+      this.checkForResourceExhaustedErrors(combinedErrorOutput, requestId);
 
       // Check for API key errors in error output
       this.checkForApiKeyErrors(combinedErrorOutput, requestId);

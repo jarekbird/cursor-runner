@@ -247,9 +247,10 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
 
       // IMPORTANT: This call to cursor for prompt generation is NOT recorded in conversation history.
       // The review agent's internal calls should not pollute the conversation context.
+      // Use --model auto for consistent model selection (same as main execution)
 
       const result = await this.cursorCLI.executeCommand(
-        ['--print', '--force', promptGenerationPrompt],
+        ['--model', 'auto', '--print', '--force', promptGenerationPrompt],
         executeOptions
       );
 
@@ -361,12 +362,12 @@ ${output}`;
       // Use --force to enable actual file operations and avoid permission prompts
       // Note: Don't use --resume as it triggers session selection menu when no session ID provided
       // Cursor maintains session context automatically within the same workspace
-      // Model selection is handled automatically by cursor-cli when --model flag is omitted
+      // Use --model auto for consistent model selection (same as main execution)
       // IMPORTANT: This call to cursor is NOT recorded in conversation history.
       // The review agent's calls are internal and should not pollute the conversation context.
 
       const result = await this.cursorCLI.executeCommand(
-        ['--print', '--force', reviewPrompt],
+        ['--model', 'auto', '--print', '--force', reviewPrompt],
         executeOptions
       );
 
