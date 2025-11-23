@@ -1,0 +1,19 @@
+{
+  "projectName": "test-completion",
+  "description": "Test completion tracking for cursor-runner development",
+  "lastUpdated": "2024-01-15T10:30:00Z",
+  "tasks": [],
+  "statistics": {
+    "totalTasks": 0,
+    "completedTasks": 0,
+    "tasksWithTests": 0,
+    "averageCoverage": 0,
+    "totalTestFiles": 0
+  },
+  "coverageGoals": {
+    "minimumCoverage": 80,
+    "targetCoverage": 90,
+    "criticalPathCoverage": 100
+  }
+}
+

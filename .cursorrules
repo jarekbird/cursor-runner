@@ -573,6 +573,21 @@ npm run format:check  # Check formatting
 - cursor-runner returns results to jarek-va
 - Results formatted for ElevenLabs Agent
 
+### Public API Documentation
+
+**IMPORTANT: For API integration details, refer to jarek-va's public API documentation:**
+- **File Location**: `jarek-va/docs/API.md`
+- **Public Access**: `GET /api/docs` or `GET /api/docs.json` on the jarek-va service
+- **Endpoints**: `/api/prompt` (POST) and `/api/conversation/new` (POST)
+
+The API documentation describes:
+- How external agents can interact with the Virtual Assistant system
+- Available tools and capabilities accessible through prompts
+- Conversation context management
+- Best practices for prompt engineering
+
+**When working on features that interact with external agents or need to understand the public API, refer to `jarek-va/docs/API.md`.**
+
 ### With cursor-cli
 - Validate cursor-cli is available before use
 - Execute commands with proper security checks
