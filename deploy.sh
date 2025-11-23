@@ -26,23 +26,6 @@ fi
 echo -e "${GREEN}✓${NC} Directory verified"
 echo ""
 
-# Step 1.5: Check if we're on the main branch
-echo -e "${GREEN}Step 1.5:${NC} Checking current branch..."
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
-if [ -z "$CURRENT_BRANCH" ]; then
-  echo -e "${RED}✗ Error: Not a git repository or unable to determine current branch${NC}"
-  exit 1
-fi
-
-if [ "$CURRENT_BRANCH" != "main" ]; then
-  echo -e "${YELLOW}⚠ Warning: Deploy script only runs on the main branch${NC}"
-  echo -e "${YELLOW}  Current branch: $CURRENT_BRANCH${NC}"
-  echo -e "${YELLOW}  Deployment aborted. Switch to main branch to deploy.${NC}"
-  exit 0
-fi
-echo -e "${GREEN}✓${NC} On main branch"
-echo ""
-
 # Step 2: Run all tests and linting
 echo -e "${GREEN}Step 2:${NC} Running linting for all files..."
 if ! npm run lint; then
