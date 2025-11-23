@@ -94,7 +94,9 @@ export class ConversationService {
 
     try {
       if (conversationId) {
-        // Update last accessed time
+        // When conversationId is explicitly provided, use it and don't update the "last conversation"
+        // This ensures each task gets its own conversation when conversationId is provided
+        // Only update last accessed time for tracking purposes
         await this.updateLastAccessed(conversationId);
         return conversationId;
       }

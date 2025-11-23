@@ -438,36 +438,21 @@ export class CursorCLI {
         }
       }, 30000);
 
-      // Check if this is a review agent call (to reduce logging verbosity)
-      const isReviewAgentCall = args.some(
-        (arg) => typeof arg === 'string' && arg.includes('You are a review agent')
-      );
-
       const handleData = (data: string | Buffer): void => {
         const chunk = typeof data === 'string' ? data : data.toString();
         outputSize += Buffer.byteLength(chunk);
         lastOutputTime = Date.now();
         hasReceivedOutput = true;
 
-        // For review agent calls, only log at debug level to avoid double printing
-        // Review agent output should be minimal (just JSON) and doesn't need verbose logging
-        if (isReviewAgentCall) {
-          logger.debug('cursor-cli stdout chunk (review agent)', {
-            command: this.cursorPath,
-            chunkLength: chunk.length,
-            totalStdoutLength: stdout.length + chunk.length,
-          });
-        } else {
-          // Log output chunks in real-time (truncate for logging)
-          const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
-          logger.info('cursor-cli stdout chunk', {
-            command: this.cursorPath,
-            args: this.formatArgsForLogging(args),
-            chunkLength: chunk.length,
-            chunkPreview: logChunk.replace(/\n/g, '\\n'),
-            totalStdoutLength: stdout.length + chunk.length,
-          });
-        }
+        // Log output chunks in real-time (truncate for logging)
+        const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
+        logger.info('cursor-cli stdout chunk', {
+          command: this.cursorPath,
+          args: this.formatArgsForLogging(args),
+          chunkLength: chunk.length,
+          chunkPreview: logChunk.replace(/\n/g, '\\n'),
+          totalStdoutLength: stdout.length + chunk.length,
+        });
 
         if (outputSize > this.maxOutputSize) {
           try {
