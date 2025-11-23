@@ -3,6 +3,12 @@
 # Deploy Script
 # This script runs CI tests and then pushes to origin
 # Use this to deploy changes after verifying they pass all tests
+#
+# Prerequisites:
+# - Node.js 18+ (use nvm with .nvmrc)
+# - npm dependencies installed (npm install)
+# - Git repository initialized
+# - NO Ruby or bundle required (this is a Node.js project)
 
 set -e  # Exit on any error
 
@@ -27,6 +33,7 @@ echo -e "${GREEN}✓${NC} Directory verified"
 echo ""
 
 # Step 2: Run all tests and linting
+# Note: This script uses npm commands only - no Ruby/bundle required
 echo -e "${GREEN}Step 2:${NC} Running linting for all files..."
 if ! npm run lint; then
   echo -e "${RED}✗ Error: Linting failed. Deployment aborted.${NC}"

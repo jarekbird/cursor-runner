@@ -26,8 +26,10 @@ jarek-va (Rails) → cursor-runner (Node.js) → cursor-cli → Target Applicati
 ## Prerequisites
 
 - Node.js 18+ (use nvm with `.nvmrc`)
+- npm dependencies installed (`npm install`)
 - cursor-cli installed and available in PATH
 - Target application (e.g., jarek-va) accessible
+- **NO Ruby or bundle required** - This is a Node.js project that uses npm commands exclusively
 
 ## Installation
 
@@ -158,6 +160,29 @@ const result = await runner.executeCodeGeneration({
 ```
 
 ## Development
+
+### Deployment
+
+The `deploy.sh` script runs all CI checks and pushes to origin:
+
+```bash
+./deploy.sh
+```
+
+**Prerequisites for deploy.sh:**
+- Node.js 18+ and npm dependencies installed
+- Git repository initialized
+- **NO Ruby or bundle required** - This script uses npm commands exclusively (`npm run lint`, `npm test`, `npm run test:coverage`, etc.)
+
+The deploy script will:
+1. Run linting (`npm run lint`)
+2. Check code formatting (`npm run format:check`)
+3. Run all tests (`npm test`)
+4. Generate test coverage (`npm run test:coverage`)
+5. Commit any uncommitted changes (if present)
+6. Push to origin
+
+**Note**: This is different from `jarek-va/scripts/deploy.sh`, which is a Ruby on Rails project that requires Ruby and bundle.
 
 ### Running CI Tests (Required Before Committing)
 
