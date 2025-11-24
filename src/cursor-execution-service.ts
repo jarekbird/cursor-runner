@@ -167,6 +167,8 @@ const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any pr
 
 IMPORTANT: If you push any code to origin during this task, you MUST explicitly report this in your output. State clearly: "Code pushed to origin" or "No code pushed to origin" at the end of your response. This information is critical for task completion tracking.
 
+IMPORTANT: When a task file is referenced (e.g., "task at path/to/file.md"), you MUST output the definition of done from that task file in your response if it has one. Include the definition of done section from the task file in your output, in addition to any other work you perform. This helps verify that the task requirements are being met.
+
 IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
 IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
