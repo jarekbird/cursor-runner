@@ -170,14 +170,134 @@ export class ReviewAgentService {
   }
 
   /**
-   * Extract definition of done from task files
-   * Looks for definition of done in common locations:
-   * - .cursorrules file
-   * - Task markdown files
-   * - Definition of done section in files
+   * Extract file paths from task prompt
+   * Looks for patterns like:
+   * - "task at <path>"
+   * - "task file <path>"
+   * - "file <path>"
+   * - Markdown links [text](path)
+   */
+  private extractFilePathsFromPrompt(taskPrompt: string): string[] {
+    const filePaths: string[] = [];
+
+    // Pattern 1: "task at <path>" or "task file <path>"
+    const taskAtPattern = /task\s+(?:at|file)\s+([^\s\n]+\.md)/gi;
+    let match;
+    while ((match = taskAtPattern.exec(taskPrompt)) !== null) {
+      if (match[1]) {
+        filePaths.push(match[1]);
+      }
+    }
+
+    // Pattern 2: Markdown links [text](path.md)
+    const markdownLinkPattern = /\[([^\]]+)\]\(([^\s)]+\.md)\)/gi;
+    while ((match = markdownLinkPattern.exec(taskPrompt)) !== null) {
+      if (match[2]) {
+        filePaths.push(match[2]);
+      }
+    }
+
+    // Pattern 3: Direct file paths ending in .md
+    const directPathPattern = /([^\s\n]+\.md)/gi;
+    while ((match = directPathPattern.exec(taskPrompt)) !== null) {
+      if (match[1] && !filePaths.includes(match[1])) {
+        // Only add if it looks like a task file path (contains "task" or "Plan" or similar)
+        const pathLower = match[1].toLowerCase();
+        if (pathLower.includes('task') || pathLower.includes('plan') || pathLower.includes('/')) {
+          filePaths.push(match[1]);
+        }
+      }
+    }
+
+    return filePaths;
+  }
+
+  /**
+   * Load definition of done from a task file
+   * @param filePath - Path to the task file (can be relative or absolute)
+   * @param cwd - Working directory for resolving relative paths
+   * @returns Definition of done content or undefined if not found
+   */
+  private loadDefinitionOfDoneFromTaskFile(filePath: string, cwd: string): string | undefined {
+    // Get repositories path (same logic as GitService)
+    const repositoriesPath =
+      process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
+
+    // Try multiple path resolutions
+    const possiblePaths = [
+      filePath, // Try as-is (absolute or relative to cwd)
+      path.join(cwd, filePath), // Relative to cwd
+      path.join(repositoriesPath, filePath), // Relative to repositories directory
+      path.join(process.cwd(), filePath), // Relative to process cwd
+      path.resolve(cwd, filePath), // Resolved relative to cwd
+      path.resolve(repositoriesPath, filePath), // Resolved relative to repositories directory
+    ];
+
+    for (const fullPath of possiblePaths) {
+      if (existsSync(fullPath)) {
+        try {
+          const content = readFileSync(fullPath, 'utf-8');
+
+          // Look for definition of done section
+          // Pattern 1: "## Definition of Done" or "### Definition of Done" section
+          const sectionPattern = /##+\s*definition\s+of\s+done\s*\n(.+?)(?=\n##|\n---|$)/is;
+          const sectionMatch = content.match(sectionPattern);
+          if (sectionMatch && sectionMatch[1]) {
+            return sectionMatch[1].trim();
+          }
+
+          // Pattern 2: "Definition of Done:" or "Definition of Done:" followed by content
+          const inlinePattern = /definition\s+of\s+done[:-]?\s*\n(.+?)(?=\n\n|\n##|\n---|$)/is;
+          const inlineMatch = content.match(inlinePattern);
+          if (inlineMatch && inlineMatch[1]) {
+            return inlineMatch[1].trim();
+          }
+
+          // Pattern 3: Look for it anywhere in the file (less specific)
+          const anywherePattern = /definition\s+of\s+done[:-]?\s*(.+?)(?=\n\n|\n##|\n---|$)/is;
+          const anywhereMatch = content.match(anywherePattern);
+          if (anywhereMatch && anywhereMatch[1] && anywhereMatch[1].trim().length > 10) {
+            return anywhereMatch[1].trim();
+          }
+        } catch (error) {
+          logger.warn('Failed to read task file for definition of done', {
+            filePath: fullPath,
+            error: getErrorMessage(error),
+          });
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Extract definition of done from task files (if provided)
+   * Looks for custom definition of done in:
+   * - Task files referenced in task prompt (e.g., "task at path/to/file.md")
+   * - Task prompt itself (inline definition)
+   * - .cursorrules file (task-specific override)
    */
   private extractDefinitionOfDone(cwd: string, taskPrompt?: string): string | undefined {
-    // Check for definition of done in .cursorrules
+    // First, check for inline definition in task prompt
+    if (taskPrompt) {
+      const dodMatch = taskPrompt.match(/definition\s+of\s+done[:-]?\s*(.+?)(?:\n\n|\n##|$)/is);
+      if (dodMatch && dodMatch[1]) {
+        return dodMatch[1].trim();
+      }
+
+      // Extract file paths from task prompt and check each one
+      const filePaths = this.extractFilePathsFromPrompt(taskPrompt);
+      for (const filePath of filePaths) {
+        const definition = this.loadDefinitionOfDoneFromTaskFile(filePath, cwd);
+        if (definition) {
+          logger.debug('Found definition of done in task file', { filePath });
+          return definition;
+        }
+      }
+    }
+
+    // Check for definition of done in .cursorrules (task-specific override)
     const cursorRulesPath = path.join(cwd, '.cursorrules');
     if (existsSync(cursorRulesPath)) {
       try {
@@ -190,14 +310,6 @@ export class ReviewAgentService {
         logger.warn('Failed to read .cursorrules for definition of done', {
           error: getErrorMessage(error),
         });
-      }
-    }
-
-    // Check task prompt for definition of done
-    if (taskPrompt) {
-      const dodMatch = taskPrompt.match(/definition\s+of\s+done[:-]?\s*(.+?)(?:\n\n|\n##|$)/is);
-      if (dodMatch && dodMatch[1]) {
-        return dodMatch[1].trim();
       }
     }
 
@@ -287,67 +399,32 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
     timeout: number | null = null,
     reviewOptions: ReviewOutputOptions = {}
   ): Promise<ReviewOutputResult> {
-    // Extract definition of done if not provided
+    // Extract custom definition of done if provided (from task prompt or .cursorrules)
     const definitionOfDone =
       reviewOptions.definitionOfDone || this.extractDefinitionOfDone(cwd, reviewOptions.taskPrompt);
 
-    // Use custom definition if provided, otherwise will let cursor choose from defaults
-    const definitionToUse = definitionOfDone;
+    // Build review prompt with simple done check
+    const reviewPrompt = `You are a review agent. Evaluate the previous agent's output and return ONLY a valid JSON object with no additional text.
 
-    // Build review prompt with definition of done context
-    const reviewPrompt = `You are a review agent. Your job is to evaluate the previous agent's output and return ONLY a valid JSON object with no additional text, explanations, or formatting. 
+CRITICAL: Return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
 
-CRITICAL: You must return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
-
-Evaluate whether the task was completed according to the definition of done and if there are permission issues that require breaking iterations.
+Is the task done? Are there permission issues that require breaking iterations?
 
 ${
-  definitionToUse
+  definitionOfDone
     ? `CUSTOM DEFINITION OF DONE:
-${definitionToUse}
+${definitionOfDone}
 
 `
-    : `DEFINITION OF DONE (choose the appropriate one based on task type):
+    : ''
+}
 
-1. CODE/FILE WRITING TASKS (involves writing, creating, modifying, or implementing SOURCE CODE FILES that need to be committed to git):
-   "A Pull Request was created OR code was pushed to origin with the task complete"
-
-2. SYSTEM/ENVIRONMENT OPERATION TASKS (installing dependencies, running builds, installing packages, running migrations, executing install scripts, etc.):
-   "The required operation must complete successfully with no errors, and the expected artifacts must be created. If any part of the operation fails, the task is NOT complete."
-   
-   IMPORTANT: Installing dependencies requires packages to actually be installed successfully. Updating package.json is NOT enough. If the output mentions environmental issues, errors, warnings, or failed operations, the task is NOT complete.
-
-3. SIMPLE REQUESTS/QUESTIONS/DATA OPERATIONS (asking questions, requesting information, explanations, clarifications, database queries/updates, data manipulation, executing scripts/commands that don't create source code files, etc.):
-   "The request was completed or the question was answered"
-
-TASK TYPE GUIDELINES:
-- Only tasks that create/modify SOURCE CODE FILES (that should be committed to git) are code writing tasks
-- Non-code tasks (database queries, data manipulation, executing commands, reading/updating data) are NOT code writing tasks and do not require git push/PR
-- Installing dependencies is a SYSTEM/ENVIRONMENT OPERATION TASK, not a simple request
-
-You must determine which type of task this is and apply the appropriate definition of done.
-
-`
-}IMPORTANT COMPLETION RULES:
-- The task is complete ONLY if it meets the definition of done criteria
-- If the agent reports that the project/task was already done before the task was initiated, mark code_complete: true (the task is considered complete since the desired state already exists)
-- For code/file writing tasks: Completion requires an explicit "Code pushed to origin" or PR creation in the output. If neither is present, code_complete must be false. Check the cursor-cli output text for these reports - do NOT run git commands.
-- For system/environment operation tasks: The operation must succeed without errors. If the output mentions failures, errors, warnings, or incomplete operations, mark code_complete: false.
-- For simple requests/questions: The task is complete if the response fulfills the request. No git operations are required.
-
-PERMISSION DETECTION RULES (CRITICAL):
-- If the output mentions asking for permissions, requesting permissions, or needing permissions to run a command, mark break_iteration: true
-- If the output says it doesn't have permissions, lacks permissions, or cannot run a command due to permissions, mark break_iteration: true
-- If the output mentions "Workspace Trust Required", "trust", "permission denied", "access denied", or similar permission-related errors, mark break_iteration: true
-- If the output indicates cursor is blocked from executing commands due to security/permission restrictions, mark break_iteration: true
-- Otherwise, mark break_iteration: false
-
-Return ONLY this JSON structure (no other text):
+Return ONLY this JSON structure:
 
 {
   "code_complete": true,
   "break_iteration": false,
-  "justification": "Task completed successfully according to definition of done"
+  "justification": "Brief explanation"
 }
 
 Previous agent output:
@@ -465,7 +542,7 @@ ${output}`;
             const generatedPrompt = await this.generateContinuationPrompt(
               output,
               reviewOptions.taskPrompt || '',
-              definitionToUse ||
+              definitionOfDone ||
                 'The code/files were created or modified as required and the task objectives were met',
               cwd,
               timeout

@@ -575,8 +575,9 @@ export class CursorCLI {
     logger.info('Generating tests (TDD Red phase)', { targetPath });
 
     // Build cursor command to generate tests
+    // Use --model auto for consistent model selection (same as main execution)
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['generate', '--prompt', prompt, '--type', 'test'];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -610,8 +611,9 @@ export class CursorCLI {
   ): Promise<GenerationResult> {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
+    // Use --model auto for consistent model selection (same as main execution)
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['generate', '--prompt', prompt, '--type', 'implementation'];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -645,8 +647,9 @@ export class CursorCLI {
   ): Promise<GenerationResult> {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
+    // Use --model auto for consistent model selection (same as main execution)
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['refactor', '--prompt', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
