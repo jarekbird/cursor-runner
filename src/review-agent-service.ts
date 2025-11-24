@@ -2,6 +2,8 @@ import { logger } from './logger.js';
 import { getErrorMessage } from './error-utils.js';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
+import { isSystemSettingEnabled } from './system-settings.js';
 
 /**
  * Review result structure returned by the review agent
@@ -67,9 +69,15 @@ interface CursorCLIInterface {
  */
 export class ReviewAgentService {
   protected cursorCLI: CursorCLIInterface;
+  protected openaiClient: OpenAI | null = null;
 
   constructor(cursorCLI: CursorCLIInterface) {
     this.cursorCLI = cursorCLI;
+    // Initialize OpenAI client if API key is available
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      this.openaiClient = new OpenAI({ apiKey });
+    }
   }
 
   /**
@@ -384,6 +392,118 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
   }
 
   /**
+   * Review output using OpenAI GPT-3.5 mini
+   * @param output - Output to review
+   * @param reviewPrompt - The review prompt to send to GPT-3.5 mini
+   * @returns Review result with parsed result and raw output
+   */
+  private async reviewWithOpenAI(
+    output: string,
+    reviewPrompt: string
+  ): Promise<ReviewOutputResult> {
+    if (!this.openaiClient) {
+      throw new Error(
+        'OpenAI client not initialized. OPENAI_API_KEY environment variable is required.'
+      );
+    }
+
+    try {
+      const response = await this.openaiClient.chat.completions.create({
+        model: 'gpt-3.5-turbo-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              "You are a review agent. Evaluate the previous agent's output and return ONLY a valid JSON object with no additional text. CRITICAL: Return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.",
+          },
+          {
+            role: 'user',
+            content: reviewPrompt,
+          },
+        ],
+        temperature: 0.3, // Lower temperature for more consistent JSON output
+        max_tokens: 500,
+      });
+
+      const rawOutput = response.choices[0]?.message?.content || '';
+      const cleanedOutput = rawOutput.trim();
+
+      // Try to find JSON object in the output
+      const jsonStart = cleanedOutput.indexOf('{');
+      if (jsonStart === -1) {
+        logger.warn('No JSON object found in OpenAI review output', {
+          outputPreview: cleanedOutput.substring(0, 200),
+        });
+        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
+      }
+
+      // Find the matching closing brace
+      let braceCount = 0;
+      let jsonEnd = -1;
+      for (let i = jsonStart; i < cleanedOutput.length; i++) {
+        if (cleanedOutput[i] === '{') {
+          braceCount++;
+        } else if (cleanedOutput[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (jsonEnd === -1) {
+        logger.warn('Incomplete JSON object in OpenAI review output', {
+          outputPreview: cleanedOutput.substring(0, 200),
+        });
+        return { result: null, rawOutput: cleanedOutput, prompt: reviewPrompt };
+      }
+
+      const jsonString = cleanedOutput.substring(jsonStart, jsonEnd);
+
+      try {
+        const parsed = JSON.parse(jsonString) as Partial<ReviewResult>;
+        // Validate required fields
+        if (typeof parsed.code_complete !== 'boolean') {
+          logger.warn('OpenAI review JSON missing required fields', { parsed });
+          return { result: null, rawOutput: jsonString, prompt: reviewPrompt };
+        }
+        // Set break_iteration default to false if not provided
+        if (typeof parsed.break_iteration !== 'boolean') {
+          parsed.break_iteration = false;
+        }
+
+        const result: ReviewResult = {
+          code_complete: parsed.code_complete,
+          break_iteration: parsed.break_iteration || false,
+          justification: parsed.justification || 'No justification provided',
+        };
+
+        return {
+          result,
+          rawOutput: jsonString,
+          prompt: reviewPrompt,
+        };
+      } catch (parseError) {
+        const error = parseError instanceof Error ? parseError : new Error(String(parseError));
+        logger.warn('Failed to parse OpenAI review JSON', {
+          error: error.message,
+          jsonString: jsonString.substring(0, 200),
+        });
+        return { result: null, rawOutput: jsonString, prompt: reviewPrompt };
+      }
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      logger.error('OpenAI review failed', { error: errorMessage });
+      return {
+        result: null,
+        rawOutput: `OpenAI review error: ${errorMessage}`,
+        prompt: reviewPrompt,
+      };
+    }
+  }
+
+  /**
    * Review output using cursor as a review agent
    * @param output - Output to review
    * @param cwd - Working directory
@@ -429,6 +549,54 @@ Return ONLY this JSON structure:
 
 Previous agent output:
 ${output}`;
+
+    // Check if GPT review is enabled via system setting
+    const useGPTReview = isSystemSettingEnabled('gpt-review');
+
+    // If GPT review is enabled but OpenAI client is not available, log warning and fall back to cursor
+    if (useGPTReview && !this.openaiClient) {
+      logger.warn(
+        'GPT review is enabled but OPENAI_API_KEY is not set. Falling back to cursor review.',
+        {}
+      );
+    }
+
+    // If GPT review is enabled and OpenAI client is available, use OpenAI
+    if (useGPTReview && this.openaiClient) {
+      logger.debug('Using OpenAI GPT-3.5 mini for review', {});
+      const reviewResult = await this.reviewWithOpenAI(output, reviewPrompt);
+
+      // If task is not complete and we have a task prompt, generate continuation prompt
+      if (
+        reviewResult.result &&
+        !reviewResult.result.code_complete &&
+        !reviewResult.result.break_iteration &&
+        reviewOptions.taskPrompt
+      ) {
+        try {
+          const generatedPrompt = await this.generateContinuationPrompt(
+            output,
+            reviewOptions.taskPrompt || '',
+            definitionOfDone ||
+              'The code/files were created or modified as required and the task objectives were met',
+            cwd,
+            timeout
+          );
+          if (generatedPrompt) {
+            reviewResult.result.continuationPrompt = generatedPrompt;
+          }
+        } catch (error) {
+          logger.warn('Failed to generate continuation prompt for OpenAI review', {
+            error: getErrorMessage(error),
+          });
+        }
+      }
+
+      return reviewResult;
+    }
+
+    // Otherwise, use cursor as before
+    // (reviewPrompt is already defined above)
 
     try {
       const executeOptions: ExecuteCommandOptions = { cwd };
