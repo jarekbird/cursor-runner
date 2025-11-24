@@ -202,6 +202,8 @@ Task Management Examples:
 
 The task operator agent (when enabled) automatically processes tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
 
+CRITICAL: DO NOT create agents or tasks that process tasks from the database. The task operator already handles this automatically. Creating agents or tasks with prompts like "Process ready tasks", "Query the tasks table", or "Send task prompts to cursor-runner" will create recursive loops and is strictly forbidden. If you need to process tasks, ensure the task_operator system setting is enabled - do not create additional agents or tasks for this purpose.
+
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
 Agent Management:
@@ -211,6 +213,7 @@ Agent Management:
   - Use --queue <queue-name> to assign the agent to a specific queue (defaults to "default" if not specified)
   - Use --schedule <cron-pattern> for recurring agents (e.g., "0 8 * * *" for daily at 8 AM)
   - Use --one-time for one-time agents that run immediately
+  - CRITICAL: Never create agents with prompts about processing tasks - the task operator handles this automatically
 - To delete an agent: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_agent.py --name <agent-name>
 
 Queue Management:
@@ -219,7 +222,7 @@ Queue Management:
 - To delete an empty queue: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_queue.py --queue-name <queue-name>
   - Note: Cannot delete the "default" queue or queues with active jobs
 
-When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate/async) with a prompt that this agent will later execute.
+When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate/async) with a prompt that this agent will later execute. However, DO NOT create agents for processing tasks - use the task operator system setting instead.
 
 Queue Organization: Agents can be organized into queues to avoid queue bloat. By default, agents are created in the "default" queue. Use descriptive queue names like "daily-tasks", "hourly-sync", or "urgent-jobs" to group related agents together.
 
@@ -327,34 +330,6 @@ export class CursorExecutionService {
     }
 
     return { fullRepositoryPath };
-  }
-
-  /**
-   * Check for resource_exhausted (rate limit) errors and log prominently
-   * @param output - Combined stdout/stderr output from cursor-cli
-   * @param requestId - Request ID for logging context
-   */
-  private checkForResourceExhaustedErrors(output: string, requestId: string): void {
-    const resourceExhaustedPatterns = [
-      /resource_exhausted/i,
-      /rate.*limit/i,
-      /quota.*exceeded/i,
-      /too.*many.*requests/i,
-      /ConnectError.*resource_exhausted/i,
-    ];
-
-    const hasResourceExhaustedError = resourceExhaustedPatterns.some((pattern) =>
-      pattern.test(output)
-    );
-
-    if (hasResourceExhaustedError) {
-      logger.error('RESOURCE_EXHAUSTED ERROR DETECTED - Rate limit or quota exceeded', {
-        requestId,
-        error: 'Resource exhausted - API rate limit or quota exceeded',
-        suggestion:
-          'This may be due to too many concurrent requests or API quota limits. Consider reducing CURSOR_CLI_MAX_CONCURRENT or waiting before retrying.',
-      });
-    }
   }
 
   /**
@@ -559,12 +534,6 @@ export class CursorExecutionService {
       });
       await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
     }
-
-    // Check for resource_exhausted errors and log prominently
-    this.checkForResourceExhaustedErrors(combinedOutput, requestId);
-
-    // Check for resource_exhausted errors and log prominently
-    this.checkForResourceExhaustedErrors(combinedOutput, requestId);
 
     // Check for API key errors and log prominently
     this.checkForApiKeyErrors(combinedOutput, requestId);
@@ -792,9 +761,6 @@ export class CursorExecutionService {
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
 
-      // Check for resource_exhausted errors and log prominently
-      this.checkForResourceExhaustedErrors(combinedOutput, requestId);
-
       // Check for API key errors and log prominently
       this.checkForApiKeyErrors(combinedOutput, requestId);
     } catch (error) {
@@ -834,9 +800,6 @@ export class CursorExecutionService {
         });
         await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
       }
-
-      // Check for resource_exhausted errors in error output
-      this.checkForResourceExhaustedErrors(combinedErrorOutput, requestId);
 
       // Check for API key errors in error output
       this.checkForApiKeyErrors(combinedErrorOutput, requestId);

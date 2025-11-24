@@ -291,7 +291,8 @@ export class CursorCLI {
       let stdout = '';
       let stderr = '';
       let outputSize = 0;
-      let lastOutputTime = Date.now();
+      const commandStartTime = Date.now();
+      let lastOutputTime = commandStartTime;
       let hasReceivedOutput = false;
       let completed = false;
       let heartbeatInterval: NodeJS.Timeout | null = null;
@@ -397,8 +398,18 @@ export class CursorCLI {
 
       // Log heartbeat every 30 seconds to show process is still running
       heartbeatInterval = setInterval(() => {
+        // Don't log if command already completed (race condition protection)
+        if (completed) {
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+          }
+          return;
+        }
+
         const now = Date.now();
         const timeSinceLastOutput = now - lastOutputTime;
+        const elapsed = now - commandStartTime;
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
@@ -406,7 +417,7 @@ export class CursorCLI {
           stdoutLength: stdout.length,
           stderrLength: stderr.length,
           timeSinceLastOutput: `${timeSinceLastOutput}ms`,
-          elapsed: `${now - (lastOutputTime || now)}ms`,
+          elapsed: `${elapsed}ms`,
         });
 
         // If we've had no output for longer than idleTimeout, fail fast instead of waiting
@@ -561,7 +572,9 @@ export class CursorCLI {
           if (completed) return;
           completed = true;
           clearTimeout(timeoutId);
-          clearInterval(heartbeatInterval);
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+          }
           logger.error('cursor-cli command error', {
             args: this.formatArgsForLogging(args),
             error: error.message,

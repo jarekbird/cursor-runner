@@ -418,6 +418,7 @@ export class Server {
         try {
           logger.info('Cursor iterate request received (async)', {
             requestId,
+            conversationId: body.conversationId || body.conversation_id || 'none',
             body: req.body,
             ip: req.ip,
             userAgent: req.get('user-agent'),
