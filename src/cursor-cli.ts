@@ -148,6 +148,18 @@ export class CursorCLI {
   }
 
   /**
+   * Get execution queue status
+   * @returns Object with available and waiting counts
+   */
+  getQueueStatus(): { available: number; waiting: number; maxConcurrent: number } {
+    return {
+      available: this.semaphore.getAvailable(),
+      waiting: this.semaphore.getWaiting(),
+      maxConcurrent: parseInt(process.env.CURSOR_CLI_MAX_CONCURRENT || '5', 10),
+    };
+  }
+
+  /**
    * Validate that cursor-cli is available
    * @returns Promise resolving to true if available
    */

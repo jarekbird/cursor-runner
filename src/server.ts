@@ -133,6 +133,26 @@ export class Server {
       res.json({ status: 'ok', service: 'cursor-runner' });
     });
 
+    // Diagnostic endpoint for execution queue status
+    this.app.get('/health/queue', (req: Request, res: Response) => {
+      const queueStatus = this.cursorCLI.getQueueStatus();
+      logger.info('Queue status requested', {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        service: 'cursor-runner',
+        queueStatus,
+      });
+      res.json({
+        status: 'ok',
+        service: 'cursor-runner',
+        queue: queueStatus,
+        warning:
+          queueStatus.available === 0 && queueStatus.waiting > 0
+            ? 'All execution slots are occupied. Requests are queued. If this persists, cursor-cli processes may be hung.'
+            : null,
+      });
+    });
+
     // Telegram webhook endpoint (forwarded from jarek-va)
     this.setupTelegramRoutes();
 
