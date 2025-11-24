@@ -1,18 +1,14 @@
 {
   "mcpServers": {
     "cursor-runner-shared-sqlite": {
-      "command": "npx",
+      "command": "mcp-server-sqlite-npx",
       "args": [
-        "-y",
-        "mcp-server-sqlite-npx",
         "/app/shared_db/shared.sqlite3"
       ]
     },
     "cursor-runner-shared-redis": {
-      "command": "npx",
+      "command": "mcp-server-redis",
       "args": [
-        "-y",
-        "@liangshanli/mcp-server-redis",
         "--url",
         "redis://redis:6379/0"
       ],

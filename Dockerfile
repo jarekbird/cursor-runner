@@ -46,6 +46,12 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
 # Verify cursor-agent is accessible (non-blocking - allows build to continue if not found)
 RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent verification skipped - ensure it's available at runtime"
 
+# Install MCP server packages globally to avoid npx download delays during cursor-cli startup
+# This prevents cursor-cli from hanging while waiting for npx to download packages
+# Note: If command names don't match, verify with: npm list -g --depth=0
+RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
+    echo "MCP server packages installed globally"
+
 # Set working directory
 WORKDIR /app
 
