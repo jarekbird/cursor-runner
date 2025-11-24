@@ -39,6 +39,8 @@ services:
       - JAREK_VA_API_KEY=${JAREK_VA_API_KEY:-}
       # Webhook secret for callback authentication
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # OpenAI API Key for GPT review agent (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Redis Configuration - Use shared Redis instance for cursor-agents MCP server
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       # GitHub Authentication - Required for git operations
