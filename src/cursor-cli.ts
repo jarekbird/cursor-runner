@@ -294,6 +294,7 @@ export class CursorCLI {
       let lastOutputTime = Date.now();
       let hasReceivedOutput = false;
       let completed = false;
+      let heartbeatInterval: NodeJS.Timeout | null = null;
 
       // Try to use a pseudo-TTY so cursor behaves like an interactive session
       let child: ChildProcess | IPtyProcess | undefined;
@@ -382,6 +383,10 @@ export class CursorCLI {
         }
 
         completed = true;
+        clearTimeout(timeoutId);
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
         const timeoutError: CommandError = new Error(`Command timeout after ${validTimeout}ms`);
         // Attach partial output to error so it can be retrieved by caller
         timeoutError.stdout = stdout;
@@ -391,7 +396,7 @@ export class CursorCLI {
       }, validTimeout);
 
       // Log heartbeat every 30 seconds to show process is still running
-      const heartbeatInterval = setInterval(() => {
+      heartbeatInterval = setInterval(() => {
         const now = Date.now();
         const timeSinceLastOutput = now - lastOutputTime;
         logger.info('cursor-cli command heartbeat', {
@@ -426,7 +431,9 @@ export class CursorCLI {
 
           completed = true;
           clearTimeout(timeoutId);
-          clearInterval(heartbeatInterval);
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+          }
           const idleError: CommandError = new Error(
             `No output from cursor-cli for ${idleTimeout}ms`
           );
@@ -463,6 +470,10 @@ export class CursorCLI {
             // Ignore
           }
           completed = true;
+          clearTimeout(timeoutId);
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+          }
           safeReject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
         }
@@ -501,7 +512,9 @@ export class CursorCLI {
         completed = true;
 
         clearTimeout(timeoutId);
-        clearInterval(heartbeatInterval);
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
 
         const result: CommandResult = {
           success: code === 0,
