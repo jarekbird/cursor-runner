@@ -308,6 +308,7 @@ export class CursorCLI {
       let hasReceivedOutput = false;
       let completed = false;
       let heartbeatInterval: NodeJS.Timeout | null = null;
+      let safetyTimeoutId: NodeJS.Timeout | null = null;
 
       // Try to use a pseudo-TTY so cursor behaves like an interactive session
       let child: ChildProcess | IPtyProcess | undefined;
@@ -360,6 +361,43 @@ export class CursorCLI {
 
       // Set timeout (ensure it's a valid positive number)
       const validTimeout = isNaN(timeout) || timeout <= 0 ? this.timeout : timeout;
+
+      // Safety mechanism: Ensure semaphore is released even if handleExit never fires
+      // This protects against edge cases where the process exits but events don't fire
+      // Set to timeout + 5 seconds to ensure it fires after the main timeout
+      safetyTimeoutId = setTimeout(() => {
+        if (!completed) {
+          logger.error('cursor-cli command safety timeout - forcing cleanup', {
+            command: this.cursorPath,
+            args: this.formatArgsForLogging(args),
+            cwd,
+            timeout: `${validTimeout + 5000}ms`,
+          });
+          completed = true;
+          clearTimeout(timeoutId);
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+          }
+          // Force release semaphore as a safety measure
+          this.semaphore.release();
+          // Resolve with error result to prevent hanging
+          resolve({
+            success: false,
+            exitCode: null,
+            stdout: stdout.trim(),
+            stderr: (
+              stderr.trim() || 'Command did not exit normally - safety timeout triggered'
+            ).trim(),
+          });
+        } else {
+          // Already completed, just clear this timeout (shouldn't happen, but safety check)
+          if (safetyTimeoutId) {
+            clearTimeout(safetyTimeoutId);
+          }
+        }
+      }, validTimeout + 5000); // 5 seconds after main timeout
+
       const timeoutId = setTimeout(() => {
         if (completed) return;
 
@@ -397,8 +435,12 @@ export class CursorCLI {
 
         completed = true;
         clearTimeout(timeoutId);
+        if (safetyTimeoutId) {
+          clearTimeout(safetyTimeoutId); // Clear safety timeout since we're handling it
+        }
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
+          heartbeatInterval = null; // Clear reference to prevent memory leaks
         }
         const timeoutError: CommandError = new Error(`Command timeout after ${validTimeout}ms`);
         // Attach partial output to error so it can be retrieved by caller
@@ -411,6 +453,8 @@ export class CursorCLI {
       // Log heartbeat every 30 seconds to show process is still running
       heartbeatInterval = setInterval(() => {
         // Don't log if command already completed (race condition protection)
+        // Check completed flag TWICE: once at start, once before logging
+        // This prevents race conditions where handleExit is called mid-execution
         if (completed) {
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
@@ -422,6 +466,13 @@ export class CursorCLI {
         const now = Date.now();
         const timeSinceLastOutput = now - lastOutputTime;
         const elapsed = now - commandStartTime;
+
+        // Double-check completed flag right before logging to prevent
+        // logging after handleExit has been called but before this callback returns
+        if (completed) {
+          return;
+        }
+
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
@@ -454,8 +505,10 @@ export class CursorCLI {
 
           completed = true;
           clearTimeout(timeoutId);
+          clearTimeout(safetyTimeoutId); // Clear safety timeout since we're handling it
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
+            heartbeatInterval = null; // Clear reference to prevent memory leaks
           }
           const idleError: CommandError = new Error(
             `No output from cursor-cli for ${idleTimeout}ms`
@@ -494,8 +547,10 @@ export class CursorCLI {
           }
           completed = true;
           clearTimeout(timeoutId);
+          clearTimeout(safetyTimeoutId); // Clear safety timeout since we're handling it
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
+            heartbeatInterval = null; // Clear reference to prevent memory leaks
           }
           safeReject(new Error(`Output size exceeded limit: ${this.maxOutputSize} bytes`));
           return;
@@ -532,11 +587,16 @@ export class CursorCLI {
 
       const handleExit = (code: number | null): void => {
         if (completed) return;
+
+        // Set completed flag FIRST to prevent heartbeat from logging
+        // This must happen before clearing the interval to prevent race conditions
         completed = true;
 
         clearTimeout(timeoutId);
+        clearTimeout(safetyTimeoutId); // Clear safety timeout since process exited normally
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
+          heartbeatInterval = null; // Clear reference to prevent memory leaks
         }
 
         const result: CommandResult = {
@@ -584,8 +644,10 @@ export class CursorCLI {
           if (completed) return;
           completed = true;
           clearTimeout(timeoutId);
+          clearTimeout(safetyTimeoutId); // Clear safety timeout since we're handling it
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
+            heartbeatInterval = null; // Clear reference to prevent memory leaks
           }
           logger.error('cursor-cli command error', {
             args: this.formatArgsForLogging(args),

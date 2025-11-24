@@ -259,6 +259,43 @@ fi
 echo -e "${GREEN}✓${NC} Successfully pushed to origin/$CURRENT_BRANCH"
 echo ""
 
+# Step 5: Release task operator lock (if cursor-agents is available)
+# Note: This step is non-critical - deployment succeeds even if lock release fails
+echo -e "${GREEN}Step 5:${NC} Releasing task operator lock..."
+CURSOR_AGENTS_URL="${CURSOR_AGENTS_URL:-http://cursor-agents:3002}"
+CLEAR_LOCK_SCRIPT="${CLEAR_LOCK_SCRIPT:-/cursor/tools/cursor-agents/clear_task_operator_lock.py}"
+
+# Temporarily disable exit on error for this step (non-critical)
+set +e
+
+# Try to use the Python script if available (in Docker environment)
+if [ -f "$CLEAR_LOCK_SCRIPT" ]; then
+  if python3 "$CLEAR_LOCK_SCRIPT" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Task operator lock released"
+  else
+    echo -e "${YELLOW}⚠${NC} Failed to release task operator lock via Python script (non-critical)"
+  fi
+else
+  # Fallback: Try direct API call using curl
+  if command -v curl &> /dev/null; then
+    LOCK_RESULT=$(curl -s -X DELETE "${CURSOR_AGENTS_URL}/task-operator/lock" 2>/dev/null)
+    if echo "$LOCK_RESULT" | grep -q '"success":true'; then
+      echo -e "${GREEN}✓${NC} Task operator lock released via API"
+    else
+      echo -e "${YELLOW}⚠${NC} Failed to release task operator lock via API (non-critical)"
+      if [ -n "$LOCK_RESULT" ]; then
+        echo "  Response: $LOCK_RESULT" | head -3
+      fi
+    fi
+  else
+    echo -e "${YELLOW}⚠${NC} Cannot release task operator lock: curl not available (non-critical)"
+  fi
+fi
+
+# Re-enable exit on error for remaining steps
+set -e
+echo ""
+
 echo "=========================================="
 echo -e "${GREEN}✓ Deployment completed successfully!${NC}"
 echo "=========================================="
