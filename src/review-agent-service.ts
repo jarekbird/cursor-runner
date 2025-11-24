@@ -392,9 +392,9 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
   }
 
   /**
-   * Review output using OpenAI GPT-3.5 mini
+   * Review output using OpenAI GPT-3.5 turbo
    * @param output - Output to review
-   * @param reviewPrompt - The review prompt to send to GPT-3.5 mini
+   * @param reviewPrompt - The review prompt to send to GPT-3.5 turbo
    * @returns Review result with parsed result and raw output
    */
   private async reviewWithOpenAI(
@@ -409,7 +409,7 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
 
     try {
       const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-3.5-turbo-mini',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -563,7 +563,7 @@ ${output}`;
 
     // If GPT review is enabled and OpenAI client is available, use OpenAI
     if (useGPTReview && this.openaiClient) {
-      logger.debug('Using OpenAI GPT-3.5 mini for review', {});
+      logger.debug('Using OpenAI GPT-3.5 turbo for review', {});
       const reviewResult = await this.reviewWithOpenAI(output, reviewPrompt);
 
       // If task is not complete and we have a task prompt, generate continuation prompt
