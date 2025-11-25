@@ -261,6 +261,7 @@ echo ""
 
 # Step 5: Release task operator lock (if cursor-agents is available)
 # Note: This step is non-critical - deployment succeeds even if lock release fails
+# Test deploy to observe lock release attempt
 echo -e "${GREEN}Step 5:${NC} Releasing task operator lock..."
 CURSOR_AGENTS_URL="${CURSOR_AGENTS_URL:-http://cursor-agents:3002}"
 CLEAR_LOCK_SCRIPT="${CLEAR_LOCK_SCRIPT:-/cursor/tools/cursor-agents/clear_task_operator_lock.py}"
