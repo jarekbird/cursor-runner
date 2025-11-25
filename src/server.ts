@@ -28,6 +28,7 @@ interface CursorExecuteRequest {
   maxIterations?: number;
   conversationId?: string;
   conversation_id?: string;
+  queueType?: 'default' | 'telegram' | 'api';
 }
 
 /**
@@ -219,8 +220,8 @@ export class Server {
             userAgent: req.get('user-agent'),
           });
 
-          // Detect queue type based on requestId pattern
-          const queueType = this.detectQueueType(requestId);
+          // Use queueType from request body if provided, otherwise detect from requestId pattern
+          const queueType = body.queueType || this.detectQueueType(requestId);
 
           // Process execution synchronously - wait for completion
           const result = (await this.cursorExecution.execute({
@@ -297,8 +298,8 @@ export class Server {
             timestamp: new Date().toISOString(),
           });
 
-          // Detect queue type based on requestId pattern
-          const queueType = this.detectQueueType(requestId);
+          // Use queueType from request body if provided, otherwise detect from requestId pattern
+          const queueType = body.queueType || this.detectQueueType(requestId);
 
           // Process execution asynchronously
           this.cursorExecution
@@ -382,8 +383,8 @@ export class Server {
             userAgent: req.get('user-agent'),
           });
 
-          // Detect queue type based on requestId pattern
-          const queueType = this.detectQueueType(requestId);
+          // Use queueType from request body if provided, otherwise detect from requestId pattern
+          const queueType = body.queueType || this.detectQueueType(requestId);
 
           // Process iteration synchronously - wait for completion
           const result = await this.cursorExecution.iterate({
@@ -464,8 +465,8 @@ export class Server {
             timestamp: new Date().toISOString(),
           });
 
-          // Detect queue type based on requestId pattern
-          const queueType = this.detectQueueType(requestId);
+          // Use queueType from request body if provided, otherwise detect from requestId pattern
+          const queueType = body.queueType || this.detectQueueType(requestId);
 
           // Process iteration asynchronously (fire and forget)
           // The callback webhook will be called when complete
@@ -548,11 +549,11 @@ export class Server {
      * POST /cursor/conversation/new
      * Force create a new conversation ID
      * Returns the new conversation ID that will be used for subsequent requests
-     * Body: { queueType?: 'telegram' | 'default' } (optional, defaults to 'default')
+     * Body: { queueType?: 'default' | 'telegram' | 'api' } (optional, defaults to 'default')
      */
     router.post('/conversation/new', async (req: Request, res: Response) => {
       try {
-        const body = req.body as { queueType?: 'telegram' | 'default' };
+        const body = req.body as { queueType?: 'default' | 'telegram' | 'api' };
         const queueType = body.queueType || 'default';
 
         logger.info('Force new conversation request received', {

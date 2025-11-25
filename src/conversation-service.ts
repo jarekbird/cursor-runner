@@ -18,7 +18,7 @@ interface ConversationContext {
   lastAccessedAt: string;
 }
 
-export type QueueType = 'default' | 'telegram';
+export type QueueType = 'default' | 'telegram' | 'api';
 
 /**
  * Service for managing conversation context in Redis
@@ -29,6 +29,7 @@ export class ConversationService {
   private readonly TTL = 3600; // 1 hour in seconds
   private readonly LAST_CONVERSATION_KEY = 'cursor:last_conversation_id';
   private readonly TELEGRAM_LAST_CONVERSATION_KEY = 'cursor:telegram:last_conversation_id';
+  private readonly API_LAST_CONVERSATION_KEY = 'cursor:api:last_conversation_id';
 
   private redisAvailable: boolean = false;
 
@@ -69,9 +70,14 @@ export class ConversationService {
    * Get the Redis key for the last conversation ID based on queue type
    */
   private getLastConversationKey(queueType: QueueType = 'default'): string {
-    return queueType === 'telegram'
-      ? this.TELEGRAM_LAST_CONVERSATION_KEY
-      : this.LAST_CONVERSATION_KEY;
+    switch (queueType) {
+      case 'telegram':
+        return this.TELEGRAM_LAST_CONVERSATION_KEY;
+      case 'api':
+        return this.API_LAST_CONVERSATION_KEY;
+      default:
+        return this.LAST_CONVERSATION_KEY;
+    }
   }
 
   /**
