@@ -528,7 +528,25 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
 
 CRITICAL: Return ONLY the JSON object, nothing else. No explanations, no markdown, no code blocks, just the raw JSON.
 
-Is the task done? Are there permission issues that require breaking iterations?
+Evaluate the output for:
+1. Is the task done according to the definition of done?
+2. Are there permission or other unfixable issues that require breaking iterations (set break_iteration: true)?
+3. If any command seems to be creating an interactive prompt, set break_iteration: true
+4. Are there deployment issues, warnings, or errors that indicate the deployment is broken?
+
+CRITICAL DEPLOYMENT CHECKS - REJECT (set code_complete: false) if any of these are present:
+- Warnings about missing MCP servers (e.g., "MCP server not found", "cursor-agents MCP server not found")
+- Deployment errors or warnings in logs
+- Infrastructure issues (missing files, broken connections, failed services)
+- Any warnings that indicate the system is not properly deployed or configured
+- Docker/container errors or warnings
+- Missing dependencies or services
+
+IMPORTANT: When deployment issues are detected:
+- Set "code_complete" to false (task is not complete)
+- Set "break_iteration" to false (do NOT break - allow continuation to fix the issue)
+- Provide a clear justification describing the deployment issue
+- The system will generate a continuation prompt to guide the worker agent to fix the deployment
 
 ${
   definitionOfDone
@@ -545,6 +563,13 @@ Return ONLY this JSON structure:
   "code_complete": true,
   "break_iteration": false,
   "justification": "Brief explanation"
+}
+
+If deployment issues are found, use this structure:
+{
+  "code_complete": false,
+  "break_iteration": false,
+  "justification": "Deployment issue detected: [describe the issue]. The worker agent must fix the deployment before the task can be considered complete."
 }
 
 Previous agent output:
