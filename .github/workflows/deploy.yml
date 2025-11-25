@@ -94,6 +94,25 @@ jobs:
             echo "Waiting for service to start..."
             sleep 10
             
+            # Release task operator lock (non-critical step)
+            # Run from within the Docker network so it can reach cursor-agents:3002
+            echo "Releasing task operator lock..."
+            CURSOR_AGENTS_URL="http://cursor-agents:3002"
+            # Temporarily disable exit on error for this non-critical step
+            set +e
+            # Try to release the lock using curl from within the cursor-runner container (on the network)
+            LOCK_RESULT=$(docker compose exec -T cursor-runner curl -s -X DELETE "${CURSOR_AGENTS_URL}/task-operator/lock" 2>/dev/null)
+            if echo "$LOCK_RESULT" | grep -q '"success":true'; then
+              echo "✓ Task operator lock released"
+            else
+              echo "⚠ Failed to release task operator lock via API (non-critical)"
+              if [ -n "$LOCK_RESULT" ]; then
+                echo "  Response: $LOCK_RESULT" | head -3
+              fi
+            fi
+            # Re-enable exit on error
+            set -e
+            
             echo "Deployment completed successfully"
           script_stop: true
           debug: true
