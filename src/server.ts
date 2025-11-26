@@ -16,6 +16,7 @@ import { CursorExecutionService } from './cursor-execution-service.js';
 import { FilesystemService } from './filesystem-service.js';
 import { buildCallbackUrl } from './callback-url-builder.js';
 import { FileTreeService } from './file-tree-service.js';
+import { AgentConversationService } from './agent-conversation-service.js';
 
 /**
  * Request body for cursor execution endpoints
@@ -91,6 +92,7 @@ export class Server {
   public reviewAgent: ReviewAgentService;
   public filesystem: FilesystemService;
   public cursorExecution: CursorExecutionService;
+  public agentConversationService: AgentConversationService;
   public server?: HttpServer;
 
   constructor() {
@@ -109,6 +111,7 @@ export class Server {
       this.reviewAgent,
       this.filesystem
     );
+    this.agentConversationService = new AgentConversationService();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -164,6 +167,9 @@ export class Server {
 
     // Repository file browser API endpoints
     this.setupRepositoryRoutes();
+
+    // Agent conversation API endpoints
+    this.setupAgentConversationRoutes();
 
     // Conversation history API endpoints (UI is served by jarek-va-ui)
     // Must be after other routes to avoid conflicts
@@ -920,6 +926,123 @@ export class Server {
 
     // Mount repository API routes at /repositories/api
     this.app.use('/repositories/api', router);
+  }
+
+  /**
+   * Setup agent conversation API routes
+   * Agent conversations are separate from regular conversations and are used for voice-based interactions
+   * API endpoints are at /agent-conversations/api/* (routed to cursor-runner via Traefik)
+   */
+  setupAgentConversationRoutes(): void {
+    const router: Router = express.Router();
+
+    // Middleware to prevent browser caching of API responses
+    router.use((req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      next();
+    });
+
+    /**
+     * GET /agent-conversations/api/list
+     * Get list of all agent conversations
+     */
+    router.get('/list', async (req: Request, res: Response) => {
+      try {
+        const conversations = await this.agentConversationService.listConversations();
+        res.json(conversations);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to list agent conversations', {
+          error: err.message,
+          stack: err.stack,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
+     * POST /agent-conversations/api/new
+     * Create a new agent conversation
+     * Body: { agentId?: string, metadata?: Record<string, unknown> } (optional)
+     * IMPORTANT: This route must come before /:id to avoid route conflicts
+     */
+    router.post('/new', async (req: Request, res: Response) => {
+      try {
+        const body = req.body as { agentId?: string; metadata?: Record<string, unknown> };
+
+        logger.info('New agent conversation request received', {
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          agentId: body.agentId,
+        });
+
+        const conversation = await this.agentConversationService.createConversation(body.agentId);
+
+        if (body.metadata) {
+          conversation.metadata = body.metadata;
+          // Save again with metadata
+          await this.agentConversationService.updateConversation(conversation);
+        }
+
+        res.status(200).json({
+          success: true,
+          conversationId: conversation.conversationId,
+          message: 'New agent conversation created',
+        });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to create new agent conversation', {
+          error: err.message,
+          stack: err.stack,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    /**
+     * GET /agent-conversations/api/:id
+     * Get a specific agent conversation by ID
+     * IMPORTANT: This route must come after /new and /list to avoid route conflicts
+     */
+    router.get('/:id', async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const conversation = await this.agentConversationService.getConversation(id);
+
+        if (!conversation) {
+          res.status(404).json({
+            success: false,
+            error: 'Agent conversation not found',
+          });
+          return;
+        }
+
+        res.json(conversation);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get agent conversation', {
+          error: err.message,
+          stack: err.stack,
+          id: req.params.id,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    // Mount agent conversation API routes at /agent-conversations/api
+    this.app.use('/agent-conversations/api', router);
   }
 
   /**
