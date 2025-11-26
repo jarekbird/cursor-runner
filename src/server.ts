@@ -676,8 +676,49 @@ export class Server {
     });
 
     /**
+     * POST /conversations/api/new
+     * Create a new conversation
+     * Body: { queueType?: 'default' | 'telegram' | 'api' } (optional, defaults to 'api')
+     * IMPORTANT: This route must come before /:conversationId to avoid route conflicts
+     */
+    router.post('/new', async (req: Request, res: Response) => {
+      try {
+        const body = req.body as { queueType?: 'default' | 'telegram' | 'api' };
+        const queueType = body.queueType || 'api';
+
+        logger.info('New conversation request received', {
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          queueType,
+        });
+
+        const conversationId =
+          await this.cursorExecution.conversationService.forceNewConversation(queueType);
+
+        res.status(200).json({
+          success: true,
+          conversationId,
+          message: 'New conversation created',
+          queueType,
+        });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to create new conversation', {
+          error: err.message,
+          stack: err.stack,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    /**
      * GET /conversations/api/:conversationId
      * Get a specific conversation by ID
+     * IMPORTANT: This route must come after /new and /list to avoid route conflicts
      */
     router.get('/:conversationId', async (req: Request, res: Response) => {
       try {
@@ -705,6 +746,96 @@ export class Server {
           success: false,
           error: err.message,
         });
+      }
+    });
+
+    /**
+     * POST /conversations/api/:conversationId/message
+     * Send a message to a conversation and trigger cursor execution
+     * Body: { message: string, repository?: string, branchName?: string }
+     */
+    router.post('/:conversationId/message', async (req: Request, res: Response) => {
+      try {
+        const { conversationId } = req.params;
+        const body = req.body as { message: string; repository?: string; branchName?: string };
+        const { message, repository, branchName } = body;
+
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+          res.status(400).json({
+            success: false,
+            error: 'Message is required and must be a non-empty string',
+          });
+          return;
+        }
+
+        // Verify conversation exists
+        const conversation =
+          await this.cursorExecution.conversationService.getConversationById(conversationId);
+
+        if (!conversation) {
+          res.status(404).json({
+            success: false,
+            error: 'Conversation not found',
+          });
+          return;
+        }
+
+        const requestId = `ui-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        logger.info('Message send request received', {
+          requestId,
+          conversationId,
+          messageLength: message.length,
+          repository,
+          branchName,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        // Return 200 OK immediately
+        res.status(200).json({
+          success: true,
+          message: 'Message accepted, processing asynchronously',
+          requestId,
+          conversationId,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Process message asynchronously (fire and forget)
+        this.cursorExecution
+          .iterate({
+            repository,
+            branchName,
+            prompt: message,
+            requestId,
+            maxIterations: 5,
+            conversationId,
+            queueType: 'api',
+          })
+          .catch((error: Error) => {
+            logger.error('Message processing failed', {
+              requestId,
+              conversationId,
+              error: error.message,
+              stack: error.stack,
+            });
+          });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Message send request failed', {
+          error: err.message,
+          stack: err.stack,
+          conversationId: req.params.conversationId,
+        });
+
+        // If we haven't sent a response yet, send error
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: err.message,
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
     });
 
