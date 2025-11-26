@@ -971,6 +971,8 @@ export class Server {
       try {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+        const sortBy = req.query.sortBy as 'createdAt' | 'lastAccessedAt' | 'messageCount' | undefined;
+        const sortOrder = req.query.sortOrder as 'asc' | 'desc' | undefined;
 
         // Validate pagination parameters
         if (limit !== undefined && (isNaN(limit) || limit < 1)) {
@@ -988,9 +990,27 @@ export class Server {
           return;
         }
 
+        // Validate sorting parameters
+        if (sortBy && !['createdAt', 'lastAccessedAt', 'messageCount'].includes(sortBy)) {
+          res.status(400).json({
+            success: false,
+            error: 'sortBy must be one of: createdAt, lastAccessedAt, messageCount',
+          });
+          return;
+        }
+        if (sortOrder && !['asc', 'desc'].includes(sortOrder)) {
+          res.status(400).json({
+            success: false,
+            error: 'sortOrder must be one of: asc, desc',
+          });
+          return;
+        }
+
         const result = await this.agentConversationService.listConversations({
           limit,
           offset,
+          sortBy,
+          sortOrder,
         });
 
         res.json({

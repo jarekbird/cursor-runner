@@ -136,20 +136,137 @@ describe('AgentConversationService', () => {
         .mockResolvedValueOnce(JSON.stringify(conversation2));
       mockRedis.setex.mockResolvedValue('OK');
 
-      const conversations = await service.listConversations();
+      const result = await service.listConversations();
 
-      expect(conversations).toHaveLength(2);
-      expect(conversations[0].conversationId).toBe('agent-1'); // Should be sorted by lastAccessedAt descending
-      expect(conversations[1].conversationId).toBe('agent-2');
+      expect(result.conversations).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.conversations[0].conversationId).toBe('agent-1'); // Should be sorted by lastAccessedAt descending
+      expect(result.conversations[1].conversationId).toBe('agent-2');
       expect(mockRedis.smembers).toHaveBeenCalledWith('agent:conversations:list');
     });
 
     it('should return empty array when no conversations exist', async () => {
       mockRedis.smembers.mockResolvedValue([]);
 
-      const conversations = await service.listConversations();
+      const result = await service.listConversations();
 
-      expect(conversations).toEqual([]);
+      expect(result.conversations).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('should support pagination with limit and offset', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3', 'agent-4'];
+      // Create conversations with different lastAccessedAt times
+      // Default sort is lastAccessedAt desc, so order should be: agent-4, agent-3, agent-2, agent-1
+      const conversations = conversationIds.map((id, index) => ({
+        conversationId: id,
+        messages: [],
+        createdAt: '2025-01-01T00:00:00Z',
+        lastAccessedAt: `2025-01-0${index + 1}T00:00:00Z`, // agent-1: 01, agent-2: 02, agent-3: 03, agent-4: 04
+      }));
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find(c => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({ limit: 2, offset: 1 });
+
+      expect(result.conversations).toHaveLength(2);
+      expect(result.total).toBe(4);
+      // With offset=1, limit=2, and default desc sort (agent-4, agent-3, agent-2, agent-1):
+      // Skip first (agent-4), take next 2 (agent-3, agent-2)
+      expect(result.conversations[0].conversationId).toBe('agent-3');
+      expect(result.conversations[1].conversationId).toBe('agent-2');
+    });
+
+    it('should support sorting by createdAt ascending', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
+      const conversations = [
+        { conversationId: 'agent-1', messages: [], createdAt: '2025-01-03T00:00:00Z', lastAccessedAt: '2025-01-03T00:00:00Z' },
+        { conversationId: 'agent-2', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+        { conversationId: 'agent-3', messages: [], createdAt: '2025-01-02T00:00:00Z', lastAccessedAt: '2025-01-02T00:00:00Z' },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find(c => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({ sortBy: 'createdAt', sortOrder: 'asc' });
+
+      expect(result.conversations).toHaveLength(3);
+      expect(result.conversations[0].conversationId).toBe('agent-2'); // Oldest
+      expect(result.conversations[1].conversationId).toBe('agent-3');
+      expect(result.conversations[2].conversationId).toBe('agent-1'); // Newest
+    });
+
+    it('should support sorting by messageCount descending', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
+      const conversations = [
+        { conversationId: 'agent-1', messages: [{ role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' }], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+        { conversationId: 'agent-2', messages: [
+          { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+          { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+          { role: 'user', content: 'msg3', timestamp: '2025-01-01T00:00:00Z' },
+        ], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+        { conversationId: 'agent-3', messages: [
+          { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+          { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+        ], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find(c => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({ sortBy: 'messageCount', sortOrder: 'desc' });
+
+      expect(result.conversations).toHaveLength(3);
+      expect(result.conversations[0].conversationId).toBe('agent-2'); // 3 messages
+      expect(result.conversations[1].conversationId).toBe('agent-3'); // 2 messages
+      expect(result.conversations[2].conversationId).toBe('agent-1'); // 1 message
+    });
+
+    it('should default to lastAccessedAt descending when no sort options provided', async () => {
+      const conversationIds = ['agent-1', 'agent-2'];
+      // Create conversations with different lastAccessedAt times
+      // agent-2 is more recently accessed (should come first in desc order)
+      const conversations = [
+        { conversationId: 'agent-1', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+        { conversationId: 'agent-2', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-02T00:00:00Z' },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      // Mock get to return the conversation, but also mock setex to handle lastAccessedAt updates
+      let callCount = 0;
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find(c => c.conversationId === id);
+        if (conv) {
+          // Return a copy to avoid mutation
+          return Promise.resolve(JSON.stringify({ ...conv }));
+        }
+        return Promise.resolve(null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations();
+
+      expect(result.conversations).toHaveLength(2);
+      // agent-2 has later lastAccessedAt, so should be first in descending order
+      expect(result.conversations[0].conversationId).toBe('agent-2');
+      expect(result.conversations[1].conversationId).toBe('agent-1');
     });
   });
 

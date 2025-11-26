@@ -139,11 +139,16 @@ export class AgentConversationService {
   }
 
   /**
-   * List all agent conversations
+   * List all agent conversations with optional pagination and sorting
    */
-  async listConversations(): Promise<AgentConversation[]> {
+  async listConversations(options?: {
+    limit?: number;
+    offset?: number;
+    sortBy?: 'createdAt' | 'lastAccessedAt' | 'messageCount';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{ conversations: AgentConversation[]; total: number }> {
     if (!this.redisAvailable) {
-      return [];
+      return { conversations: [], total: 0 };
     }
 
     try {
@@ -151,22 +156,55 @@ export class AgentConversationService {
       const conversations: AgentConversation[] = [];
 
       for (const id of ids) {
-        const conversation = await this.getConversation(id);
-        if (conversation) {
+        // Get conversation without updating lastAccessedAt for listing
+        const key = `${this.CONVERSATION_PREFIX}${id}`;
+        const value = await this.redis.get(key);
+        if (value) {
+          const conversation = JSON.parse(value) as AgentConversation;
+          // Ensure conversationId is set (for backward compatibility with old data)
+          if (!conversation.conversationId) {
+            conversation.conversationId = id;
+          }
           conversations.push(conversation);
         }
       }
 
-      // Sort by lastAccessedAt descending
-      return conversations.sort(
-        (a, b) =>
-          new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime()
-      );
+      // Apply sorting
+      const sortBy = options?.sortBy || 'lastAccessedAt';
+      const sortOrder = options?.sortOrder || 'desc';
+      
+      const sorted = conversations.sort((a, b) => {
+        let comparison = 0;
+        
+        switch (sortBy) {
+          case 'createdAt':
+            comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            break;
+          case 'lastAccessedAt':
+            comparison = new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime();
+            break;
+          case 'messageCount':
+            comparison = a.messages.length - b.messages.length;
+            break;
+        }
+        
+        // For descending order, reverse the comparison
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+
+      const total = sorted.length;
+      const limit = options?.limit ?? total;
+      const offset = options?.offset ?? 0;
+
+      // Apply pagination
+      const paginated = sorted.slice(offset, offset + limit);
+
+      return { conversations: paginated, total };
     } catch (error) {
       logger.error('Failed to list agent conversations', {
         error: getErrorMessage(error),
       });
-      return [];
+      return { conversations: [], total: 0 };
     }
   }
 
