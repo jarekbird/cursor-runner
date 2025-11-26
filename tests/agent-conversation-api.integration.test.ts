@@ -137,6 +137,7 @@ describe('Agent Conversation API Integration', () => {
     it('should list all agent conversations', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) {
+        console.log('Skipping test: Redis not available');
         return;
       }
 
