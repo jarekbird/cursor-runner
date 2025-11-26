@@ -166,28 +166,163 @@ After running Jest or any tests that load the application code:
 - **Never leave Express apps, Redis subscriptions, or global intervals alive**
 - **Fail the task if Jest prints warnings about open handles or async operations that did not finish**
 
-**Example cleanup in tests:**
+**✅ IMPLEMENT IN A DRY MANNER: Use Global Test Setup/Teardown**
+
+**DO NOT repeat cleanup code in each test file.** Instead, implement cleanup once using Jest's global hooks:
+
+**1. Create a shared test cleanup utility** (`tests/setup/cleanup.ts` or `tests/helpers/cleanup.ts`):
 
 ```typescript
-describe('YourService', () => {
-  let server: Server;
+// tests/setup/cleanup.ts
+import { Server } from 'http';
+import { RedisClient } from 'redis';
+import { Database } from 'sqlite3';
+
+let activeServers: Server[] = [];
+let activeRedisClients: RedisClient[] = [];
+let activeDatabases: Database[] = [];
+
+export function registerServer(server: Server): void {
+  activeServers.push(server);
+}
+
+export function registerRedis(client: RedisClient): void {
+  activeRedisClients.push(client);
+}
+
+export function registerDatabase(db: Database): void {
+  activeDatabases.push(db);
+}
+
+export async function cleanupAll(): Promise<void> {
+  // Stop all HTTP servers
+  await Promise.all(
+    activeServers.map(server => 
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      })
+    )
+  );
+  activeServers = [];
+
+  // Close all Redis connections
+  await Promise.all(
+    activeRedisClients.map(client => client.quit())
+  );
+  activeRedisClients = [];
+
+  // Close all database connections
+  await Promise.all(
+    activeDatabases.map(db => 
+      new Promise<void>((resolve, reject) => {
+        db.close((err) => err ? reject(err) : resolve());
+      })
+    )
+  );
+  activeDatabases = [];
+
+  // Clear all timers
+  jest.clearAllTimers();
   
-  afterAll(async () => {
-    // Always clean up
-    if (server) {
-      await server.stop();
-    }
-    // Close database connections
-    await db.close();
-    // Clear all timers
-    jest.clearAllTimers();
-    // Close Redis connections
-    await redis.quit();
-  });
-  
-  // ... your tests
+  // Clear all intervals and timeouts
+  jest.useRealTimers();
+}
+
+// Export for use in individual tests if needed
+export { activeServers, activeRedisClients, activeDatabases };
+```
+
+**2. Create Jest global setup/teardown** (`tests/setup/globalSetup.ts` and `tests/setup/globalTeardown.ts`):
+
+```typescript
+// tests/setup/globalTeardown.ts
+import { cleanupAll } from './cleanup';
+
+export default async function globalTeardown(): Promise<void> {
+  await cleanupAll();
+}
+```
+
+**3. Configure Jest to use global teardown** (`jest.config.js` or `package.json`):
+
+```javascript
+// jest.config.js
+module.exports = {
+  // ... other config
+  globalTeardown: '<rootDir>/tests/setup/globalTeardown.ts',
+  setupFilesAfterEnv: ['<rootDir>/tests/setup/jest.setup.ts'],
+};
+```
+
+**4. Create a Jest setup file** (`tests/setup/jest.setup.ts`) to ensure cleanup after each test suite:
+
+```typescript
+// tests/setup/jest.setup.ts
+import { cleanupAll } from './cleanup';
+
+afterAll(async () => {
+  await cleanupAll();
 });
 ```
+
+**5. Use the registration functions in your tests** (no need to repeat cleanup):
+
+```typescript
+import { registerServer, registerRedis, registerDatabase } from '../setup/cleanup';
+import { createServer } from '../server';
+import { createRedisClient } from '../redis';
+import { createDatabase } from '../database';
+
+describe('YourService', () => {
+  let server: Server;
+  let redis: RedisClient;
+  let db: Database;
+  
+  beforeAll(async () => {
+    // Create resources
+    server = await createServer();
+    redis = await createRedisClient();
+    db = await createDatabase();
+    
+    // Register for automatic cleanup (no need for afterAll!)
+    registerServer(server);
+    registerRedis(redis);
+    registerDatabase(db);
+  });
+  
+  // Tests here - cleanup happens automatically via global teardown
+  it('should work', () => {
+    // ... your test
+  });
+});
+```
+
+**Alternative: Simpler approach using a test helper wrapper:**
+
+```typescript
+// tests/helpers/test-with-cleanup.ts
+import { cleanupAll } from '../setup/cleanup';
+
+export function describeWithCleanup(name: string, fn: () => void): void {
+  describe(name, () => {
+    afterAll(async () => {
+      await cleanupAll();
+    });
+    fn();
+  });
+}
+
+// Usage:
+describeWithCleanup('YourService', () => {
+  // ... your tests - cleanup is automatic
+});
+```
+
+**Key Benefits:**
+- ✅ Cleanup code written once, used everywhere
+- ✅ No risk of forgetting cleanup in individual tests
+- ✅ Consistent cleanup behavior across all tests
+- ✅ Easy to add new resource types to cleanup
 
 **Example Test Structure (TypeScript/Jest):**
 
