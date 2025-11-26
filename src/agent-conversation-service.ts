@@ -40,38 +40,44 @@ export class AgentConversationService {
 
   private redisAvailable: boolean = false;
 
-  constructor() {
-    const redisUrl = process.env.REDIS_URL || 'redis://redis:6379/0';
-    this.redis = new Redis(redisUrl, {
-      retryStrategy: (times) => {
-        if (times > 3) {
-          return null;
-        }
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-      lazyConnect: true,
-      enableOfflineQueue: false,
-    });
-
-    this.redis.on('error', (error) => {
-      logger.error('Redis connection error in AgentConversationService', {
-        error: error.message,
+  constructor(redisClient?: Redis) {
+    if (redisClient) {
+      // Dependency injection for testing
+      this.redis = redisClient;
+      this.redisAvailable = true; // Assume injected client is ready
+    } else {
+      const redisUrl = process.env.REDIS_URL || 'redis://redis:6379/0';
+      this.redis = new Redis(redisUrl, {
+        retryStrategy: (times) => {
+          if (times > 3) {
+            return null;
+          }
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+        lazyConnect: true,
+        enableOfflineQueue: false,
       });
-      this.redisAvailable = false;
-    });
 
-    this.redis.on('connect', () => {
-      logger.info('Redis connected for agent conversation storage');
-      this.redisAvailable = true;
-    });
-
-    this.redis.connect().catch((error) => {
-      logger.warn('Redis connection failed for agent conversations', {
-        error: error.message,
+      this.redis.on('error', (error) => {
+        logger.error('Redis connection error in AgentConversationService', {
+          error: error.message,
+        });
+        this.redisAvailable = false;
       });
-      this.redisAvailable = false;
-    });
+
+      this.redis.on('connect', () => {
+        logger.info('Redis connected for agent conversation storage');
+        this.redisAvailable = true;
+      });
+
+      this.redis.connect().catch((error) => {
+        logger.warn('Redis connection failed for agent conversations', {
+          error: error.message,
+        });
+        this.redisAvailable = false;
+      });
+    }
   }
 
   /**

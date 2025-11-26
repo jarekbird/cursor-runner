@@ -3,10 +3,14 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { AgentConversationService } from '../src/agent-conversation-service.js';
 import type Redis from 'ioredis';
 
-// Mock ioredis
-jest.mock('ioredis', () => {
-  return jest.fn().mockImplementation(() => {
-    const mockRedis = {
+describe('AgentConversationService', () => {
+  let service: AgentConversationService;
+  let mockRedis: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Create a fresh mock Redis instance for dependency injection
+    mockRedis = {
       get: jest.fn(),
       setex: jest.fn(),
       sadd: jest.fn(),
@@ -18,48 +22,9 @@ jest.mock('ioredis', () => {
       quit: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
       status: 'ready',
     };
-    return mockRedis;
-  });
-});
-
-describe('AgentConversationService', () => {
-  let service: AgentConversationService;
-  let mockRedis: any;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    // Create a fresh mock Redis instance
-    let connectHandler: (() => void) | undefined;
-    mockRedis = {
-      get: jest.fn(),
-      setex: jest.fn(),
-      sadd: jest.fn(),
-      smembers: jest.fn(),
-      expire: jest.fn(),
-      del: jest.fn(),
-      connect: jest.fn<() => Promise<void>>().mockImplementation(async () => {
-        // Simulate connection by calling the connect handler immediately
-        if (connectHandler) {
-          connectHandler();
-        }
-        return Promise.resolve();
-      }),
-      on: jest.fn((event: string, handler: () => void) => {
-        if (event === 'connect') {
-          connectHandler = handler;
-          // Fire the connect event immediately to set redisAvailable
-          process.nextTick(() => handler());
-        }
-      }),
-      quit: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
-      status: 'ready',
-    };
     
-    // Replace the Redis constructor to return our mock
-    const RedisMock = jest.requireMock('ioredis') as jest.MockedClass<typeof Redis>;
-    (RedisMock as unknown as jest.Mock).mockImplementation(() => mockRedis);
-    
-    service = new AgentConversationService();
+    // Use dependency injection to pass the mock Redis client
+    service = new AgentConversationService(mockRedis);
   });
 
   afterEach(() => {
@@ -213,9 +178,10 @@ describe('AgentConversationService', () => {
       expect(mockRedis.get).toHaveBeenCalledWith(`agent:conversation:${conversationId}`);
       expect(mockRedis.setex).toHaveBeenCalled();
       
-      // Verify the message was added
-      const setexCall = mockRedis.setex.mock.calls[0];
-      const savedData = JSON.parse(setexCall[2]);
+      // Verify the message was added (check the last setex call, as getConversation also calls setex)
+      const setexCalls = mockRedis.setex.mock.calls;
+      const lastSetexCall = setexCalls[setexCalls.length - 1];
+      const savedData = JSON.parse(lastSetexCall[2]);
       expect(savedData.messages).toHaveLength(1);
       expect(savedData.messages[0].content).toBe('Hello, agent!');
       expect(savedData.messages[0].messageId).toBeDefined();
@@ -241,8 +207,11 @@ describe('AgentConversationService', () => {
 
       await service.addMessage(conversationId, message);
 
-      const setexCall = mockRedis.setex.mock.calls[0];
-      const savedData = JSON.parse(setexCall[2]);
+      // Check the last setex call (getConversation also calls setex to update lastAccessedAt)
+      const setexCalls = mockRedis.setex.mock.calls;
+      const lastSetexCall = setexCalls[setexCalls.length - 1];
+      const savedData = JSON.parse(lastSetexCall[2]);
+      expect(savedData.messages).toHaveLength(1);
       expect(savedData.messages[0].messageId).toBeDefined();
       expect(savedData.messages[0].messageId).toMatch(/^msg-\d+-[a-z0-9]+$/);
     });
