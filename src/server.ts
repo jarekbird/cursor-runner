@@ -6,6 +6,7 @@ import express, {
   type Router,
 } from 'express';
 import type { Server as HttpServer } from 'http';
+import path from 'path';
 import { logger } from './logger.js';
 import { GitService } from './git-service.js';
 import { CursorCLI } from './cursor-cli.js';
@@ -14,6 +15,7 @@ import { ReviewAgentService } from './review-agent-service.js';
 import { CursorExecutionService } from './cursor-execution-service.js';
 import { FilesystemService } from './filesystem-service.js';
 import { buildCallbackUrl } from './callback-url-builder.js';
+import { FileTreeService } from './file-tree-service.js';
 
 /**
  * Request body for cursor execution endpoints
@@ -159,6 +161,9 @@ export class Server {
 
     // Cursor execution routes
     this.setupCursorRoutes();
+
+    // Repository file browser API endpoints
+    this.setupRepositoryRoutes();
 
     // Conversation history API endpoints (UI is served by jarek-va-ui)
     // Must be after other routes to avoid conflicts
@@ -845,6 +850,76 @@ export class Server {
     // Router mounted at /api with routes /list and /:conversationId
     // Final routes: /api/list and /api/:conversationId (accessible as /conversations/api/list from frontend)
     this.app.use('/api', router);
+  }
+
+  /**
+   * Setup repository file browser API routes
+   */
+  setupRepositoryRoutes(): void {
+    const router: Router = express.Router();
+    const fileTreeService = new FileTreeService();
+
+    /**
+     * GET /repositories/api/:repository/files
+     * Get file tree for a repository
+     * Returns a FileNode[] tree structure
+     */
+    router.get('/:repository/files', async (req: Request, res: Response) => {
+      try {
+        const { repository } = req.params;
+
+        if (!repository) {
+          res.status(400).json({
+            success: false,
+            error: 'Repository name is required',
+          });
+          return;
+        }
+
+        // Build repository path
+        const repositoryPath = path.join(
+          this.gitService.repositoriesPath,
+          repository
+        );
+
+        // Check if repository exists
+        if (!this.filesystem.exists(repositoryPath)) {
+          res.status(404).json({
+            success: false,
+            error: `Repository '${repository}' not found`,
+          });
+          return;
+        }
+
+        logger.info('File tree request received', {
+          repository,
+          path: repositoryPath,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        // Build file tree
+        const fileTree = fileTreeService.buildFileTree(repositoryPath);
+
+        res.json(fileTree);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get repository file tree', {
+          error: err.message,
+          stack: err.stack,
+          repository: req.params.repository,
+        });
+
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // Mount repository API routes at /repositories/api
+    this.app.use('/repositories/api', router);
   }
 
   /**
