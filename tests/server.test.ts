@@ -5,6 +5,7 @@ import request from 'supertest';
 import { Server } from '../src/server.js';
 import { ReviewAgentService } from '../src/review-agent-service.js';
 import { CursorExecutionService } from '../src/cursor-execution-service.js';
+import { createTestCleanup } from './test-utils.js';
 
 describe('Server', () => {
   let server: Server;
@@ -54,8 +55,10 @@ describe('Server', () => {
   });
 
   afterEach(async () => {
+    // CRITICAL: Properly shut down server to prevent Jest from hanging
     if (server) {
-      await server.stop();
+      const cleanup = await createTestCleanup(server);
+      await cleanup.cleanup();
     }
   });
 

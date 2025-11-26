@@ -11,17 +11,19 @@
  * Tests will be skipped if Redis is not available.
  */
 // eslint-disable-next-line node/no-unpublished-import
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterAll, beforeAll } from '@jest/globals';
 // eslint-disable-next-line node/no-unpublished-import
 import request from 'supertest';
 import { Server } from '../src/server.js';
 import Redis from 'ioredis';
+import { createTestCleanup } from './test-utils.js';
 
 describe('Agent Conversation API Integration', () => {
   let server: Server;
   let app: any;
   let redis: Redis;
-  const TEST_REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379/0';
+  // Use a separate Redis database for tests to avoid conflicts
+  const TEST_REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379/15';
   const TEST_PREFIX = 'test-agent-conversation:';
 
   beforeAll(async () => {
@@ -37,6 +39,20 @@ describe('Agent Conversation API Integration', () => {
       await redis.connect();
       await redis.ping();
       console.log('Redis is available, running integration tests');
+      
+      // Set REDIS_URL to test Redis for agent conversation service
+      process.env.REDIS_URL = TEST_REDIS_URL;
+
+      // Create server instance ONCE with shared Redis connection
+      // Supertest doesn't need the server to listen, just the Express app
+      server = new Server(redis);
+      app = server.app;
+      
+      // Clean up any existing test data before starting
+      const keys = await redis.keys(`${TEST_PREFIX}*`);
+      if (keys.length > 0) {
+        await redis.del(keys);
+      }
     } catch (error) {
       console.log('Redis is not available, skipping integration tests');
       try {
@@ -50,14 +66,22 @@ describe('Agent Conversation API Integration', () => {
   });
 
   afterAll(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((global as any).__SKIP_INTEGRATION_TESTS__) {
+      return;
+    }
+
+    // Clean up test data
     if (redis && redis.status === 'ready') {
-      // Clean up test data
       const keys = await redis.keys(`${TEST_PREFIX}*`);
       if (keys.length > 0) {
         await redis.del(keys);
       }
-      await redis.quit();
     }
+
+    // CRITICAL: Properly shut down all resources to prevent Jest from hanging
+    const cleanup = await createTestCleanup(server, redis);
+    await cleanup.cleanup();
   });
 
   beforeEach(async () => {
@@ -67,31 +91,7 @@ describe('Agent Conversation API Integration', () => {
       return;
     }
 
-    // Set REDIS_URL to test Redis for agent conversation service
-    process.env.REDIS_URL = TEST_REDIS_URL;
-
-    // Create server instance
-    server = new Server();
-    app = server.app;
-
-    // Clean up any existing test data
-    const keys = await redis.keys(`${TEST_PREFIX}*`);
-    if (keys.length > 0) {
-      await redis.del(keys);
-    }
-  });
-
-  afterEach(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((global as any).__SKIP_INTEGRATION_TESTS__) {
-      return;
-    }
-
-    if (server) {
-      await server.stop();
-    }
-
-    // Clean up test data
+    // Clean up test data before each test to ensure isolation
     if (redis && redis.status === 'ready') {
       const keys = await redis.keys(`${TEST_PREFIX}*`);
       if (keys.length > 0) {

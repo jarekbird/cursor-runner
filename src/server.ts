@@ -17,6 +17,7 @@ import { FilesystemService } from './filesystem-service.js';
 import { buildCallbackUrl } from './callback-url-builder.js';
 import { FileTreeService } from './file-tree-service.js';
 import { AgentConversationService } from './agent-conversation-service.js';
+import type Redis from 'ioredis';
 
 /**
  * Request body for cursor execution endpoints
@@ -95,7 +96,7 @@ export class Server {
   public agentConversationService: AgentConversationService;
   public server?: HttpServer;
 
-  constructor() {
+  constructor(redisClient?: Redis) {
     this.app = express();
     this.port = parseInt(process.env.PORT || '3001', 10);
     this.gitService = new GitService();
@@ -111,7 +112,8 @@ export class Server {
       this.reviewAgent,
       this.filesystem
     );
-    this.agentConversationService = new AgentConversationService();
+    // Allow dependency injection of Redis for testing
+    this.agentConversationService = new AgentConversationService(redisClient);
 
     this.setupMiddleware();
     this.setupRoutes();
