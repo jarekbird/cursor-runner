@@ -1291,6 +1291,15 @@ Provide a concise summary that captures the essential information:`;
     result: CallbackWebhookPayload,
     requestId: string
   ): Promise<void> {
+    // Check if this is an ElevenLabs callback and if feature is enabled
+    const { shouldSendElevenLabsCallback } = await import('./utils/feature-flags.js');
+    if (!shouldSendElevenLabsCallback(callbackUrl)) {
+      logger.info('Skipping ElevenLabs callback due to feature flag', {
+        requestId,
+        callbackUrl: callbackUrl.replace(/secret=[^&]*/, 'secret=***'), // Mask secret in logs
+      });
+      return;
+    }
     try {
       logger.info('Calling callback webhook', { requestId, callbackUrl });
 
