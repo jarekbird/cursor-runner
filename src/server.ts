@@ -1009,9 +1009,62 @@ export class Server {
     });
 
     /**
+     * POST /agent-conversations/api/:id/message
+     * Send a message to an agent conversation
+     * Body: { role: 'user' | 'assistant', content: string, source?: 'voice' | 'text' }
+     * IMPORTANT: This route must come before /:id to avoid route conflicts
+     */
+    router.post('/:id/message', async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const body = req.body as {
+          role: 'user' | 'assistant';
+          content: string;
+          source?: 'voice' | 'text';
+        };
+
+        if (!body.content || !body.role) {
+          res.status(400).json({
+            success: false,
+            error: 'Missing required fields: role, content',
+          });
+          return;
+        }
+
+        const message: import('./agent-conversation-service.js').AgentMessage = {
+          role: body.role,
+          content: body.content,
+          timestamp: new Date().toISOString(),
+          source: body.source || 'text',
+        };
+
+        await this.agentConversationService.addMessage(id, message);
+
+        const conversation = await this.agentConversationService.getConversation(id);
+
+        res.status(200).json({
+          success: true,
+          conversationId: conversation?.conversationId || id,
+          message: 'Message added to conversation',
+        });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to add message to agent conversation', {
+          error: err.message,
+          stack: err.stack,
+          id: req.params.id,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
      * GET /agent-conversations/api/:id
      * Get a specific agent conversation by ID
-     * IMPORTANT: This route must come after /new and /list to avoid route conflicts
+     * IMPORTANT: This route must come after /new, /list, and /:id/message to avoid route conflicts
      */
     router.get('/:id', async (req: Request, res: Response) => {
       try {
