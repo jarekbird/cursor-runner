@@ -157,6 +157,38 @@ console.log(JSON.stringify(results, null, 2));
 - Use TypeScript types to ensure type safety in tests
 - Leverage Jest/Vitest mocking capabilities for external services
 
+**CRITICAL RULE FOR CURSOR AGENTS: ALWAYS TERMINATE NODE PROCESSES IN TEST MODE**
+
+After running Jest or any tests that load the application code:
+
+- **Ensure all Redis, SQLite, HTTP servers, event emitters, and timers are shut down**
+- **Always call `server.stop()` or equivalent cleanup**
+- **Never leave Express apps, Redis subscriptions, or global intervals alive**
+- **Fail the task if Jest prints warnings about open handles or async operations that did not finish**
+
+**Example cleanup in tests:**
+
+```typescript
+describe('YourService', () => {
+  let server: Server;
+  
+  afterAll(async () => {
+    // Always clean up
+    if (server) {
+      await server.stop();
+    }
+    // Close database connections
+    await db.close();
+    // Clear all timers
+    jest.clearAllTimers();
+    // Close Redis connections
+    await redis.quit();
+  });
+  
+  // ... your tests
+});
+```
+
 **Example Test Structure (TypeScript/Jest):**
 
 ```typescript
