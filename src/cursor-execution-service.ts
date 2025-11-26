@@ -10,6 +10,7 @@ import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
 import type { ReviewAgentService, ReviewOutputResult } from './review-agent-service.js';
+import type Redis from 'ioredis';
 
 /**
  * Parameters for execute method
@@ -251,7 +252,8 @@ export class CursorExecutionService {
     cursorCLI: CursorCLI,
     commandParser: CommandParserService,
     reviewAgent: ReviewAgentService,
-    filesystem: FilesystemService | null = null
+    filesystem: FilesystemService | null = null,
+    redisClient?: Redis
   ) {
     this.gitService = gitService;
     this.cursorCLI = cursorCLI;
@@ -259,7 +261,8 @@ export class CursorExecutionService {
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
     this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
-    this.conversationService = new ConversationService();
+    // Allow dependency injection of Redis for testing
+    this.conversationService = new ConversationService(redisClient);
     this.scriptsPath = SCRIPTS_PATH;
     this.ensureScriptsDirectory();
   }

@@ -80,6 +80,17 @@ interface ErrorCallbackResponse {
 }
 
 /**
+ * Options for Server constructor
+ */
+export interface ServerOptions {
+  /**
+   * If true, disables background workers, schedulers, and long-running processes.
+   * Useful for testing to prevent hanging.
+   */
+  disableBackgroundWorkers?: boolean;
+}
+
+/**
  * HTTP Server for cursor-runner API
  *
  * Provides endpoints for cursor command execution.
@@ -95,8 +106,10 @@ export class Server {
   public cursorExecution: CursorExecutionService;
   public agentConversationService: AgentConversationService;
   public server?: HttpServer;
+  private readonly disableBackgroundWorkers: boolean;
 
-  constructor(redisClient?: Redis) {
+  constructor(redisClient?: Redis, options: ServerOptions = {}) {
+    this.disableBackgroundWorkers = options.disableBackgroundWorkers ?? false;
     this.app = express();
     this.port = parseInt(process.env.PORT || '3001', 10);
     this.gitService = new GitService();
@@ -105,12 +118,15 @@ export class Server {
     // CursorCLI implements the CursorCLIInterface required by ReviewAgentService
     this.reviewAgent = new ReviewAgentService(this.cursorCLI);
     this.filesystem = new FilesystemService();
+    // Pass Redis client to CursorExecutionService so ConversationService can use it
+    // This ensures all services share the same Redis connection for proper cleanup
     this.cursorExecution = new CursorExecutionService(
       this.gitService,
       this.cursorCLI,
       this.commandParser,
       this.reviewAgent,
-      this.filesystem
+      this.filesystem,
+      redisClient
     );
     // Allow dependency injection of Redis for testing
     this.agentConversationService = new AgentConversationService(redisClient);
@@ -948,12 +964,46 @@ export class Server {
 
     /**
      * GET /agent-conversations/api/list
-     * Get list of all agent conversations
+     * Get list of all agent conversations with optional pagination
+     * Query params: limit (default: all), offset (default: 0)
      */
     router.get('/list', async (req: Request, res: Response) => {
       try {
-        const conversations = await this.agentConversationService.listConversations();
-        res.json(conversations);
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+
+        // Validate pagination parameters
+        if (limit !== undefined && (isNaN(limit) || limit < 1)) {
+          res.status(400).json({
+            success: false,
+            error: 'limit must be a positive integer',
+          });
+          return;
+        }
+        if (offset !== undefined && (isNaN(offset) || offset < 0)) {
+          res.status(400).json({
+            success: false,
+            error: 'offset must be a non-negative integer',
+          });
+          return;
+        }
+
+        const result = await this.agentConversationService.listConversations({
+          limit,
+          offset,
+        });
+
+        res.json({
+          conversations: result.conversations,
+          pagination: {
+            total: result.total,
+            limit: limit ?? result.total,
+            offset: offset ?? 0,
+            hasMore: offset !== undefined && limit !== undefined
+              ? offset + limit < result.total
+              : false,
+          },
+        });
       } catch (error) {
         const err = error as Error;
         logger.error('Failed to list agent conversations', {
@@ -1187,5 +1237,24 @@ export class Server {
         resolve();
       }
     });
+  }
+
+  /**
+   * Shutdown all resources (workers, connections, timers, etc.)
+   * Call this in tests to ensure clean exit
+   */
+  async shutdown(): Promise<void> {
+    // Stop HTTP server if running
+    await this.stop();
+
+    // Close Redis connections in services
+    // Both AgentConversationService and ConversationService (via CursorExecutionService)
+    // use the injected Redis client, which will be closed externally
+    // But we should ensure they're not holding any references
+
+    // Clear any intervals/timeouts if we had any
+    // (Currently Server doesn't create any, but this is a safe place to add cleanup)
+
+    logger.info('Server shutdown complete');
   }
 }

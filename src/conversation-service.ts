@@ -33,37 +33,43 @@ export class ConversationService {
 
   private redisAvailable: boolean = false;
 
-  constructor() {
-    const redisUrl = process.env.REDIS_URL || 'redis://redis:6379/0';
-    this.redis = new Redis(redisUrl, {
-      retryStrategy: (times) => {
-        if (times > 3) {
-          return null; // Stop retrying after 3 attempts
-        }
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-      lazyConnect: true, // Don't connect immediately
-      enableOfflineQueue: false, // Don't queue commands when offline
-    });
-
-    this.redis.on('error', (error) => {
-      logger.error('Redis connection error', { error: error.message });
-      this.redisAvailable = false;
-    });
-
-    this.redis.on('connect', () => {
-      logger.info('Redis connected for conversation storage');
-      this.redisAvailable = true;
-    });
-
-    // Try to connect, but don't fail if it doesn't work
-    this.redis.connect().catch((error) => {
-      logger.warn('Redis connection failed, conversation context will not be persisted', {
-        error: error.message,
+  constructor(redisClient?: Redis) {
+    if (redisClient) {
+      // Dependency injection for testing
+      this.redis = redisClient;
+      this.redisAvailable = true; // Assume injected client is ready
+    } else {
+      const redisUrl = process.env.REDIS_URL || 'redis://redis:6379/0';
+      this.redis = new Redis(redisUrl, {
+        retryStrategy: (times) => {
+          if (times > 3) {
+            return null; // Stop retrying after 3 attempts
+          }
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+        lazyConnect: true, // Don't connect immediately
+        enableOfflineQueue: false, // Don't queue commands when offline
       });
-      this.redisAvailable = false;
-    });
+
+      this.redis.on('error', (error) => {
+        logger.error('Redis connection error', { error: error.message });
+        this.redisAvailable = false;
+      });
+
+      this.redis.on('connect', () => {
+        logger.info('Redis connected for conversation storage');
+        this.redisAvailable = true;
+      });
+
+      // Try to connect, but don't fail if it doesn't work
+      this.redis.connect().catch((error) => {
+        logger.warn('Redis connection failed, conversation context will not be persisted', {
+          error: error.message,
+        });
+        this.redisAvailable = false;
+      });
+    }
   }
 
   /**
