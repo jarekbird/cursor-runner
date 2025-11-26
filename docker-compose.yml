@@ -95,6 +95,17 @@ services:
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsPreload=true"
       # Apply both strip prefix and security headers
       - "traefik.http.routers.cursor-runner-conversations-api.middlewares=cursor-runner-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
+      # Path-based routing for agent conversation API endpoints
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=20"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.cursor-runner-agent-conversations-api.loadbalancer.server.port=3001"
+      # Strip /agent-conversations prefix before forwarding to the service
+      # So /agent-conversations/api/list becomes /api/list at cursor-runner
+      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-stripprefix.stripprefix.prefixes=/agent-conversations"
+      # Apply both strip prefix and security headers
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
