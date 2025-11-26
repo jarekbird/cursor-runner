@@ -164,19 +164,6 @@ export class Server {
     // Must be after other routes to avoid conflicts
     this.setupConversationRoutes();
 
-    // 404 handler for API routes (must return JSON, not HTML)
-    this.app.use('/api', (req: Request, res: Response) => {
-      logger.warn('API route not found', {
-        path: req.path,
-        method: req.method,
-      });
-      res.status(404).json({
-        success: false,
-        error: 'API endpoint not found',
-        path: req.path,
-      });
-    });
-
     // Error handling middleware (must be after all routes)
     // Express requires 4 parameters (err, req, res, next) to recognize error handlers
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
