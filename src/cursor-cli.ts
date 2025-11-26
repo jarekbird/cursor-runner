@@ -54,6 +54,7 @@ interface IPtyProcess {
   onData(callback: (data: string) => void): void;
   onExit(callback: (data: { exitCode: number }) => void): void;
   kill(signal?: string): void;
+  write(data: string): void;
 }
 
 /**
@@ -346,6 +347,7 @@ export class CursorCLI {
           cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
+          env: process.env,
         });
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
@@ -470,17 +472,27 @@ export class CursorCLI {
         // Double-check completed flag right before logging to prevent
         // logging after handleExit has been called but before this callback returns
         if (completed) {
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+          }
           return;
         }
+
+        // Capture current state atomically to avoid race conditions
+        const currentHasReceivedOutput = hasReceivedOutput;
+        const currentStdoutLength = stdout.length;
+        const currentStderrLength = stderr.length;
 
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
-          hasReceivedOutput,
-          stdoutLength: stdout.length,
-          stderrLength: stderr.length,
+          hasReceivedOutput: currentHasReceivedOutput,
+          stdoutLength: currentStdoutLength,
+          stderrLength: currentStderrLength,
           timeSinceLastOutput: `${timeSinceLastOutput}ms`,
           elapsed: `${elapsed}ms`,
+          usePty,
         });
 
         // If we've had no output for longer than idleTimeout, fail fast instead of waiting
@@ -521,11 +533,41 @@ export class CursorCLI {
         }
       }, 30000);
 
+      // Track if we've already responded to SSH prompt to avoid multiple responses
+      let sshPromptResponded = false;
+
       const handleData = (data: string | Buffer): void => {
         const chunk = typeof data === 'string' ? data : data.toString();
         outputSize += Buffer.byteLength(chunk);
         lastOutputTime = Date.now();
         hasReceivedOutput = true;
+
+        // Check for SSH host key verification prompt and auto-respond
+        // This handles cases where known_hosts wasn't properly configured
+        if (
+          usePty &&
+          !sshPromptResponded &&
+          (chunk.includes("Are you sure you want to continue connecting") ||
+            chunk.includes("authenticity of host") ||
+            chunk.includes("ED25519 key fingerprint") ||
+            chunk.includes("This key is not known"))
+        ) {
+          sshPromptResponded = true;
+          logger.info('Detected SSH host key prompt, auto-responding "yes"', {
+            command: this.cursorPath,
+            args: this.formatArgsForLogging(args),
+          });
+          // Send "yes" followed by newline to PTY
+          try {
+            if ('write' in child && typeof child.write === 'function') {
+              child.write('yes\n');
+            }
+          } catch (error) {
+            logger.warn('Failed to write to PTY for SSH prompt response', {
+              error: getErrorMessage(error),
+            });
+          }
+        }
 
         // Log output chunks in real-time (truncate for logging)
         const logChunk = chunk.length > 500 ? chunk.substring(0, 500) + '...' : chunk;
@@ -599,37 +641,51 @@ export class CursorCLI {
           heartbeatInterval = null; // Clear reference to prevent memory leaks
         }
 
-        const result: CommandResult = {
-          success: code === 0,
-          exitCode: code,
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
-        };
+        // For PTY processes, wait a short time to allow buffered output to flush
+        // This ensures we capture all output before resolving
+        const flushDelay = usePty ? 100 : 0; // 100ms delay for PTY to flush buffered data
 
-        logger.info('cursor-cli command process closed', {
-          args: this.formatArgsForLogging(args),
-          exitCode: code,
-          hasReceivedOutput,
-          stdoutLength: stdout.length,
-          stderrLength: stderr.length,
-        });
+        const finalizeResult = (): void => {
+          const result: CommandResult = {
+            success: code === 0,
+            exitCode: code,
+            stdout: stdout.trim(),
+            stderr: stderr.trim(),
+          };
 
-        if (code === 0) {
-          logger.info('cursor-cli command completed successfully', {
-            args: this.formatArgsForLogging(args),
-          });
-        } else {
-          logger.warn('cursor-cli command failed', {
+          logger.info('cursor-cli command process closed', {
             args: this.formatArgsForLogging(args),
             exitCode: code,
-            stderr,
+            hasReceivedOutput,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+            usePty,
           });
-        }
 
-        // Always resolve with result, even on failure, so caller can access stdout/stderr
-        // Release semaphore before resolving
-        this.semaphore.release();
-        resolve(result);
+          if (code === 0) {
+            logger.info('cursor-cli command completed successfully', {
+              args: this.formatArgsForLogging(args),
+            });
+          } else {
+            logger.warn('cursor-cli command failed', {
+              args: this.formatArgsForLogging(args),
+              exitCode: code,
+              stderr,
+            });
+          }
+
+          // Always resolve with result, even on failure, so caller can access stdout/stderr
+          // Release semaphore before resolving
+          this.semaphore.release();
+          resolve(result);
+        };
+
+        if (flushDelay > 0) {
+          // Wait for buffered PTY data to flush before finalizing
+          setTimeout(finalizeResult, flushDelay);
+        } else {
+          finalizeResult();
+        }
       };
 
       if ('onExit' in child && typeof child.onExit === 'function') {

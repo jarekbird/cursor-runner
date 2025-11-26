@@ -211,12 +211,31 @@ export class GitHubAuthService {
     }
 
     // Add GitHub to known_hosts to avoid prompts
+    // Scan for all key types (rsa, ecdsa, ed25519) to ensure compatibility
     try {
-      execSync('ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts 2>/dev/null || true', {
-        stdio: 'ignore',
+      const knownHostsPath = path.join(this.sshDir, 'known_hosts');
+      // Remove existing github.com entries first to avoid duplicates
+      if (existsSync(knownHostsPath)) {
+        const existing = readFileSync(knownHostsPath, 'utf-8');
+        const filtered = existing
+          .split('\n')
+          .filter((line) => !line.includes('github.com'))
+          .join('\n');
+        writeFileSync(knownHostsPath, filtered, { mode: 0o600 });
+      }
+      // Scan for all key types and append to known_hosts
+      execSync(
+        'ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null || true',
+        {
+          stdio: 'ignore',
+        }
+      );
+      logger.debug('Added GitHub host keys to known_hosts', { knownHostsPath });
+    } catch (error) {
+      logger.warn('Could not add GitHub to known_hosts', {
+        error: getErrorMessage(error),
+        note: 'SSH may prompt for host key verification',
       });
-    } catch {
-      // Ignore errors - known_hosts update is optional
     }
   }
 
