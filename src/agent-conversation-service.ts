@@ -9,7 +9,7 @@ import { getErrorMessage } from './error-utils.js';
 export interface AgentMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
-  timestamp: string;
+  timestamp?: string; // Optional - will be generated if not provided
   source?: 'voice' | 'text' | 'user_input' | 'agent_response' | 'tool_output' | 'system_event';
   messageId?: string;
   toolName?: string;
