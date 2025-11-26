@@ -90,6 +90,51 @@ npm test -- --coverage
 npm run test:coverage
 ```
 
+**CRITICAL: Safe Test Execution for Node.js/Jest Projects**
+
+**DO NOT PIPE TEST OUTPUT**
+
+Never run commands like:
+
+```bash
+npm test | head -50
+npm test | grep ...
+npm test | cut ...
+npm test 2>&1 | head
+```
+
+These will cause deadlocks because Jest continues writing after the pipe closes.
+
+**✅ Always use the SAFE TEST EXECUTION WRAPPER**
+
+When running any test through Node, Jest, or npm inside the agent, always use this pattern:
+
+```bash
+npm run test --silent -- --maxWorkers=1 --runInBand --detectOpenHandles --json --outputFile=/tmp/jest-results.json
+```
+
+Then immediately print a bounded summary:
+
+```bash
+node -e "
+const fs = require('fs');
+const path = '/tmp/jest-results.json';
+if (!fs.existsSync(path)) { console.error('No Jest output file'); process.exit(1); }
+const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+const results = {
+  totalTests: data.numTotalTests,
+  passed: data.numPassedTests,
+  failed: data.numFailedTests,
+  testResults: data.testResults.map(r => ({
+    name: r.name,
+    status: r.status,
+    message: r.message?.slice(0, 500) || null    // limit long messages
+  }))
+};
+console.log(JSON.stringify(results, null, 2));
+"
+```
+
 **Test Types to Implement:**
 
 - **Unit Tests**: Test individual functions, classes, and modules in isolation
