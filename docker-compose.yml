@@ -126,10 +126,14 @@ volumes:
   cursor_runner_repositories:
     external: true
     name: cursor_runner_repositories
-  # Shared SQLite database volume (external reference to jarek-va volume)
+  # Shared SQLite database volume accessible by all services
   shared_sqlite_db:
-    external: true
+    driver: local
     name: shared_sqlite_db
+  # Shared Redis data volume accessible by all services
+  shared_redis_data:
+    driver: local
+    name: shared_redis_data
 
 networks:
   virtual-assistant-network:
