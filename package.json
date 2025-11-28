@@ -24,7 +24,8 @@
     "format": "prettier --write \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check:changed": "tsx scripts/format-check-changed.ts",
-    "mcp:gmail:version": "mcp-server-gmail --version || echo 'Gmail MCP server not found'"
+    "mcp:gmail:version": "mcp-server-gmail --version || echo 'Gmail MCP server not found'",
+    "test:gmail:smoke": "ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts"
   },
   "keywords": [
     "cursor",

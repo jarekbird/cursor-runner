@@ -62,6 +62,34 @@ The Gmail MCP server is automatically installed as a dev dependency when you run
 - Check that `@modelcontextprotocol/server-gmail` is in `package.json` devDependencies
 - In Docker, verify the package is installed in the Dockerfile
 
+### Gmail MCP Smoke Test
+
+An optional smoke test is available to verify Gmail MCP configuration and connectivity.
+
+**⚠️ IMPORTANT**: This test is opt-in and should NOT run in CI by default. It requires a real Gmail account.
+
+**Usage**:
+```bash
+# Run smoke test
+ENABLE_GMAIL_SMOKE_TEST=1 npm run test:gmail:smoke
+
+# Or directly
+ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts
+```
+
+**What it tests**:
+- Gmail MCP feature flag is enabled
+- Gmail configuration is complete
+- Gmail MCP server is available
+- MCP configuration includes Gmail entry
+
+**Requirements**:
+- `ENABLE_GMAIL_MCP=true` must be set
+- Gmail credentials must be configured (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`)
+- Gmail MCP server must be installed
+
+**Note**: This test performs read-only operations and is safe to run against a test Gmail account.
+
 ## Configuration
 
 Edit `.env` file with your settings:
