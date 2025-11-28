@@ -50,6 +50,12 @@ services:
       # GitHub Authentication - Required for git operations
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USERNAME=${GITHUB_USERNAME:-}
+      # Gmail MCP Configuration (optional - for Gmail integration)
+      - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}
+      - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}
+      - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN:-}
+      - GMAIL_USER_EMAIL=${GMAIL_USER_EMAIL:-}
+      - GMAIL_ALLOWED_LABELS=${GMAIL_ALLOWED_LABELS:-}
       # Alternative git credential environment variables (also supported)
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USERNAME=${GIT_USERNAME:-}
