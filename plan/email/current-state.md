@@ -37,7 +37,7 @@ The `mcp.json` file follows this structure:
 
 ### 1.3 Existing MCP Servers
 
-Currently, two MCP servers are configured:
+Currently, three MCP servers are configured:
 
 #### 1.3.1 `cursor-runner-shared-sqlite`
 
@@ -55,6 +55,20 @@ Currently, two MCP servers are configured:
 - **Environment Variables**: 
   - `REDIS_URL`: `redis://redis:6379/0`
 - **Reference**: `cursor-runner/mcp.json` (lines 9-18)
+
+#### 1.3.3 `gmail`
+
+- **Command**: `mcp-server-gmail`
+- **Args**: `[]`
+- **Purpose**: Provides Gmail access via MCP
+- **Environment Variables**: 
+  - `GMAIL_CLIENT_ID`: `${GMAIL_CLIENT_ID}` (env var reference)
+  - `GMAIL_CLIENT_SECRET`: `${GMAIL_CLIENT_SECRET}` (env var reference)
+  - `GMAIL_REFRESH_TOKEN`: `${GMAIL_REFRESH_TOKEN}` (env var reference)
+  - `GMAIL_USER_EMAIL`: `${GMAIL_USER_EMAIL}` (env var reference, optional)
+  - `GMAIL_ALLOWED_LABELS`: `${GMAIL_ALLOWED_LABELS}` (env var reference, optional)
+- **Reference**: `cursor-runner/mcp.json` (lines 19-29)
+- **Status**: Configured in `mcp.json`, but requires environment variables to be set for full functionality
 
 ### 1.4 MCP Configuration Loading Mechanism
 
@@ -81,14 +95,14 @@ The MCP configuration is loaded and merged through the following process:
 
 MCP servers are installed globally in the Docker image:
 
-**Reference**: `cursor-runner/Dockerfile` (lines 49-53)
+**Reference**: `cursor-runner/Dockerfile` (line 52)
 
 ```dockerfile
-RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
+RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis @modelcontextprotocol/server-gmail && \
     echo "MCP server packages installed globally"
 ```
 
-This ensures MCP server binaries are available on PATH in the container.
+This ensures MCP server binaries are available on PATH in the container. The Gmail MCP server (`@modelcontextprotocol/server-gmail`) is already included in the Dockerfile installation.
 
 ---
 
@@ -295,27 +309,39 @@ This constant contains instructions that are appended to all non-review agent pr
 
 ## 7. Current Email Integration Status
 
-### 7.1 No Email Integration
+### 7.1 Partial Gmail Integration
 
-Currently, there is **no email integration** in the cursor-runner system:
+Gmail MCP integration is **partially configured** in the cursor-runner system:
 
-- No Gmail MCP server configured
-- No email-related environment variables
-- No email-related MCP tools available
-- No email-related system instructions
+**Already Completed**:
+- ✅ Gmail MCP server entry exists in `cursor-runner/mcp.json` (lines 19-29)
+- ✅ Gmail MCP server installed in Dockerfile (`@modelcontextprotocol/server-gmail`)
+- ✅ Gmail environment variables defined in `docker-compose.yml` (lines 53-58)
+- ✅ Gmail environment variable getters in `system-settings.ts` (lines 82-119)
+- ✅ Gmail configuration validation function in `system-settings.ts` (lines 121-143)
+- ✅ Gmail configuration validation in startup (`src/index.ts`, lines 91-92, 204-234)
+- ✅ Gmail MCP tests exist (`tests/mcp-config.test.ts`, `tests/system-settings-gmail-validation.test.ts`)
+- ✅ Gmail verification script exists (`scripts/check-gmail-mcp.sh`)
 
-### 7.2 Integration Points for Gmail
+**Status**: The Gmail MCP server is configured and installed, but requires:
+- Environment variables to be set (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN)
+- Feature flag implementation (TASK-EML-011) for conditional enablement
+- Integration tests with mocked MCP server (TASK-EML-008)
+- Security review (TASK-EML-010)
+- Rollout planning (TASK-EML-011)
 
-Based on this inventory, Gmail MCP integration will need to:
+### 7.2 Remaining Integration Tasks
 
-1. **Add Gmail MCP server entry** to `cursor-runner/mcp.json`
-2. **Install Gmail MCP server** in Dockerfile (global npm install)
-3. **Add Gmail environment variables** to:
-   - `.env.example` (for documentation)
-   - `docker-compose.yml` (for Docker runtime)
-4. **Ensure env vars flow** to cursor process (already handled by `CursorCLI`)
-5. **Update system instructions** (if needed) to reference Gmail MCP tools
-6. **No changes needed** to `WorkspaceTrustService` (`.cursor/cli.json` is separate from MCP config)
+Based on this inventory, the remaining Gmail MCP integration tasks are:
+
+1. ✅ **Gmail MCP server entry** - Already in `mcp.json`
+2. ✅ **Gmail MCP server installation** - Already in Dockerfile
+3. ✅ **Gmail environment variables** - Already in `docker-compose.yml`
+4. ✅ **Env vars flow** - Already handled by `CursorCLI`
+5. ⏳ **Feature flag** - Needs implementation (TASK-EML-011)
+6. ⏳ **Integration tests** - Needs implementation (TASK-EML-008)
+7. ⏳ **Security review** - Needs documentation (TASK-EML-010)
+8. ⏳ **Rollout planning** - Needs documentation (TASK-EML-011)
 
 ---
 
@@ -329,10 +355,10 @@ Based on this inventory, Gmail MCP integration will need to:
 
 ### 8.2 Uncertainties to Resolve
 
-1. **Gmail MCP Package**: Need to identify the exact npm package name for Gmail MCP server
-2. **Gmail OAuth Scopes**: Need to determine required OAuth scopes for Gmail MCP operations
-3. **Gmail MCP Command**: Need to verify the exact command name for Gmail MCP server binary
-4. **Feature Flag**: May need to add feature flag to conditionally enable Gmail MCP (TASK-EML-011)
+1. ✅ **Gmail MCP Package**: Resolved - `@modelcontextprotocol/server-gmail` (installed in Dockerfile)
+2. ⏳ **Gmail OAuth Scopes**: Need to document required OAuth scopes (TASK-EML-002)
+3. ✅ **Gmail MCP Command**: Resolved - `mcp-server-gmail` (configured in mcp.json)
+4. ⏳ **Feature Flag**: Needs implementation to conditionally enable Gmail MCP (TASK-EML-011)
 
 ---
 
@@ -340,14 +366,17 @@ Based on this inventory, Gmail MCP integration will need to:
 
 | Component | File | Key Lines | Purpose |
 |-----------|------|-----------|---------|
-| MCP Config | `mcp.json` | 1-20 | Defines MCP servers |
+| MCP Config | `mcp.json` | 1-31 | Defines MCP servers (including Gmail) |
 | MCP Merge | `merge-mcp-config.js` | Entire file | Merges MCP configs at startup |
 | Docker Entrypoint | `docker-entrypoint.sh` | 4-13 | Runs MCP config merge |
-| Dockerfile | `Dockerfile` | 49-53, 97 | Installs MCP servers, sets entrypoint |
-| Docker Compose | `docker-compose.yml` | 11-58 | Defines environment variables |
+| Dockerfile | `Dockerfile` | 52, 97 | Installs MCP servers (including Gmail), sets entrypoint |
+| Docker Compose | `docker-compose.yml` | 53-58 | Defines Gmail environment variables |
 | Cursor CLI | `cursor-cli.ts` | 320-326, 345-351 | Spawns cursor with env vars |
 | Workspace Trust | `workspace-trust-service.ts` | 140-213 | Creates `.cursor/cli.json` (separate from MCP) |
-| System Settings | `system-settings.ts` | Entire file | Manages system settings (not for MCP env vars) |
+| System Settings | `system-settings.ts` | 82-143 | Gmail env var getters and validation |
+| Startup Validation | `index.ts` | 91-92, 204-234 | Validates Gmail config on startup |
+| MCP Config Tests | `tests/mcp-config.test.ts` | 16-70 | Tests Gmail MCP config structure |
+| Gmail Validation Tests | `tests/system-settings-gmail-validation.test.ts` | Entire file | Tests Gmail config validation |
 
 ---
 
@@ -364,5 +393,7 @@ Based on this inventory, the following tasks can proceed:
 
 **Document Status**: Complete  
 **Last Updated**: 2024-12-19  
-**Next Review**: After Gmail MCP integration implementation
+**Next Review**: After remaining Gmail MCP integration tasks are completed
+
+**Note**: This document reflects that Gmail MCP is already partially configured. The remaining tasks focus on feature flagging, integration testing, security review, and rollout planning.
 
