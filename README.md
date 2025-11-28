@@ -43,6 +43,25 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
+### Gmail MCP Server Installation
+
+The Gmail MCP server is automatically installed as a dev dependency when you run `npm install`. 
+
+**Local Development**:
+- Gmail MCP server is installed via `package.json` devDependencies
+- Verify installation: `npm run mcp:gmail:version`
+- Or use verification script: `./scripts/check-gmail-mcp.sh`
+
+**Docker**:
+- Gmail MCP server is automatically installed during Docker image build
+- No additional steps required
+- Verify in container: `docker run --rm cursor-runner mcp-server-gmail --version`
+
+**Troubleshooting**:
+- If `mcp-server-gmail` command not found, ensure `npm install` completed successfully
+- Check that `@modelcontextprotocol/server-gmail` is in `package.json` devDependencies
+- In Docker, verify the package is installed in the Dockerfile
+
 ## Configuration
 
 Edit `.env` file with your settings:
