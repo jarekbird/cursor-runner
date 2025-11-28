@@ -6,6 +6,7 @@ import {
   getGmailUserEmail,
   getGmailAllowedLabels,
   validateGmailConfig,
+  getGmailMcpEnabled,
   closeDatabase,
 } from '../src/system-settings.js';
 
@@ -150,6 +151,68 @@ describe('system-settings Gmail configuration', () => {
       const result = validateGmailConfig();
       expect(result.valid).toBe(true);
       expect(result.missing).toEqual([]);
+    });
+  });
+
+  describe('getGmailMcpEnabled', () => {
+    it('should return false when ENABLE_GMAIL_MCP is not set', () => {
+      delete process.env.ENABLE_GMAIL_MCP;
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should return false when ENABLE_GMAIL_MCP is empty string', () => {
+      process.env.ENABLE_GMAIL_MCP = '';
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should return true when ENABLE_GMAIL_MCP is "true"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'true';
+      expect(getGmailMcpEnabled()).toBe(true);
+    });
+
+    it('should return true when ENABLE_GMAIL_MCP is "TRUE"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'TRUE';
+      expect(getGmailMcpEnabled()).toBe(true);
+    });
+
+    it('should return true when ENABLE_GMAIL_MCP is "1"', () => {
+      process.env.ENABLE_GMAIL_MCP = '1';
+      expect(getGmailMcpEnabled()).toBe(true);
+    });
+
+    it('should return true when ENABLE_GMAIL_MCP is "yes"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'yes';
+      expect(getGmailMcpEnabled()).toBe(true);
+    });
+
+    it('should return true when ENABLE_GMAIL_MCP is "on"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'on';
+      expect(getGmailMcpEnabled()).toBe(true);
+    });
+
+    it('should return false when ENABLE_GMAIL_MCP is "false"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'false';
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should return false when ENABLE_GMAIL_MCP is "0"', () => {
+      process.env.ENABLE_GMAIL_MCP = '0';
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should return false when ENABLE_GMAIL_MCP is "no"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'no';
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should return false when ENABLE_GMAIL_MCP is "off"', () => {
+      process.env.ENABLE_GMAIL_MCP = 'off';
+      expect(getGmailMcpEnabled()).toBe(false);
+    });
+
+    it('should handle whitespace in ENABLE_GMAIL_MCP', () => {
+      process.env.ENABLE_GMAIL_MCP = '  true  ';
+      expect(getGmailMcpEnabled()).toBe(true);
     });
   });
 });

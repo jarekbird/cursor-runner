@@ -14,7 +14,7 @@ import { Server } from './server.js';
 import { getErrorMessage, getErrorStack } from './error-utils.js';
 import type { FormattedRequest, Phase } from './request-formatter.js';
 import { GitHubAuthService } from './github-auth.js';
-import { validateGmailConfig } from './system-settings.js';
+import { validateGmailConfig, getGmailMcpEnabled } from './system-settings.js';
 
 // Load environment variables
 dotenv.config();
@@ -202,22 +202,21 @@ class CursorRunner {
    * Logs warnings if config is incomplete but doesn't fail startup (Gmail MCP is optional)
    */
   validateGmailConfig(): void {
-    // Check if Gmail MCP is enabled (feature flag - will be implemented in TASK-EML-011)
-    // For now, check if any Gmail env vars are set as an indicator
-    const hasGmailConfig =
-      process.env.GMAIL_CLIENT_ID || process.env.GMAIL_CLIENT_SECRET || process.env.GMAIL_REFRESH_TOKEN;
+    // Check if Gmail MCP is enabled via feature flag
+    const gmailMcpEnabled = getGmailMcpEnabled();
 
-    if (!hasGmailConfig) {
-      // No Gmail config at all - this is fine, Gmail MCP is optional
-      this.logger.debug('Gmail MCP configuration not found - Gmail MCP will be disabled');
+    if (!gmailMcpEnabled) {
+      // Gmail MCP is disabled via feature flag
+      this.logger.debug('Gmail MCP is disabled (ENABLE_GMAIL_MCP is not true)');
       return;
     }
 
-    // Gmail config is present - validate it
+    // Gmail MCP is enabled - validate configuration
     const validation = validateGmailConfig();
 
     if (validation.valid) {
       this.logger.info('Gmail MCP configuration is complete', {
+        enabled: true,
         hasClientId: !!process.env.GMAIL_CLIENT_ID,
         hasClientSecret: !!process.env.GMAIL_CLIENT_SECRET,
         hasRefreshToken: !!process.env.GMAIL_REFRESH_TOKEN,
@@ -225,7 +224,8 @@ class CursorRunner {
         hasAllowedLabels: !!process.env.GMAIL_ALLOWED_LABELS,
       });
     } else {
-      this.logger.warn('Gmail MCP configuration is incomplete', {
+      this.logger.warn('Gmail MCP is enabled but configuration is incomplete', {
+        enabled: true,
         missing: validation.missing,
         suggestion:
           'Set the missing environment variables to enable Gmail MCP. See .env.example for required variables.',

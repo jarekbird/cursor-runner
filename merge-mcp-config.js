@@ -130,10 +130,29 @@ if (!existing.mcpServers) {
 }
 
 if (cursorRunner.mcpServers) {
+  // Check if Gmail MCP is enabled via feature flag
+  const enableGmailMcp = process.env.ENABLE_GMAIL_MCP;
+  const gmailMcpEnabled =
+    enableGmailMcp &&
+    (enableGmailMcp.toLowerCase().trim() === 'true' ||
+      enableGmailMcp.toLowerCase().trim() === '1' ||
+      enableGmailMcp.toLowerCase().trim() === 'yes' ||
+      enableGmailMcp.toLowerCase().trim() === 'on');
+
   // Merge servers, cursor-runner config takes precedence for conflicts
+  const serversToMerge = { ...cursorRunner.mcpServers };
+
+  // Conditionally include Gmail MCP based on feature flag
+  if (!gmailMcpEnabled && serversToMerge.gmail) {
+    console.log('Gmail MCP is disabled (ENABLE_GMAIL_MCP is not true) - excluding from config');
+    delete serversToMerge.gmail;
+  } else if (gmailMcpEnabled && serversToMerge.gmail) {
+    console.log('Gmail MCP is enabled (ENABLE_GMAIL_MCP=true) - including in config');
+  }
+
   existing.mcpServers = {
     ...existing.mcpServers,
-    ...cursorRunner.mcpServers,
+    ...serversToMerge,
   };
 }
 

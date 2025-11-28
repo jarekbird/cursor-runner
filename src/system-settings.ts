@@ -119,6 +119,22 @@ export function getGmailAllowedLabels(): string | undefined {
 }
 
 /**
+ * Check if Gmail MCP is enabled
+ * Reads from ENABLE_GMAIL_MCP environment variable
+ * Defaults to false (safe default) if not set
+ * @returns true if Gmail MCP is enabled, false otherwise
+ */
+export function getGmailMcpEnabled(): boolean {
+  const value = process.env.ENABLE_GMAIL_MCP;
+  if (value === undefined || value === '') {
+    return false; // Safe default: disabled
+  }
+  // Accept 'true', '1', 'yes', 'on' as enabled
+  const normalized = value.toLowerCase().trim();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+/**
  * Validate Gmail configuration
  * Checks if all required Gmail environment variables are set
  * @returns Object with validation result and list of missing variables
