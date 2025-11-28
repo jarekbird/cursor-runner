@@ -79,6 +79,70 @@ export function isSystemSettingEnabled(settingName: string): boolean {
 }
 
 /**
+ * Get Gmail client ID from environment
+ * @returns Gmail OAuth client ID or undefined if not set
+ */
+export function getGmailClientId(): string | undefined {
+  return process.env.GMAIL_CLIENT_ID;
+}
+
+/**
+ * Get Gmail client secret from environment
+ * @returns Gmail OAuth client secret or undefined if not set
+ */
+export function getGmailClientSecret(): string | undefined {
+  return process.env.GMAIL_CLIENT_SECRET;
+}
+
+/**
+ * Get Gmail refresh token from environment
+ * @returns Gmail OAuth refresh token or undefined if not set
+ */
+export function getGmailRefreshToken(): string | undefined {
+  return process.env.GMAIL_REFRESH_TOKEN;
+}
+
+/**
+ * Get Gmail user email from environment
+ * @returns Gmail user email or undefined if not set
+ */
+export function getGmailUserEmail(): string | undefined {
+  return process.env.GMAIL_USER_EMAIL;
+}
+
+/**
+ * Get Gmail allowed labels from environment
+ * @returns Comma-separated list of allowed labels or undefined if not set
+ */
+export function getGmailAllowedLabels(): string | undefined {
+  return process.env.GMAIL_ALLOWED_LABELS;
+}
+
+/**
+ * Validate Gmail configuration
+ * Checks if all required Gmail environment variables are set
+ * @returns Object with validation result and list of missing variables
+ */
+export function validateGmailConfig(): { valid: boolean; missing: string[] } {
+  const missing: string[] = [];
+
+  if (!process.env.GMAIL_CLIENT_ID) {
+    missing.push('GMAIL_CLIENT_ID');
+  }
+  if (!process.env.GMAIL_CLIENT_SECRET) {
+    missing.push('GMAIL_CLIENT_SECRET');
+  }
+  if (!process.env.GMAIL_REFRESH_TOKEN) {
+    missing.push('GMAIL_REFRESH_TOKEN');
+  }
+
+  return {
+    valid: missing.length === 0,
+    missing,
+  };
+}
+
+/**
  * Close database connection (for cleanup/testing)
  */
 export function closeDatabase(): void {
