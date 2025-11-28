@@ -15,6 +15,17 @@
       "env": {
         "REDIS_URL": "redis://redis:6379/0"
       }
+    },
+    "gmail": {
+      "command": "mcp-server-gmail",
+      "args": [],
+      "env": {
+        "GMAIL_CLIENT_ID": "${GMAIL_CLIENT_ID}",
+        "GMAIL_CLIENT_SECRET": "${GMAIL_CLIENT_SECRET}",
+        "GMAIL_REFRESH_TOKEN": "${GMAIL_REFRESH_TOKEN}",
+        "GMAIL_USER_EMAIL": "${GMAIL_USER_EMAIL}",
+        "GMAIL_ALLOWED_LABELS": "${GMAIL_ALLOWED_LABELS}"
+      }
     }
   }
 }
