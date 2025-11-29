@@ -73,7 +73,7 @@ export class TargetAppRunner {
     const { fsExistsSync } = options;
 
     // TARGET_APP_PATH is optional - if not set, TargetAppRunner will not be used
-    this.targetAppPath = process.env.TARGET_APP_PATH || '';
+    this.targetAppPath = process.env.TARGET_APP_PATH || '../cursor';
     const appType = (process.env.TARGET_APP_TYPE || 'rails') as TargetAppType;
     if (appType !== 'rails' && appType !== 'node') {
       throw new Error(`Invalid target app type: ${appType}. Must be 'rails' or 'node'`);

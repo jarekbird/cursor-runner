@@ -18,9 +18,9 @@ services:
       - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}
       - CURSOR_CLI_MAX_CONCURRENT=${CURSOR_CLI_MAX_CONCURRENT:-5}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
-      # Target Application (jarek-va) - mounted as volume
-      # Note: Update this path to point to your jarek-va directory
-      - TARGET_APP_PATH=/app/target/jarek-va
+      # Target Application (cursor) - mounted as volume
+      # Note: Update this path to point to your cursor directory
+      - TARGET_APP_PATH=/app/target/cursor
       - TARGET_APP_TYPE=${TARGET_APP_TYPE:-rails}
       # Git Service Configuration
       - REPOSITORIES_PATH=/cursor/repositories
@@ -65,9 +65,9 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
     volumes:
-      # Mount jarek-va codebase so cursor-runner can access it
-      # Update this path to point to your jarek-va directory
-      - ../jarek-va:/app/target/jarek-va
+      # Mount cursor codebase so cursor-runner can access it
+      # Update this path to point to your cursor directory
+      - ../cursor:/app/target/cursor
       # Mount cursor-agents codebase so cursor-runner can run its MCP server
       # Update this path to point to your cursor-agents directory
       - ../cursor-agents:/app/target/cursor-agents

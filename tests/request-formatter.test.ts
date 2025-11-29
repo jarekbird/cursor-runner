@@ -11,7 +11,7 @@ describe('RequestFormatter', () => {
           description: 'Create user service',
           type: 'service',
         },
-        targetPath: '../jarek-va',
+        targetPath: '../cursor',
         id: 'test-123',
       };
 
@@ -20,7 +20,7 @@ describe('RequestFormatter', () => {
       expect(formatted.id).toBe('test-123');
       expect(formatted.phase).toBe('red');
       expect(formatted.requirements.description).toBe('Create user service');
-      expect(formatted.targetPath).toBe('../jarek-va');
+      expect(formatted.targetPath).toBe('../cursor');
       expect(formatted.metadata).toBeDefined();
       expect(formatted.metadata.timestamp).toBeDefined();
     });

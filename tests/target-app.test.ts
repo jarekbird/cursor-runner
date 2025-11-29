@@ -73,7 +73,7 @@ describe.skip('TargetAppRunner', () => {
   describe('constructor', () => {
     it('should initialize with default values', () => {
       const runner = new TargetAppRunner();
-      expect(runner.targetAppPath).toBe('../jarek-va');
+      expect(runner.targetAppPath).toBe('../cursor');
       expect(runner.targetAppType).toBe('rails');
       expect(runner.timeout).toBe(600000); // 10 minutes
     });

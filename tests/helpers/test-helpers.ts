@@ -30,7 +30,7 @@ export const createMockRequest = (overrides: Partial<MockRequest> = {}): MockReq
       description: 'Test feature',
       type: 'service',
     },
-    targetPath: '../jarek-va',
+    targetPath: '../cursor',
     ...overrides,
   };
 };

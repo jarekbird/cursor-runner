@@ -104,7 +104,7 @@ CURSOR_CLI_TIMEOUT=300000
 CURSOR_API_KEY=your-cursor-api-key-here
 
 # Target Application
-TARGET_APP_PATH=../jarek-va
+TARGET_APP_PATH=../cursor
 TARGET_APP_TYPE=rails
 
 # Git Service Configuration
@@ -202,7 +202,7 @@ const result = await runner.executeCodeGeneration({
   id: 'req-123',
   phase: 'red',
   requirements: { description: 'Create user service' },
-  targetPath: '../jarek-va',
+  targetPath: '../cursor',
 });
 ```
 

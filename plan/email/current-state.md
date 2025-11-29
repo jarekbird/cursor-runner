@@ -232,7 +232,7 @@ The service ensures:
 - Port: `3001`
 - Environment variables: Defined in `environment:` section (lines 11-58)
 - Volumes:
-  - Target app mounted at `/app/target/jarek-va`
+  - Target app mounted at `/app/target/cursor`
   - Cursor agents mounted at `/app/target/cursor-agents`
   - Shared repositories volume at `/cursor`
   - Shared SQLite database at `/app/shared_db`
