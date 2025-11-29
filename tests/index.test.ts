@@ -105,9 +105,10 @@ describe('CursorRunner', () => {
         server: mockServer as any,
       });
 
+      // TARGET_APP_PATH is now optional, so this should not throw
       expect(() => {
         runner.validateConfig();
-      }).toThrow('Missing required environment variables: TARGET_APP_PATH');
+      }).not.toThrow();
     });
 
     it('should throw error when multiple variables are missing', () => {
@@ -121,7 +122,7 @@ describe('CursorRunner', () => {
 
       expect(() => {
         runner.validateConfig();
-      }).toThrow('Missing required environment variables: CURSOR_CLI_PATH, TARGET_APP_PATH');
+      }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
     });
 
     it('should not throw when all required variables are present', () => {

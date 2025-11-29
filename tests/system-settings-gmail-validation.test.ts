@@ -69,4 +69,3 @@ describe('system-settings Gmail validation', () => {
     });
   });
 });
-

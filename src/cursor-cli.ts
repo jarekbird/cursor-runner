@@ -547,10 +547,10 @@ export class CursorCLI {
         if (
           usePty &&
           !sshPromptResponded &&
-          (chunk.includes("Are you sure you want to continue connecting") ||
-            chunk.includes("authenticity of host") ||
-            chunk.includes("ED25519 key fingerprint") ||
-            chunk.includes("This key is not known"))
+          (chunk.includes('Are you sure you want to continue connecting') ||
+            chunk.includes('authenticity of host') ||
+            chunk.includes('ED25519 key fingerprint') ||
+            chunk.includes('This key is not known'))
         ) {
           sshPromptResponded = true;
           logger.info('Detected SSH host key prompt, auto-responding "yes"', {

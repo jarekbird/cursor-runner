@@ -25,5 +25,3 @@ export async function down({ context }: { context: Database.Database }): Promise
   context.exec('DROP INDEX IF EXISTS index_system_settings_on_name');
   context.exec('DROP TABLE IF EXISTS system_settings');
 }
-
-

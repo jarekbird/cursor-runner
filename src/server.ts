@@ -956,10 +956,7 @@ export class Server {
         }
 
         // Build repository path
-        const repositoryPath = path.join(
-          this.gitService.repositoriesPath,
-          repository
-        );
+        const repositoryPath = path.join(this.gitService.repositoriesPath, repository);
 
         // Check if repository exists
         if (!this.filesystem.exists(repositoryPath)) {
@@ -1001,7 +998,6 @@ export class Server {
     this.app.use('/repositories/api', router);
   }
 
-
   /**
    * Setup agent conversation API routes
    * Agent conversations are separate from regular conversations and are used for voice-based interactions
@@ -1029,7 +1025,11 @@ export class Server {
       try {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
-        const sortBy = req.query.sortBy as 'createdAt' | 'lastAccessedAt' | 'messageCount' | undefined;
+        const sortBy = req.query.sortBy as
+          | 'createdAt'
+          | 'lastAccessedAt'
+          | 'messageCount'
+          | undefined;
         const sortOrder = req.query.sortOrder as 'asc' | 'desc' | undefined;
 
         // Validate pagination parameters
@@ -1077,9 +1077,8 @@ export class Server {
             total: result.total,
             limit: limit ?? result.total,
             offset: offset ?? 0,
-            hasMore: offset !== undefined && limit !== undefined
-              ? offset + limit < result.total
-              : false,
+            hasMore:
+              offset !== undefined && limit !== undefined ? offset + limit < result.total : false,
           },
         });
       } catch (error) {

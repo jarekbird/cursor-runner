@@ -71,4 +71,3 @@ describe('MCP Configuration', () => {
     ).toBe(true);
   });
 });
-

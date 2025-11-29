@@ -18,18 +18,12 @@ const SHARED_DB_PATH = process.env.SHARED_DB_PATH || '/app/shared_db/shared.sqli
  * In production (compiled), migrations are in dist/migrations/files
  * In development, they're in src/migrations/files
  */
-const MIGRATIONS_PATH = process.env.NODE_ENV === 'production'
-  ? path.join(__dirname, 'files')
-  : path.join(__dirname, 'files');
+const MIGRATIONS_PATH =
+  process.env.NODE_ENV === 'production'
+    ? path.join(__dirname, 'files')
+    : path.join(__dirname, 'files');
 
-/**
- * Glob pattern for migration files
- * In production, only match .js files (exclude .d.ts declaration files)
- * In development, match .ts files
- */
-const MIGRATIONS_GLOB = process.env.NODE_ENV === 'production'
-  ? path.join(MIGRATIONS_PATH, '*.js')
-  : path.join(MIGRATIONS_PATH, '*.ts');
+// Migration files are loaded dynamically based on file system
 
 /**
  * Get database connection for migrations (read-write)
@@ -52,7 +46,7 @@ export function createMigrator(): Umzug<Database.Database> {
       // Manually find migration files, filtering out .d.ts files
       const files = readdirSync(MIGRATIONS_PATH);
       // Check if we're in compiled mode (dist directory has .js files) or source mode (src has .ts files)
-      const hasJsFiles = files.some(f => f.endsWith('.js') && !f.endsWith('.d.ts'));
+      const hasJsFiles = files.some((f) => f.endsWith('.js') && !f.endsWith('.d.ts'));
       const migrationFiles = files
         .filter((file) => {
           // Always exclude .d.ts, .map files, and other non-migration files
@@ -72,6 +66,7 @@ export function createMigrator(): Umzug<Database.Database> {
             name: file,
             path: migrationPath,
             up: async () => {
+              // eslint-disable-next-line node/no-unsupported-features/es-syntax
               const migration = await import(migrationPath);
               if (typeof migration.up === 'function') {
                 return migration.up({ context: db });
@@ -79,6 +74,7 @@ export function createMigrator(): Umzug<Database.Database> {
               throw new Error(`Migration ${file} does not export an 'up' function`);
             },
             down: async () => {
+              // eslint-disable-next-line node/no-unsupported-features/es-syntax
               const migration = await import(migrationPath);
               if (typeof migration.down === 'function') {
                 return migration.down({ context: db });
@@ -87,7 +83,7 @@ export function createMigrator(): Umzug<Database.Database> {
             },
           };
         });
-      
+
       return migrationFiles;
     },
     context: db,
@@ -113,9 +109,11 @@ export function createMigrator(): Umzug<Database.Database> {
       async executed() {
         // Get list of executed migrations from schema_migrations table
         try {
-          const rows = db.prepare('SELECT name FROM schema_migrations ORDER BY name').all() as Array<{ name: string }>;
+          const rows = db
+            .prepare('SELECT name FROM schema_migrations ORDER BY name')
+            .all() as Array<{ name: string }>;
           return rows.map((row) => row.name);
-        } catch (error) {
+        } catch {
           // Table doesn't exist yet - return empty array
           return [];
         }
@@ -215,4 +213,3 @@ export function ensureSchemaMigrationsTable(): void {
     db.close();
   }
 }
-

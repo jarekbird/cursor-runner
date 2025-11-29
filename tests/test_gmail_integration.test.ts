@@ -5,7 +5,7 @@ import { getGmailMcpEnabled, validateGmailConfig } from '../src/system-settings.
 
 /**
  * Integration tests for Gmail MCP flows
- * 
+ *
  * Note: These tests verify configuration and setup rather than full end-to-end
  * Gmail MCP tool calls, which would require a complex MCP server mock.
  * Full E2E testing should be done via smoke tests (TASK-EML-009) or manual testing.
@@ -27,11 +27,11 @@ describe('Gmail MCP Integration', () => {
   describe('Gmail MCP Configuration', () => {
     it('should have Gmail MCP entry in mcp.json when feature flag is enabled', () => {
       process.env.ENABLE_GMAIL_MCP = 'true';
-      
+
       if (existsSync(mcpConfigPath)) {
         const configContent = readFileSync(mcpConfigPath, 'utf-8');
         const config = JSON.parse(configContent);
-        
+
         // Note: This test verifies the config file structure
         // The actual conditional inclusion is tested in merge-mcp-config.js logic
         if (config.mcpServers && config.mcpServers.gmail) {
@@ -45,7 +45,7 @@ describe('Gmail MCP Integration', () => {
       if (existsSync(mcpConfigPath)) {
         const configContent = readFileSync(mcpConfigPath, 'utf-8');
         const config = JSON.parse(configContent);
-        
+
         if (config.mcpServers && config.mcpServers.gmail) {
           const gmailEnv = config.mcpServers.gmail.env;
           expect(gmailEnv).toHaveProperty('GMAIL_CLIENT_ID');
@@ -134,4 +134,3 @@ describe('Gmail MCP Integration', () => {
     });
   });
 });
-

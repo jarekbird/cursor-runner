@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Migration CLI tool
  * Usage:
@@ -8,7 +6,12 @@
  *   npm run migrate:status  - Show migration status
  */
 
-import { runMigrations, rollbackMigration, getMigrationStatus, ensureSchemaMigrationsTable } from './migration-runner.js';
+import {
+  runMigrations,
+  rollbackMigration,
+  getMigrationStatus,
+  ensureSchemaMigrationsTable,
+} from './migration-runner.js';
 import { logger } from '../logger.js';
 
 const command = process.argv[2];
@@ -29,7 +32,7 @@ async function main() {
         await rollbackMigration();
         break;
 
-      case 'status':
+      case 'status': {
         const status = await getMigrationStatus();
         console.log('\n=== Migration Status ===');
         console.log(`Executed: ${status.executed.length} migration(s)`);
@@ -44,22 +47,23 @@ async function main() {
         }
         console.log('');
         break;
+      }
 
       default:
         console.log('Usage:');
         console.log('  npm run migrate          - Run all pending migrations');
         console.log('  npm run migrate:rollback - Rollback last migration');
         console.log('  npm run migrate:status  - Show migration status');
+        // eslint-disable-next-line no-process-exit
         process.exit(1);
     }
   } catch (error) {
     logger.error('Migration command failed', {
       error: error instanceof Error ? error.message : String(error),
     });
+    // eslint-disable-next-line no-process-exit
     process.exit(1);
   }
 }
 
 main();
-
-

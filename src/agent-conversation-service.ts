@@ -172,22 +172,23 @@ export class AgentConversationService {
       // Apply sorting
       const sortBy = options?.sortBy || 'lastAccessedAt';
       const sortOrder = options?.sortOrder || 'desc';
-      
+
       const sorted = conversations.sort((a, b) => {
         let comparison = 0;
-        
+
         switch (sortBy) {
           case 'createdAt':
             comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
             break;
           case 'lastAccessedAt':
-            comparison = new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime();
+            comparison =
+              new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime();
             break;
           case 'messageCount':
             comparison = a.messages.length - b.messages.length;
             break;
         }
-        
+
         // For descending order, reverse the comparison
         return sortOrder === 'asc' ? comparison : -comparison;
       });
@@ -277,5 +278,3 @@ export class AgentConversationService {
     }
   }
 }
-
-

@@ -216,4 +216,3 @@ describe('system-settings Gmail configuration', () => {
     });
   });
 });
-

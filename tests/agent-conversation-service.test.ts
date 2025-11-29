@@ -1,7 +1,6 @@
 // eslint-disable-next-line node/no-unpublished-import
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { AgentConversationService } from '../src/agent-conversation-service.js';
-import type Redis from 'ioredis';
 
 describe('AgentConversationService', () => {
   let service: AgentConversationService;
@@ -22,7 +21,7 @@ describe('AgentConversationService', () => {
       quit: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
       status: 'ready',
     };
-    
+
     // Use dependency injection to pass the mock Redis client
     service = new AgentConversationService(mockRedis);
   });
@@ -33,7 +32,6 @@ describe('AgentConversationService', () => {
 
   describe('createConversation', () => {
     it('should create a new agent conversation', async () => {
-      const conversationId = 'agent-1234567890-abc123';
       mockRedis.setex.mockResolvedValue('OK');
       mockRedis.sadd.mockResolvedValue(1);
 
@@ -168,7 +166,7 @@ describe('AgentConversationService', () => {
       mockRedis.smembers.mockResolvedValue(conversationIds);
       mockRedis.get.mockImplementation((key: string) => {
         const id = key.replace('agent:conversation:', '');
-        const conv = conversations.find(c => c.conversationId === id);
+        const conv = conversations.find((c) => c.conversationId === id);
         return Promise.resolve(conv ? JSON.stringify(conv) : null);
       });
       mockRedis.setex.mockResolvedValue('OK');
@@ -186,15 +184,30 @@ describe('AgentConversationService', () => {
     it('should support sorting by createdAt ascending', async () => {
       const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
       const conversations = [
-        { conversationId: 'agent-1', messages: [], createdAt: '2025-01-03T00:00:00Z', lastAccessedAt: '2025-01-03T00:00:00Z' },
-        { conversationId: 'agent-2', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
-        { conversationId: 'agent-3', messages: [], createdAt: '2025-01-02T00:00:00Z', lastAccessedAt: '2025-01-02T00:00:00Z' },
+        {
+          conversationId: 'agent-1',
+          messages: [],
+          createdAt: '2025-01-03T00:00:00Z',
+          lastAccessedAt: '2025-01-03T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-3',
+          messages: [],
+          createdAt: '2025-01-02T00:00:00Z',
+          lastAccessedAt: '2025-01-02T00:00:00Z',
+        },
       ];
 
       mockRedis.smembers.mockResolvedValue(conversationIds);
       mockRedis.get.mockImplementation((key: string) => {
         const id = key.replace('agent:conversation:', '');
-        const conv = conversations.find(c => c.conversationId === id);
+        const conv = conversations.find((c) => c.conversationId === id);
         return Promise.resolve(conv ? JSON.stringify(conv) : null);
       });
       mockRedis.setex.mockResolvedValue('OK');
@@ -210,22 +223,37 @@ describe('AgentConversationService', () => {
     it('should support sorting by messageCount descending', async () => {
       const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
       const conversations = [
-        { conversationId: 'agent-1', messages: [{ role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' }], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
-        { conversationId: 'agent-2', messages: [
-          { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
-          { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
-          { role: 'user', content: 'msg3', timestamp: '2025-01-01T00:00:00Z' },
-        ], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
-        { conversationId: 'agent-3', messages: [
-          { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
-          { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
-        ], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
+        {
+          conversationId: 'agent-1',
+          messages: [{ role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' }],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [
+            { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'user', content: 'msg3', timestamp: '2025-01-01T00:00:00Z' },
+          ],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-3',
+          messages: [
+            { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+          ],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
       ];
 
       mockRedis.smembers.mockResolvedValue(conversationIds);
       mockRedis.get.mockImplementation((key: string) => {
         const id = key.replace('agent:conversation:', '');
-        const conv = conversations.find(c => c.conversationId === id);
+        const conv = conversations.find((c) => c.conversationId === id);
         return Promise.resolve(conv ? JSON.stringify(conv) : null);
       });
       mockRedis.setex.mockResolvedValue('OK');
@@ -243,16 +271,25 @@ describe('AgentConversationService', () => {
       // Create conversations with different lastAccessedAt times
       // agent-2 is more recently accessed (should come first in desc order)
       const conversations = [
-        { conversationId: 'agent-1', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-01T00:00:00Z' },
-        { conversationId: 'agent-2', messages: [], createdAt: '2025-01-01T00:00:00Z', lastAccessedAt: '2025-01-02T00:00:00Z' },
+        {
+          conversationId: 'agent-1',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-02T00:00:00Z',
+        },
       ];
 
       mockRedis.smembers.mockResolvedValue(conversationIds);
       // Mock get to return the conversation, but also mock setex to handle lastAccessedAt updates
-      let callCount = 0;
       mockRedis.get.mockImplementation((key: string) => {
         const id = key.replace('agent:conversation:', '');
-        const conv = conversations.find(c => c.conversationId === id);
+        const conv = conversations.find((c) => c.conversationId === id);
         if (conv) {
           // Return a copy to avoid mutation
           return Promise.resolve(JSON.stringify({ ...conv }));
@@ -294,7 +331,7 @@ describe('AgentConversationService', () => {
 
       expect(mockRedis.get).toHaveBeenCalledWith(`agent:conversation:${conversationId}`);
       expect(mockRedis.setex).toHaveBeenCalled();
-      
+
       // Verify the message was added (check the last setex call, as getConversation also calls setex)
       const setexCalls = mockRedis.setex.mock.calls;
       const lastSetexCall = setexCalls[setexCalls.length - 1];
@@ -370,4 +407,3 @@ describe('AgentConversationService', () => {
     });
   });
 });
-

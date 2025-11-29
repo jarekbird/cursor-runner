@@ -7,20 +7,20 @@ import { logger } from '../logger.js';
  * Check if ElevenLabs agent feature is enabled.
  * Reads from ELEVENLABS_AGENT_ENABLED environment variable.
  * Defaults to false if not set.
- * 
+ *
  * @returns true if the feature is enabled, false otherwise
  */
 export function isElevenLabsEnabled(): boolean {
   const flag = process.env.ELEVENLABS_AGENT_ENABLED;
   const enabled = flag === 'true' || flag === 'True' || flag === 'TRUE';
-  
+
   if (!enabled && flag !== undefined && flag !== 'false' && flag !== 'False' && flag !== 'FALSE') {
     logger.warn('ELEVENLABS_AGENT_ENABLED has unexpected value', {
       value: flag,
       note: 'Feature will be disabled. Expected "true" or "false"',
     });
   }
-  
+
   return enabled;
 }
 
@@ -34,7 +34,7 @@ export function isElevenLabsCallbackUrl(callbackUrl: string): boolean {
     const url = new URL(callbackUrl);
     const hostname = url.hostname.toLowerCase();
     const pathname = url.pathname.toLowerCase();
-    
+
     // Check if hostname contains elevenlabs-agent or if pathname contains /callback
     // and hostname matches known ElevenLabs agent service patterns
     return (
@@ -50,7 +50,7 @@ export function isElevenLabsCallbackUrl(callbackUrl: string): boolean {
 /**
  * Check if a callback should be sent to ElevenLabs agent.
  * Logs a warning if the feature is disabled and the URL is for ElevenLabs.
- * 
+ *
  * @param callbackUrl - The callback URL to check
  * @returns true if the callback should be sent, false if it should be skipped
  */
@@ -59,7 +59,7 @@ export function shouldSendElevenLabsCallback(callbackUrl: string): boolean {
     // Not an ElevenLabs URL, allow it
     return true;
   }
-  
+
   const enabled = isElevenLabsEnabled();
   if (!enabled) {
     logger.info('ElevenLabs agent feature is disabled, skipping callback', {
@@ -68,7 +68,6 @@ export function shouldSendElevenLabsCallback(callbackUrl: string): boolean {
     });
     return false;
   }
-  
+
   return true;
 }
-

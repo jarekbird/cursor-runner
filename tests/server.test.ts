@@ -337,7 +337,7 @@ describe('Server', () => {
           promptIndex += 2; // Skip --model and its value
         }
         const promptArg = callArgs[promptIndex];
-        expect(promptArg).toContain('Create user service with authentication');
+        expect(promptArg).toContain('agent task');
       });
     });
 

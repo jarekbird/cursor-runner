@@ -308,9 +308,13 @@ export class CursorExecutionService {
 
       // Reset all local changes
       try {
-        const resetResult = await this.terminalService.executeCommand('git', ['reset', '--hard', 'HEAD'], {
-          cwd: repositoryPath,
-        });
+        const resetResult = await this.terminalService.executeCommand(
+          'git',
+          ['reset', '--hard', 'HEAD'],
+          {
+            cwd: repositoryPath,
+          }
+        );
         if (resetResult.success) {
           logger.debug('Git reset completed', { path: repositoryPath });
         } else {
@@ -358,11 +362,14 @@ export class CursorExecutionService {
         if (pullResult.success) {
           logger.info('Git pull completed', { path: repositoryPath, stdout: pullResult.stdout });
         } else {
-          logger.warn('Git pull completed with non-zero exit code (may be expected if no remote or already up to date)', {
-            path: repositoryPath,
-            exitCode: pullResult.exitCode,
-            stderr: pullResult.stderr,
-          });
+          logger.warn(
+            'Git pull completed with non-zero exit code (may be expected if no remote or already up to date)',
+            {
+              path: repositoryPath,
+              exitCode: pullResult.exitCode,
+              stderr: pullResult.stderr,
+            }
+          );
         }
       } catch (error) {
         const errorMessage = getErrorMessage(error);
@@ -1079,7 +1086,14 @@ export class CursorExecutionService {
       // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
       // --debug enables debug logging
-      const resumeCommandArgs = ['--model', 'auto', '--print', '--force', '--debug', fullResumePrompt];
+      const resumeCommandArgs = [
+        '--model',
+        'auto',
+        '--print',
+        '--force',
+        '--debug',
+        fullResumePrompt,
+      ];
       const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
       logger.info('Executing cursor resume command', {
         requestId,
@@ -1205,9 +1219,8 @@ export class CursorExecutionService {
     if (!isSuccess) {
       // When break_iteration is true, use originalOutput (the errored output) instead of lastResult.stdout
       // This ensures we return the output that triggered the break, not a previous successful output
-      const outputToReturn = iterationError && originalOutput 
-        ? originalOutput 
-        : (lastResult.stdout || '');
+      const outputToReturn =
+        iterationError && originalOutput ? originalOutput : lastResult.stdout || '';
 
       const errorResponseBody: CallbackWebhookPayload = {
         success: false,
@@ -1232,9 +1245,10 @@ export class CursorExecutionService {
 
       // Store the final output in conversation history (even on error, there may be useful output)
       // When break_iteration is true, use originalOutput (the errored output) instead of lastResult
-      const finalOutput = (iterationError && originalOutput) 
-        ? originalOutput 
-        : (lastResult.stdout || lastResult.stderr || '');
+      const finalOutput =
+        iterationError && originalOutput
+          ? originalOutput
+          : lastResult.stdout || lastResult.stderr || '';
       if (finalOutput) {
         await this.conversationService.addMessage(
           actualConversationId,
@@ -1361,7 +1375,14 @@ Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
       // --debug enables debug logging
-      const summarizeCommandArgs = ['--model', 'auto', '--print', '--force', '--debug', summarizePrompt];
+      const summarizeCommandArgs = [
+        '--model',
+        'auto',
+        '--print',
+        '--force',
+        '--debug',
+        summarizePrompt,
+      ];
       const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
 
       logger.info('Summarizing conversation using cursor', {
@@ -1412,6 +1433,7 @@ Provide a concise summary that captures the essential information:`;
     requestId: string
   ): Promise<void> {
     // Check if this is an ElevenLabs callback and if feature is enabled
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
     const { shouldSendElevenLabsCallback } = await import('./utils/feature-flags.js');
     if (!shouldSendElevenLabsCallback(callbackUrl)) {
       logger.info('Skipping ElevenLabs callback due to feature flag', {

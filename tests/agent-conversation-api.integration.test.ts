@@ -1,12 +1,12 @@
 /**
  * Integration tests for Agent Conversation API endpoints
- * 
+ *
  * These tests verify the full flow of agent conversation API endpoints:
  * - Creating conversations
  * - Listing conversations
  * - Getting conversations
  * - Adding messages to conversations
- * 
+ *
  * Note: These tests require a running Redis instance.
  * Tests will be skipped if Redis is not available.
  */
@@ -53,7 +53,7 @@ describe('Agent Conversation API Integration', () => {
       if (keys.length > 0) {
         await redis.del(keys);
       }
-    } catch (error) {
+    } catch {
       console.log('Redis is not available, skipping integration tests');
       try {
         await redis.quit();
@@ -112,7 +112,7 @@ describe('Agent Conversation API Integration', () => {
         redis.disconnect();
         // Also call quit to ensure clean shutdown
         await redis.quit();
-      } catch (error) {
+      } catch {
         // Ignore errors during cleanup - connection might already be closed
       }
     }
@@ -137,13 +137,13 @@ describe('Agent Conversation API Integration', () => {
     }
   });
 
-  describe('POST /agent-conversations/api/new', () => {
+  describe('POST /api/agent/new', () => {
     it('should create a new agent conversation', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       const response = await request(app)
-        .post('/agent-conversations/api/new')
+        .post('/api/agent/new')
         .send({ agentId: 'test-agent-123' })
         .expect(200);
 
@@ -156,40 +156,31 @@ describe('Agent Conversation API Integration', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
-      const response = await request(app)
-        .post('/agent-conversations/api/new')
-        .send({})
-        .expect(200);
+      const response = await request(app).post('/api/agent/new').send({}).expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.conversationId).toBeDefined();
     });
   });
 
-  describe('GET /agent-conversations/api/list', () => {
+  describe('GET /api/agent/list', () => {
     it('should list all agent conversations', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       // Create a few conversations
-      const conv1 = await request(app)
-        .post('/agent-conversations/api/new')
-        .send({ agentId: 'agent-1' });
+      const conv1 = await request(app).post('/api/agent/new').send({ agentId: 'agent-1' });
 
-      const conv2 = await request(app)
-        .post('/agent-conversations/api/new')
-        .send({ agentId: 'agent-2' });
+      const conv2 = await request(app).post('/api/agent/new').send({ agentId: 'agent-2' });
 
-      const response = await request(app)
-        .get('/agent-conversations/api/list')
-        .expect(200);
+      const response = await request(app).get('/api/agent/list').expect(200);
 
       expect(response.body).toHaveProperty('conversations');
       expect(response.body).toHaveProperty('pagination');
       expect(Array.isArray(response.body.conversations)).toBe(true);
       expect(response.body.conversations.length).toBeGreaterThanOrEqual(2);
       expect(response.body.pagination.total).toBeGreaterThanOrEqual(2);
-      
+
       // Verify conversations are in the list
       const conversationIds = response.body.conversations.map((c: any) => c.conversationId);
       expect(conversationIds).toContain(conv1.body.conversationId);
@@ -200,9 +191,7 @@ describe('Agent Conversation API Integration', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
-      const response = await request(app)
-        .get('/agent-conversations/api/list')
-        .expect(200);
+      const response = await request(app).get('/api/agent/list').expect(200);
 
       expect(response.body).toHaveProperty('conversations');
       expect(response.body).toHaveProperty('pagination');
@@ -211,22 +200,20 @@ describe('Agent Conversation API Integration', () => {
     });
   });
 
-  describe('GET /agent-conversations/api/:id', () => {
+  describe('GET /api/agent/:id', () => {
     it('should get a specific conversation by ID', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       // Create a conversation
       const createResponse = await request(app)
-        .post('/agent-conversations/api/new')
+        .post('/api/agent/new')
         .send({ agentId: 'test-agent' });
 
       const conversationId = createResponse.body.conversationId;
 
       // Get the conversation
-      const response = await request(app)
-        .get(`/agent-conversations/api/${conversationId}`)
-        .expect(200);
+      const response = await request(app).get(`/api/agent/${conversationId}`).expect(200);
 
       expect(response.body.conversationId).toBe(conversationId);
       expect(response.body.agentId).toBe('test-agent');
@@ -237,27 +224,25 @@ describe('Agent Conversation API Integration', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
-      await request(app)
-        .get('/agent-conversations/api/non-existent-id')
-        .expect(404);
+      await request(app).get('/api/agent/non-existent-id').expect(404);
     });
   });
 
-  describe('POST /agent-conversations/api/:id/message', () => {
+  describe('POST /api/agent/:id/message', () => {
     it('should add a message to a conversation', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       // Create a conversation
       const createResponse = await request(app)
-        .post('/agent-conversations/api/new')
+        .post('/api/agent/new')
         .send({ agentId: 'test-agent' });
 
       const conversationId = createResponse.body.conversationId;
 
       // Add a message
       const messageResponse = await request(app)
-        .post(`/agent-conversations/api/${conversationId}/message`)
+        .post(`/api/agent/${conversationId}/message`)
         .send({
           role: 'user',
           content: 'Hello, agent!',
@@ -269,9 +254,7 @@ describe('Agent Conversation API Integration', () => {
       expect(messageResponse.body.conversationId).toBe(conversationId);
 
       // Verify message was added by getting the conversation
-      const getResponse = await request(app)
-        .get(`/agent-conversations/api/${conversationId}`)
-        .expect(200);
+      const getResponse = await request(app).get(`/api/agent/${conversationId}`).expect(200);
 
       expect(getResponse.body.messages).toHaveLength(1);
       expect(getResponse.body.messages[0].content).toBe('Hello, agent!');
@@ -284,14 +267,14 @@ describe('Agent Conversation API Integration', () => {
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       const createResponse = await request(app)
-        .post('/agent-conversations/api/new')
+        .post('/api/agent/new')
         .send({ agentId: 'test-agent' });
 
       const conversationId = createResponse.body.conversationId;
 
       // Try to add message without required fields
       await request(app)
-        .post(`/agent-conversations/api/${conversationId}/message`)
+        .post(`/api/agent/${conversationId}/message`)
         .send({
           content: 'Hello',
           // Missing role
@@ -304,7 +287,7 @@ describe('Agent Conversation API Integration', () => {
       if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
 
       await request(app)
-        .post('/agent-conversations/api/non-existent/message')
+        .post('/api/agent/non-existent/message')
         .send({
           role: 'user',
           content: 'Hello',
@@ -320,7 +303,7 @@ describe('Agent Conversation API Integration', () => {
 
       // 1. Create conversation
       const createResponse = await request(app)
-        .post('/agent-conversations/api/new')
+        .post('/api/agent/new')
         .send({ agentId: 'test-agent' })
         .expect(200);
 
@@ -328,7 +311,7 @@ describe('Agent Conversation API Integration', () => {
 
       // 2. Add user message
       await request(app)
-        .post(`/agent-conversations/api/${conversationId}/message`)
+        .post(`/api/agent/${conversationId}/message`)
         .send({
           role: 'user',
           content: 'Hello!',
@@ -338,7 +321,7 @@ describe('Agent Conversation API Integration', () => {
 
       // 3. Add assistant message
       await request(app)
-        .post(`/agent-conversations/api/${conversationId}/message`)
+        .post(`/api/agent/${conversationId}/message`)
         .send({
           role: 'assistant',
           content: 'Hi there! How can I help?',
@@ -347,9 +330,7 @@ describe('Agent Conversation API Integration', () => {
         .expect(200);
 
       // 4. Get conversation and verify all messages
-      const getResponse = await request(app)
-        .get(`/agent-conversations/api/${conversationId}`)
-        .expect(200);
+      const getResponse = await request(app).get(`/api/agent/${conversationId}`).expect(200);
 
       expect(getResponse.body.messages).toHaveLength(2);
       expect(getResponse.body.messages[0].role).toBe('user');
@@ -358,9 +339,7 @@ describe('Agent Conversation API Integration', () => {
       expect(getResponse.body.messages[1].content).toBe('Hi there! How can I help?');
 
       // 5. Verify conversation appears in list
-      const listResponse = await request(app)
-        .get('/agent-conversations/api/list')
-        .expect(200);
+      const listResponse = await request(app).get('/api/agent/list').expect(200);
 
       expect(listResponse.body).toHaveProperty('conversations');
       const conversationIds = listResponse.body.conversations.map((c: any) => c.conversationId);
@@ -368,4 +347,3 @@ describe('Agent Conversation API Integration', () => {
     });
   });
 });
-

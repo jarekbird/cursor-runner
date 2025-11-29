@@ -16,5 +16,3 @@ export async function up({ context }: { context: Database.Database }): Promise<v
 export async function down({ context }: { context: Database.Database }): Promise<void> {
   context.exec('DROP TABLE IF EXISTS schema_migrations');
 }
-
-

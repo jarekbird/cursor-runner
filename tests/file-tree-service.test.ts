@@ -1,6 +1,14 @@
 // eslint-disable-next-line node/no-unpublished-import
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { mkdirSync, writeFileSync, rmdirSync, unlinkSync, existsSync, readdirSync, statSync } from 'fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  rmdirSync,
+  unlinkSync,
+  existsSync,
+  readdirSync,
+  statSync,
+} from 'fs';
 import { join } from 'path';
 import { FileTreeService } from '../src/file-tree-service.js';
 
@@ -25,7 +33,7 @@ describe('FileTreeService', () => {
             unlinkSync(filePath);
           }
         }
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
     }
@@ -52,7 +60,7 @@ describe('FileTreeService', () => {
         }
       }
       rmdirSync(dir);
-    } catch (error) {
+    } catch {
       // Ignore cleanup errors
     }
   }
@@ -173,4 +181,3 @@ describe('FileTreeService', () => {
     expect(file?.path).toBe('subdir/file.txt');
   });
 });
-

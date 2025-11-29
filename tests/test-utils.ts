@@ -15,10 +15,7 @@ export interface TestCleanup {
  * Create a cleanup function that properly shuts down all resources
  * This ensures Jest exits cleanly and tests don't hang
  */
-export async function createTestCleanup(
-  server?: Server,
-  redis?: Redis
-): Promise<TestCleanup> {
+export async function createTestCleanup(server?: Server, redis?: Redis): Promise<TestCleanup> {
   const cleanup = async (): Promise<void> => {
     // Stop server if it exists
     if (server && typeof server.stop === 'function') {
@@ -55,7 +52,7 @@ export async function createTestCleanup(
 export function setupTestCleanup(cleanupFn: () => Promise<void>): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jestGlobals = global as any;
-  
+
   // Store cleanup function
   if (!jestGlobals.__testCleanupFunctions) {
     jestGlobals.__testCleanupFunctions = [];
@@ -71,7 +68,7 @@ export async function executeAllCleanups(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jestGlobals = global as any;
   const cleanups = jestGlobals.__testCleanupFunctions || [];
-  
+
   for (const cleanup of cleanups) {
     try {
       await cleanup();
@@ -79,8 +76,7 @@ export async function executeAllCleanups(): Promise<void> {
       console.warn('Error during test cleanup:', error);
     }
   }
-  
+
   // Clear the array
   jestGlobals.__testCleanupFunctions = [];
 }
-

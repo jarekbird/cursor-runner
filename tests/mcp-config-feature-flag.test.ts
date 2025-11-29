@@ -28,11 +28,11 @@ describe('MCP Configuration Feature Flag', () => {
 
   it('should include gmail entry when ENABLE_GMAIL_MCP is true', () => {
     process.env.ENABLE_GMAIL_MCP = 'true';
-    
+
     // Run merge script (simulate what happens at startup)
     try {
       execSync('node merge-mcp-config.js', { stdio: 'pipe', env: process.env });
-    } catch (error) {
+    } catch {
       // Script may fail in test environment, but we can still check the logic
     }
 
@@ -40,7 +40,7 @@ describe('MCP Configuration Feature Flag', () => {
     if (existsSync(mcpConfigPath)) {
       const configContent = readFileSync(mcpConfigPath, 'utf-8');
       const config = JSON.parse(configContent);
-      
+
       // If merge script ran, gmail should be included
       // Note: This test may not work in all environments, but documents expected behavior
       if (config.mcpServers && config.mcpServers.gmail) {
@@ -51,30 +51,31 @@ describe('MCP Configuration Feature Flag', () => {
 
   it('should exclude gmail entry when ENABLE_GMAIL_MCP is false', () => {
     process.env.ENABLE_GMAIL_MCP = 'false';
-    
+
     // The merge script should exclude gmail when flag is false
     // This is tested via the merge script logic, not by running it
-    const gmailMcpEnabled = 
+    const gmailMcpEnabled =
       process.env.ENABLE_GMAIL_MCP &&
       (process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'true' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === '1' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'yes' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'on');
-    
+        process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === '1' ||
+        process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'yes' ||
+        process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'on');
+
     expect(gmailMcpEnabled).toBe(false);
   });
 
   it('should exclude gmail entry when ENABLE_GMAIL_MCP is not set', () => {
     delete process.env.ENABLE_GMAIL_MCP;
-    
-    const gmailMcpEnabled = 
-      process.env.ENABLE_GMAIL_MCP &&
-      (process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'true' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === '1' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'yes' ||
-       process.env.ENABLE_GMAIL_MCP.toLowerCase().trim() === 'on');
-    
+
+    const enableGmailMcp = process.env.ENABLE_GMAIL_MCP as string | undefined;
+    const gmailMcpEnabled = !!(
+      enableGmailMcp &&
+      (enableGmailMcp.toLowerCase().trim() === 'true' ||
+        enableGmailMcp.toLowerCase().trim() === '1' ||
+        enableGmailMcp.toLowerCase().trim() === 'yes' ||
+        enableGmailMcp.toLowerCase().trim() === 'on')
+    );
+
     expect(gmailMcpEnabled).toBe(false);
   });
 });
-

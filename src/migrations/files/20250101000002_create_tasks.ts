@@ -46,5 +46,3 @@ export async function down({ context }: { context: Database.Database }): Promise
   context.exec('DROP INDEX IF EXISTS index_tasks_on_status');
   context.exec('DROP TABLE IF EXISTS tasks');
 }
-
-

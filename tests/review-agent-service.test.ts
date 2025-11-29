@@ -346,11 +346,15 @@ Some text after (missing closing brace)`;
       expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
       const callArgs = mockCursorCLI.executeCommand.mock.calls[0];
       const args = callArgs[0];
-      // Review agent uses --print --force (not --resume) to avoid session selection menu
-      // Args are: ['--print', '--force', reviewPrompt]
+      // Review agent uses --model auto --print --force --debug (not --resume) to avoid session selection menu
+      // Args are: ['--model', 'auto', '--print', '--force', '--debug', reviewPrompt]
       const forceIndex = args.indexOf('--force');
-      // Get the prompt argument (should be right after --force)
+      // Get the prompt argument (should be right after --force and --debug)
       let promptIndex = forceIndex + 1;
+      // Skip --debug if present (after --force)
+      if (args[promptIndex] === '--debug') {
+        promptIndex += 1; // Skip --debug
+      }
       // Skip --model and its value if present (for backward compatibility)
       if (args[promptIndex] === '--model') {
         promptIndex += 2; // Skip --model and its value

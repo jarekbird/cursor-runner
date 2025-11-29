@@ -42,5 +42,3 @@ export async function down({ context }: { context: Database.Database }): Promise
   context.exec('DROP INDEX IF EXISTS index_git_credentials_on_name');
   context.exec('DROP TABLE IF EXISTS git_credentials');
 }
-
-
