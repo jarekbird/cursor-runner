@@ -370,7 +370,7 @@ Return ONLY the prompt text, no explanations, no JSON, just the prompt that shou
       // Use --model auto for consistent model selection (same as main execution)
 
       const result = await this.cursorCLI.executeCommand(
-        ['--model', 'auto', '--print', '--force', promptGenerationPrompt],
+        ['--model', 'auto', '--print', '--force', '--debug', promptGenerationPrompt],
         executeOptions
       );
 
@@ -637,7 +637,7 @@ ${output}`;
       // The review agent's calls are internal and should not pollute the conversation context.
 
       const result = await this.cursorCLI.executeCommand(
-        ['--model', 'auto', '--print', '--force', reviewPrompt],
+        ['--model', 'auto', '--print', '--force', '--debug', reviewPrompt],
         executeOptions
       );
 

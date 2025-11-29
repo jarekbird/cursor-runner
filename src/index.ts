@@ -15,6 +15,7 @@ import { getErrorMessage, getErrorStack } from './error-utils.js';
 import type { FormattedRequest, Phase } from './request-formatter.js';
 import { GitHubAuthService } from './github-auth.js';
 import { validateGmailConfig, getGmailMcpEnabled } from './system-settings.js';
+import { runMigrations, ensureSchemaMigrationsTable } from './migrations/migration-runner.js';
 
 // Load environment variables
 dotenv.config();
@@ -80,6 +81,20 @@ class CursorRunner {
 
       // Validate configuration
       this.validateConfig();
+
+      // Run database migrations before starting services
+      try {
+        this.logger.info('Running database migrations...');
+        ensureSchemaMigrationsTable();
+        await runMigrations();
+        this.logger.info('Database migrations completed');
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        this.logger.error('Failed to run database migrations', { error: errorMessage });
+        // Don't throw - allow app to start even if migrations fail
+        // This allows the app to start in read-only mode if needed
+        this.logger.warn('Continuing startup despite migration failure');
+      }
 
       // Initialize GitHub authentication (configure git for non-interactive use)
       const githubAuth = new GitHubAuthService();
@@ -187,7 +202,7 @@ class CursorRunner {
    * Validate configuration
    */
   validateConfig(): void {
-    const required = ['CURSOR_CLI_PATH', 'TARGET_APP_PATH'] as const;
+    const required = ['CURSOR_CLI_PATH'] as const;
 
     const missing = (required as readonly string[]).filter((key) => !process.env[key]);
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Script to merge cursor-runner mcp.json with existing mcp.json in repositories directory
+ * Script to merge cursor-runner mcp.json with existing mcp.json in /cursor directory
  * This ensures both configurations are preserved
  */
 
@@ -19,35 +19,35 @@ const IS_DOCKER = fs.existsSync('/cursor');
 // In the cursor-runner container:
 // - Script is at /app/merge-mcp-config.js (copied during build)
 // - mcp.json is at /app/mcp.json (copied during build)
-// - Cursor volume is mounted at /cursor (contains repositories and tools directories)
+// - Cursor volume is mounted at /cursor (contains repositories, scripts, tools directories)
 const CURSOR_RUNNER_MCP = IS_DOCKER ? '/app/mcp.json' : path.join(SCRIPT_DIR, 'mcp.json');
-const REPOSITORIES_MCP = IS_DOCKER ? '/cursor/repositories/mcp.json' : null;
+const CURSOR_MCP = IS_DOCKER ? '/cursor/mcp.json' : null;
 const ROOT_MCP = IS_DOCKER ? null : path.join(path.resolve(SCRIPT_DIR, '..'), 'mcp.json');
 
 console.log('=== Merging MCP Configuration ===');
 console.log(`Script directory: ${SCRIPT_DIR}`);
 console.log(`Running in Docker: ${IS_DOCKER}`);
 console.log(`Cursor-runner MCP: ${CURSOR_RUNNER_MCP}`);
-console.log(`Repositories MCP: ${REPOSITORIES_MCP || 'N/A'}`);
+console.log(`Cursor MCP: ${CURSOR_MCP || 'N/A'}`);
 console.log('');
 
-// Determine which existing mcp.json to use (repositories directory or root)
+// Determine which existing mcp.json to use (cursor root directory or root)
 let existingMcp = null;
 if (IS_DOCKER) {
-  // Running in Docker container - use /cursor/repositories/mcp.json
-  if (fs.existsSync(REPOSITORIES_MCP)) {
-    existingMcp = REPOSITORIES_MCP;
-    console.log(`Found existing MCP config at: ${REPOSITORIES_MCP}`);
+  // Running in Docker container - use /cursor/mcp.json
+  if (fs.existsSync(CURSOR_MCP)) {
+    existingMcp = CURSOR_MCP;
+    console.log(`Found existing MCP config at: ${CURSOR_MCP}`);
   } else {
     console.log('No existing MCP config found. Creating new one from cursor-runner config.');
-    // Create repositories directory if it doesn't exist (should already exist from volume mount)
-    const reposDir = path.dirname(REPOSITORIES_MCP);
-    if (!fs.existsSync(reposDir)) {
-      fs.mkdirSync(reposDir, { recursive: true });
+    // Create cursor directory if it doesn't exist (should already exist from volume mount)
+    const cursorDir = path.dirname(CURSOR_MCP);
+    if (!fs.existsSync(cursorDir)) {
+      fs.mkdirSync(cursorDir, { recursive: true });
     }
     // Copy cursor-runner config as base
-    fs.copyFileSync(CURSOR_RUNNER_MCP, REPOSITORIES_MCP);
-    console.log(`Created new MCP config at: ${REPOSITORIES_MCP}`);
+    fs.copyFileSync(CURSOR_RUNNER_MCP, CURSOR_MCP);
+    console.log(`Created new MCP config at: ${CURSOR_MCP}`);
     
     // Also copy to /root/.cursor/mcp.json for cursor-cli
     const cursorCliMcp = '/root/.cursor/mcp.json';
@@ -56,7 +56,7 @@ if (IS_DOCKER) {
       if (!fs.existsSync(cursorCliDir)) {
         fs.mkdirSync(cursorCliDir, { recursive: true });
       }
-      fs.copyFileSync(REPOSITORIES_MCP, cursorCliMcp);
+      fs.copyFileSync(CURSOR_MCP, cursorCliMcp);
       console.log(`✓ Copied config to ${cursorCliMcp} for cursor-cli`);
     } catch (error) {
       console.warn(`Warning: Could not copy config to ${cursorCliMcp}: ${error.message}`);
@@ -66,34 +66,34 @@ if (IS_DOCKER) {
   }
 } else {
   // Running on host - try to find existing config
-  let hostRepositoriesMcp = null;
+  let hostCursorMcp = null;
   
   try {
     // Try to get the Docker volume mount point
     const volumeInfo = execSync('docker volume inspect cursor_runner_repositories --format "{{.Mountpoint}}"', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
     if (volumeInfo && volumeInfo.length > 0) {
-      hostRepositoriesMcp = path.join(volumeInfo, 'repositories', 'mcp.json');
+      hostCursorMcp = path.join(volumeInfo, 'mcp.json');
     }
   } catch (error) {
     // Volume doesn't exist or docker not available
   }
   
-  if (hostRepositoriesMcp && fs.existsSync(hostRepositoriesMcp)) {
-    existingMcp = hostRepositoriesMcp;
-    console.log(`Found existing MCP config at: ${hostRepositoriesMcp}`);
+  if (hostCursorMcp && fs.existsSync(hostCursorMcp)) {
+    existingMcp = hostCursorMcp;
+    console.log(`Found existing MCP config at: ${hostCursorMcp}`);
   } else if (ROOT_MCP && fs.existsSync(ROOT_MCP)) {
     existingMcp = ROOT_MCP;
     console.log(`Found existing MCP config at: ${ROOT_MCP}`);
   } else {
     console.log('No existing MCP config found. Creating new one from cursor-runner config.');
-    // Use repositories path
-    const reposMcp = hostRepositoriesMcp || path.join(path.resolve(SCRIPT_DIR, '..'), 'repositories', 'mcp.json');
-    const reposDir = path.dirname(reposMcp);
-    if (!fs.existsSync(reposDir)) {
-      fs.mkdirSync(reposDir, { recursive: true });
+    // Use cursor root path
+    const cursorMcp = hostCursorMcp || path.join(path.resolve(SCRIPT_DIR, '..'), 'mcp.json');
+    const cursorDir = path.dirname(cursorMcp);
+    if (!fs.existsSync(cursorDir)) {
+      fs.mkdirSync(cursorDir, { recursive: true });
     }
-    fs.copyFileSync(CURSOR_RUNNER_MCP, reposMcp);
-    console.log(`Created new MCP config at: ${reposMcp}`);
+    fs.copyFileSync(CURSOR_RUNNER_MCP, cursorMcp);
+    console.log(`Created new MCP config at: ${cursorMcp}`);
     process.exit(0);
   }
 }

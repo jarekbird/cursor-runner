@@ -745,9 +745,64 @@ export class Server {
     });
 
     /**
+     * GET /api/working-directory/files
+     * Get file tree for the cursor working directory (TARGET_APP_PATH)
+     * Returns a FileNode[] tree structure
+     * IMPORTANT: This route must come before /:conversationId to avoid route conflicts
+     */
+    router.get('/working-directory/files', async (req: Request, res: Response) => {
+      try {
+        const fileTreeService = new FileTreeService();
+        const workingDirectoryPath = process.env.TARGET_APP_PATH;
+
+        if (!workingDirectoryPath) {
+          res.status(500).json({
+            success: false,
+            error: 'TARGET_APP_PATH not configured',
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        // Check if working directory exists
+        if (!this.filesystem.exists(workingDirectoryPath)) {
+          res.status(404).json({
+            success: false,
+            error: `Working directory not found: ${workingDirectoryPath}`,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        logger.info('Working directory file tree request received', {
+          path: workingDirectoryPath,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+
+        // Build file tree
+        const fileTree = fileTreeService.buildFileTree(workingDirectoryPath);
+
+        res.json(fileTree);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get working directory file tree', {
+          error: err.message,
+          stack: err.stack,
+        });
+
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    /**
      * GET /conversations/api/:conversationId
      * Get a specific conversation by ID
-     * IMPORTANT: This route must come after /new and /list to avoid route conflicts
+     * IMPORTANT: This route must come after /new, /list, and /working-directory/files to avoid route conflicts
      */
     router.get('/:conversationId', async (req: Request, res: Response) => {
       try {
@@ -946,10 +1001,12 @@ export class Server {
     this.app.use('/repositories/api', router);
   }
 
+
   /**
    * Setup agent conversation API routes
    * Agent conversations are separate from regular conversations and are used for voice-based interactions
    * API endpoints are at /agent-conversations/api/* (routed to cursor-runner via Traefik)
+   * Traefik strips /agent-conversations prefix, so /agent-conversations/api/list becomes /api/agent/list
    */
   setupAgentConversationRoutes(): void {
     const router: Router = express.Router();
@@ -966,6 +1023,7 @@ export class Server {
      * GET /agent-conversations/api/list
      * Get list of all agent conversations with optional pagination
      * Query params: limit (default: all), offset (default: 0)
+     * Note: Router is mounted at /api/agent, so route is /list
      */
     router.get('/list', async (req: Request, res: Response) => {
       try {
@@ -1041,7 +1099,7 @@ export class Server {
      * POST /agent-conversations/api/new
      * Create a new agent conversation
      * Body: { agentId?: string, metadata?: Record<string, unknown> } (optional)
-     * IMPORTANT: This route must come before /:id to avoid route conflicts
+     * Note: Router is mounted at /api/agent, so route is /new
      */
     router.post('/new', async (req: Request, res: Response) => {
       try {
@@ -1084,7 +1142,7 @@ export class Server {
      * POST /agent-conversations/api/:id/message
      * Send a message to an agent conversation
      * Body: { role: 'user' | 'assistant', content: string, source?: 'voice' | 'text' }
-     * IMPORTANT: This route must come before /:id to avoid route conflicts
+     * Note: Router is mounted at /api/agent, so route is /:id/message
      */
     router.post('/:id/message', async (req: Request, res: Response) => {
       try {
@@ -1136,7 +1194,7 @@ export class Server {
     /**
      * GET /agent-conversations/api/:id
      * Get a specific agent conversation by ID
-     * IMPORTANT: This route must come after /new, /list, and /:id/message to avoid route conflicts
+     * Note: Router is mounted at /api/agent, so route is /:id
      */
     router.get('/:id', async (req: Request, res: Response) => {
       try {
@@ -1166,8 +1224,11 @@ export class Server {
       }
     });
 
-    // Mount agent conversation API routes at /agent-conversations/api
-    this.app.use('/agent-conversations/api', router);
+    // Mount agent conversation API routes at /api/agent
+    // Traefik strips /agent-conversations prefix, so /agent-conversations/api/list becomes /api/list
+    // But we mount at /api/agent to avoid conflicts with regular conversation API routes at /api
+    // So /agent-conversations/api/list becomes /api/agent/list
+    this.app.use('/api/agent', router);
   }
 
   /**

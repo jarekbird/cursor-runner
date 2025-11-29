@@ -165,7 +165,7 @@ export class RequestFormatter {
         id: rawRequest.id || this.generateRequestId(),
         phase: normalizedPhase,
         requirements: this.formatRequirements(rawRequest.requirements),
-        targetPath: rawRequest.targetPath || process.env.TARGET_APP_PATH,
+        targetPath: rawRequest.targetPath || undefined,
         metadata: {
           timestamp: new Date().toISOString(),
           source: rawRequest.source || 'jarek-va',

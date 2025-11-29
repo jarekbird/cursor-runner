@@ -6,6 +6,7 @@ import { getWebhookSecret } from './callback-url-builder.js';
 import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
 import { ConversationService, type QueueType } from './conversation-service.js';
+import { TerminalService } from './terminal-service.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -172,40 +173,40 @@ IMPORTANT: When a task file is referenced (e.g., "task at path/to/file.md"), you
 
 IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
 
-IMPORTANT: When working with tasks (creating, querying, updating, or deleting tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
+IMPORTANT: When working with agent tasks (creating, querying, updating, or deleting agent tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The agent tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
 
 IMPORTANT: When working with conversation history in Redis (clearing, querying, or managing conversations), you MUST use the cursor-runner-shared-redis MCP connection. Conversation history is stored in Redis with keys like:
 - cursor:conversation:{conversationId} - Individual conversation data
 - cursor:last_conversation_id - Last conversation ID
 To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.
 
-Tasks Table Schema:
+Agent Tasks Table Schema:
 - id: INTEGER PRIMARY KEY AUTOINCREMENT
-- prompt: TEXT NOT NULL (the task prompt/description to be executed)
-- status: INTEGER NOT NULL DEFAULT 0 (task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged, 4=in_progress)
+- prompt: TEXT NOT NULL (the agent task prompt/description to be executed)
+- status: INTEGER NOT NULL DEFAULT 0 (agent task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged, 4=in_progress)
 - createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
 - updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
 - order: INTEGER DEFAULT 0 (lower numbers are processed first)
 - uuid: TEXT (unique identifier, indexed)
 
-Task Status Values:
+Agent Task Status Values:
 - 0 = ready (ready to be processed by task operator)
-- 1 = complete (task has been completed)
-- 2 = archived (task has been archived)
-- 3 = backlogged (task is in backlog, not ready for processing)
-- 4 = in_progress (task is currently being processed)
+- 1 = complete (agent task has been completed)
+- 2 = archived (agent task has been archived)
+- 3 = backlogged (agent task is in backlog, not ready for processing)
+- 4 = in_progress (agent task is currently being processed)
 
-Task Management Examples:
-- To create a ready task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
-- To list ready tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
-- To mark a task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To archive a task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To backlog a task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To get next ready task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
+Agent Task Management Examples:
+- To create a ready agent task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
+- To list ready agent tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
+- To mark an agent task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To archive an agent task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To backlog an agent task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To get next ready agent task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
 
-The task operator agent (when enabled) automatically processes tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
+The task operator agent (when enabled) automatically processes agent tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
 
-CRITICAL: DO NOT create agents or tasks that process tasks from the database. The task operator already handles this automatically. Creating agents or tasks with prompts like "Process ready tasks", "Query the tasks table", or "Send task prompts to cursor-runner" will create recursive loops and is strictly forbidden. If you need to process tasks, ensure the task_operator system setting is enabled - do not create additional agents or tasks for this purpose.
+CRITICAL: DO NOT create agents or agent tasks that process agent tasks from the database. The task operator already handles this automatically. Creating agents or agent tasks with prompts like "Process ready agent tasks", "Query the agent tasks table", or "Send agent task prompts to cursor-runner" will create recursive loops and is strictly forbidden. If you need to process agent tasks, ensure the task_operator system setting is enabled - do not create additional agents or agent tasks for this purpose.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
@@ -245,6 +246,7 @@ export class CursorExecutionService {
   private reviewAgent: ReviewAgentService;
   private filesystem: FilesystemService;
   private workspaceTrust: WorkspaceTrustService;
+  private terminalService: TerminalService;
   public conversationService: ConversationService;
 
   constructor(
@@ -261,6 +263,7 @@ export class CursorExecutionService {
     this.reviewAgent = reviewAgent;
     this.filesystem = filesystem || new FilesystemService();
     this.workspaceTrust = new WorkspaceTrustService(this.filesystem);
+    this.terminalService = new TerminalService();
     // Allow dependency injection of Redis for testing
     this.conversationService = new ConversationService(redisClient);
     this.scriptsPath = SCRIPTS_PATH;
@@ -284,6 +287,97 @@ export class CursorExecutionService {
           error: errorMessage,
         });
       }
+    }
+  }
+
+  /**
+   * Ensure repository is clean and up to date before cursor execution
+   * Runs git reset --hard HEAD, git clean -fd, and git pull
+   * @param repositoryPath - Path to the repository
+   */
+  private async ensureRepositoryClean(repositoryPath: string): Promise<void> {
+    try {
+      // Check if it's a git repository
+      const gitDir = path.join(repositoryPath, '.git');
+      if (!this.filesystem.exists(gitDir)) {
+        logger.debug('Not a git repository, skipping git operations', { path: repositoryPath });
+        return;
+      }
+
+      logger.info('Ensuring repository is clean and up to date', { path: repositoryPath });
+
+      // Reset all local changes
+      try {
+        const resetResult = await this.terminalService.executeCommand('git', ['reset', '--hard', 'HEAD'], {
+          cwd: repositoryPath,
+        });
+        if (resetResult.success) {
+          logger.debug('Git reset completed', { path: repositoryPath });
+        } else {
+          logger.warn('Git reset completed with non-zero exit code', {
+            path: repositoryPath,
+            exitCode: resetResult.exitCode,
+            stderr: resetResult.stderr,
+          });
+        }
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        logger.warn('Git reset failed (may be expected if no changes)', {
+          path: repositoryPath,
+          error: errorMessage,
+        });
+      }
+
+      // Clean untracked files
+      try {
+        const cleanResult = await this.terminalService.executeCommand('git', ['clean', '-fd'], {
+          cwd: repositoryPath,
+        });
+        if (cleanResult.success) {
+          logger.debug('Git clean completed', { path: repositoryPath });
+        } else {
+          logger.warn('Git clean completed with non-zero exit code', {
+            path: repositoryPath,
+            exitCode: cleanResult.exitCode,
+            stderr: cleanResult.stderr,
+          });
+        }
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        logger.warn('Git clean failed', {
+          path: repositoryPath,
+          error: errorMessage,
+        });
+      }
+
+      // Pull latest changes
+      try {
+        const pullResult = await this.terminalService.executeCommand('git', ['pull'], {
+          cwd: repositoryPath,
+        });
+        if (pullResult.success) {
+          logger.info('Git pull completed', { path: repositoryPath, stdout: pullResult.stdout });
+        } else {
+          logger.warn('Git pull completed with non-zero exit code (may be expected if no remote or already up to date)', {
+            path: repositoryPath,
+            exitCode: pullResult.exitCode,
+            stderr: pullResult.stderr,
+          });
+        }
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        logger.warn('Git pull failed (may be expected if no remote or already up to date)', {
+          path: repositoryPath,
+          error: errorMessage,
+        });
+      }
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      logger.warn('Failed to ensure repository is clean', {
+        path: repositoryPath,
+        error: errorMessage,
+      });
+      // Don't throw - continue execution even if git operations fail
     }
   }
 
@@ -498,7 +592,8 @@ export class CursorExecutionService {
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    const commandArgs = ['--model', 'auto', '--print', '--force', fullPrompt];
+    // --debug enables debug logging
+    const commandArgs = ['--model', 'auto', '--print', '--force', '--debug', fullPrompt];
 
     // Prepare command with instructions
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
@@ -696,6 +791,9 @@ export class CursorExecutionService {
     // Ensure workspace trust is configured before executing commands
     await this.workspaceTrust.ensureWorkspaceTrust(fullRepositoryPath);
 
+    // Ensure repository is clean and up to date before cursor execution
+    await this.ensureRepositoryClean(fullRepositoryPath);
+
     // Get or create conversation ID (uses last conversation if none provided, creates new if none exists)
     const actualConversationId = await this.conversationService.getConversationId(
       conversationId,
@@ -723,7 +821,8 @@ export class CursorExecutionService {
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    const commandArgs = ['--model', 'auto', '--print', '--force', initialFullPrompt];
+    // --debug enables debug logging
+    const commandArgs = ['--model', 'auto', '--print', '--force', '--debug', initialFullPrompt];
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -929,6 +1028,14 @@ export class CursorExecutionService {
           reviewResult.justification ||
           'Cursor is requesting permissions or indicating it lacks permissions to execute commands. This requires manual intervention.';
         iterationError = reviewJustification;
+        // When breaking iteration, use the current iteration's output (originalOutput) as the response
+        // This ensures we return the errored output, not a previous successful one
+        lastResult = {
+          success: false,
+          exitCode: 1,
+          stdout: originalOutput || '',
+          stderr: reviewJustification,
+        };
         break;
       }
 
@@ -971,7 +1078,8 @@ export class CursorExecutionService {
 
       // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
-      const resumeCommandArgs = ['--model', 'auto', '--print', '--force', fullResumePrompt];
+      // --debug enables debug logging
+      const resumeCommandArgs = ['--model', 'auto', '--print', '--force', '--debug', fullResumePrompt];
       const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
       logger.info('Executing cursor resume command', {
         requestId,
@@ -1095,6 +1203,12 @@ export class CursorExecutionService {
 
     // Use discriminated union - return ErrorResponse if failed, SuccessResponse if succeeded
     if (!isSuccess) {
+      // When break_iteration is true, use originalOutput (the errored output) instead of lastResult.stdout
+      // This ensures we return the output that triggered the break, not a previous successful output
+      const outputToReturn = iterationError && originalOutput 
+        ? originalOutput 
+        : (lastResult.stdout || '');
+
       const errorResponseBody: CallbackWebhookPayload = {
         success: false,
         requestId,
@@ -1105,7 +1219,7 @@ export class CursorExecutionService {
         timestamp: new Date().toISOString(),
         iterations: iteration - 1,
         maxIterations,
-        output: lastResult.stdout || '',
+        output: outputToReturn,
       };
 
       // Include review justification and original output if available
@@ -1117,7 +1231,10 @@ export class CursorExecutionService {
       }
 
       // Store the final output in conversation history (even on error, there may be useful output)
-      const finalOutput = lastResult.stdout || lastResult.stderr || '';
+      // When break_iteration is true, use originalOutput (the errored output) instead of lastResult
+      const finalOutput = (iterationError && originalOutput) 
+        ? originalOutput 
+        : (lastResult.stdout || lastResult.stderr || '');
       if (finalOutput) {
         await this.conversationService.addMessage(
           actualConversationId,
@@ -1170,6 +1287,8 @@ export class CursorExecutionService {
     // Always include original output when there's an iteration error (review failure, review agent error, or break_iteration)
     // This ensures the user can see what cursor produced even if the review agent fails
     if (iterationError) {
+      // For break_iteration cases, originalOutput contains the errored output that should be shown
+      // For other errors, use originalOutput if available, otherwise fallback to lastResult.stdout
       if (originalOutput) {
         responseBody.originalOutput = originalOutput;
       } else {
@@ -1241,7 +1360,8 @@ ${contextString}
 Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
-      const summarizeCommandArgs = ['--model', 'auto', '--print', '--force', summarizePrompt];
+      // --debug enables debug logging
+      const summarizeCommandArgs = ['--model', 'auto', '--print', '--force', '--debug', summarizePrompt];
       const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
 
       logger.info('Summarizing conversation using cursor', {

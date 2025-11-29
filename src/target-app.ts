@@ -72,7 +72,8 @@ export class TargetAppRunner {
   constructor(options: TargetAppRunnerOptions = {}) {
     const { fsExistsSync } = options;
 
-    this.targetAppPath = process.env.TARGET_APP_PATH || '../jarek-va';
+    // TARGET_APP_PATH is optional - if not set, TargetAppRunner will not be used
+    this.targetAppPath = process.env.TARGET_APP_PATH || '';
     const appType = (process.env.TARGET_APP_TYPE || 'rails') as TargetAppType;
     if (appType !== 'rails' && appType !== 'node') {
       throw new Error(`Invalid target app type: ${appType}. Must be 'rails' or 'node'`);
@@ -87,6 +88,12 @@ export class TargetAppRunner {
    * @returns Promise resolving to true if valid
    */
   async validate(): Promise<boolean> {
+    // If TARGET_APP_PATH is not set, skip validation (TargetAppRunner is optional)
+    if (!this.targetAppPath) {
+      logger.info('Target application path not configured, skipping validation');
+      return true;
+    }
+
     if (!this.fsExistsSync(this.targetAppPath)) {
       throw new Error(`Target application path does not exist: ${this.targetAppPath}`);
     }

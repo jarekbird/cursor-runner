@@ -72,6 +72,9 @@ COPY . .
 # Build TypeScript to JavaScript
 RUN npm run build
 
+# Remove .d.ts files from migrations directory (they cause migration errors)
+RUN find dist/migrations/files -type f -name "*.d.ts" -delete
+
 # Remove dev dependencies to reduce image size (optional - comment out if you need them)
 RUN npm prune --omit=dev
 

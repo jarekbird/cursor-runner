@@ -25,7 +25,11 @@
     "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check:changed": "tsx scripts/format-check-changed.ts",
     "mcp:gmail:version": "mcp-server-gmail --version || echo 'Gmail MCP server not found'",
-    "test:gmail:smoke": "ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts"
+    "test:gmail:smoke": "ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts",
+    "migrate": "tsx src/migrations/cli.ts migrate",
+    "migrate:rollback": "tsx src/migrations/cli.ts rollback",
+    "migrate:status": "tsx src/migrations/cli.ts status",
+    "migrate:create": "tsx scripts/create-migration.ts"
   },
   "keywords": [
     "cursor",
@@ -43,6 +47,7 @@
     "ioredis": "^5.8.2",
     "node-pty": "^1.0.0",
     "openai": "^6.9.1",
+    "umzug": "^3.8.2",
     "winston": "^3.11.0"
   },
   "devDependencies": {

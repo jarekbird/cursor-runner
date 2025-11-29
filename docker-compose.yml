@@ -92,7 +92,7 @@ services:
       - "traefik.http.routers.cursor-runner-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`)"
       - "traefik.http.routers.cursor-runner-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-conversations-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.cursor-runner-conversations-api.loadbalancer.server.port=3001"
+      - "traefik.http.routers.cursor-runner-conversations-api.service=cursor-runner-api"
       # Strip /conversations prefix before forwarding to the service
       # So /conversations/api/list becomes /api/list at cursor-runner
       - "traefik.http.middlewares.cursor-runner-conversations-api-stripprefix.stripprefix.prefixes=/conversations"
@@ -103,17 +103,24 @@ services:
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsPreload=true"
       # Apply both strip prefix and security headers
       - "traefik.http.routers.cursor-runner-conversations-api.middlewares=cursor-runner-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
+      # Shared service definition for both routers (same container, same port)
+      - "traefik.http.services.cursor-runner-api.loadbalancer.server.port=3001"
       # Path-based routing for agent conversation API endpoints
-      - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=20"
+      # Higher priority (25) ensures agent routes are matched before regular conversation routes
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=25"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.cursor-runner-agent-conversations-api.loadbalancer.server.port=3001"
-      # Strip /agent-conversations prefix before forwarding to the service
-      # So /agent-conversations/api/list becomes /api/list at cursor-runner
-      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-stripprefix.stripprefix.prefixes=/agent-conversations"
-      # Apply both strip prefix and security headers
-      - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.service=cursor-runner-api"
+      # Strip /agent-conversations/api prefix, then rewrite to /api/agent/*
+      # So /agent-conversations/api/list becomes /api/agent/list
+      # Step 1: Strip /agent-conversations/api → /list
+      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-stripprefix.stripprefix.prefixes=/agent-conversations/api"
+      # Step 2: Rewrite /list to /api/agent/list
+      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.regex=^(.*)"
+      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.replacement=/api/agent/$$1"
+      # Apply strip prefix, rewrite, and security headers
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite,cursor-runner-conversations-api-headers"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -127,10 +134,12 @@ volumes:
     external: true
     name: cursor_runner_repositories
   # Shared SQLite database volume accessible by all services
+  # Note: This volume is defined here in cursor-runner and referenced as external by other services
   shared_sqlite_db:
     driver: local
     name: shared_sqlite_db
   # Shared Redis data volume accessible by all services
+  # Note: This volume is defined here in cursor-runner and referenced as external by other services
   shared_redis_data:
     driver: local
     name: shared_redis_data
