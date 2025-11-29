@@ -17,6 +17,7 @@ import { FilesystemService } from './filesystem-service.js';
 import { buildCallbackUrl } from './callback-url-builder.js';
 import { FileTreeService } from './file-tree-service.js';
 import { AgentConversationService } from './agent-conversation-service.js';
+import { TaskService } from './task-service.js';
 import type Redis from 'ioredis';
 
 /**
@@ -105,6 +106,7 @@ export class Server {
   public filesystem: FilesystemService;
   public cursorExecution: CursorExecutionService;
   public agentConversationService: AgentConversationService;
+  public taskService: TaskService;
   public server?: HttpServer;
   private readonly disableBackgroundWorkers: boolean;
 
@@ -130,6 +132,7 @@ export class Server {
     );
     // Allow dependency injection of Redis for testing
     this.agentConversationService = new AgentConversationService(redisClient);
+    this.taskService = new TaskService();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -189,8 +192,13 @@ export class Server {
     // Agent conversation API endpoints
     this.setupAgentConversationRoutes();
 
+    // Tasks API endpoints
+    // Must be before conversation routes to avoid /api/tasks being caught by /api/:conversationId
+    this.setupTaskRoutes();
+
     // Conversation history API endpoints (UI is served by jarek-va-ui)
     // Must be after other routes to avoid conflicts
+    // IMPORTANT: This has a catch-all /:conversationId route, so more specific routes must come first
     this.setupConversationRoutes();
 
     // Error handling middleware (must be after all routes)
@@ -803,10 +811,18 @@ export class Server {
      * GET /conversations/api/:conversationId
      * Get a specific conversation by ID
      * IMPORTANT: This route must come after /new, /list, and /working-directory/files to avoid route conflicts
+     * IMPORTANT: Skip reserved paths like "tasks" and "agent" that are handled by other routers
      */
-    router.get('/:conversationId', async (req: Request, res: Response) => {
+    router.get('/:conversationId', async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { conversationId } = req.params;
+
+        // Skip reserved paths that are handled by other routers
+        const reservedPaths = ['tasks', 'agent', 'working-directory'];
+        if (reservedPaths.includes(conversationId)) {
+          return next(); // Let it fall through to other routers
+        }
+
         const conversation =
           await this.cursorExecution.conversationService.getConversationById(conversationId);
 
@@ -1228,6 +1244,245 @@ export class Server {
     // But we mount at /api/agent to avoid conflicts with regular conversation API routes at /api
     // So /agent-conversations/api/list becomes /api/agent/list
     this.app.use('/api/agent', router);
+  }
+
+  /**
+   * Setup tasks API routes
+   * Provides endpoints for managing agent tasks in the shared SQLite database
+   */
+  setupTaskRoutes(): void {
+    const router: Router = express.Router();
+
+    /**
+     * GET /api/tasks
+     * List all tasks, optionally filtered by status
+     * Query params: ?status=0 (optional, filters by status)
+     */
+    router.get('/', async (req: Request, res: Response) => {
+      try {
+        const statusParam = req.query.status;
+        const status = statusParam !== undefined ? parseInt(String(statusParam), 10) : undefined;
+
+        if (status !== undefined && isNaN(status)) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid status parameter. Must be a number.',
+          });
+          return;
+        }
+
+        const tasks = this.taskService.listTasks(status);
+        res.json(tasks);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to list tasks', {
+          error: err.message,
+          stack: err.stack,
+          query: req.query,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
+     * GET /api/tasks/:id
+     * Get a specific task by ID
+     */
+    router.get('/:id', async (req: Request, res: Response) => {
+      try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid task ID. Must be a number.',
+          });
+          return;
+        }
+
+        const task = this.taskService.getTaskById(id);
+        if (!task) {
+          res.status(404).json({
+            success: false,
+            error: 'Task not found',
+          });
+          return;
+        }
+
+        res.json(task);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get task', {
+          error: err.message,
+          stack: err.stack,
+          id: req.params.id,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
+     * POST /api/tasks
+     * Create a new task
+     * Body: { prompt: string, order?: number, status?: number }
+     */
+    router.post('/', async (req: Request, res: Response) => {
+      try {
+        const body = req.body as { prompt: string; order?: number; status?: number };
+        const { prompt, order, status } = body;
+
+        if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+          res.status(400).json({
+            success: false,
+            error: 'Prompt is required and must be a non-empty string',
+          });
+          return;
+        }
+
+        const task = this.taskService.createTask(
+          prompt.trim(),
+          order ?? 0,
+          (status as number | undefined) ?? 0
+        );
+
+        res.status(201).json(task);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to create task', {
+          error: err.message,
+          stack: err.stack,
+          body: req.body,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
+     * PUT /api/tasks/:id
+     * Update a task
+     * Body: { prompt?: string, status?: number, order?: number }
+     */
+    router.put('/:id', async (req: Request, res: Response) => {
+      try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid task ID. Must be a number.',
+          });
+          return;
+        }
+
+        const body = req.body as { prompt?: string; status?: number; order?: number };
+        const updates: { prompt?: string; status?: number; order?: number } = {};
+
+        if (body.prompt !== undefined) {
+          if (typeof body.prompt !== 'string' || body.prompt.trim().length === 0) {
+            res.status(400).json({
+              success: false,
+              error: 'Prompt must be a non-empty string',
+            });
+            return;
+          }
+          updates.prompt = body.prompt.trim();
+        }
+
+        if (body.status !== undefined) {
+          if (typeof body.status !== 'number' || isNaN(body.status)) {
+            res.status(400).json({
+              success: false,
+              error: 'Status must be a number',
+            });
+            return;
+          }
+          updates.status = body.status;
+        }
+
+        if (body.order !== undefined) {
+          if (typeof body.order !== 'number' || isNaN(body.order)) {
+            res.status(400).json({
+              success: false,
+              error: 'Order must be a number',
+            });
+            return;
+          }
+          updates.order = body.order;
+        }
+
+        const task = this.taskService.updateTask(id, updates);
+        if (!task) {
+          res.status(404).json({
+            success: false,
+            error: 'Task not found',
+          });
+          return;
+        }
+
+        res.json(task);
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to update task', {
+          error: err.message,
+          stack: err.stack,
+          id: req.params.id,
+          body: req.body,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    /**
+     * DELETE /api/tasks/:id
+     * Delete a task
+     */
+    router.delete('/:id', async (req: Request, res: Response) => {
+      try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid task ID. Must be a number.',
+          });
+          return;
+        }
+
+        const deleted = this.taskService.deleteTask(id);
+        if (!deleted) {
+          res.status(404).json({
+            success: false,
+            error: 'Task not found',
+          });
+          return;
+        }
+
+        res.json({ success: true, message: 'Task deleted' });
+      } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to delete task', {
+          error: err.message,
+          stack: err.stack,
+          id: req.params.id,
+        });
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    // Mount tasks API routes at /api/tasks
+    this.app.use('/api/tasks', router);
   }
 
   /**

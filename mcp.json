@@ -7,8 +7,10 @@
       ]
     },
     "cursor-runner-shared-redis": {
-      "command": "mcp-server-redis",
+      "command": "npx",
       "args": [
+        "-y",
+        "@liangshanli/mcp-server-redis",
         "--url",
         "redis://redis:6379/0"
       ],

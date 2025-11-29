@@ -599,8 +599,8 @@ export class CursorExecutionService {
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --debug enables debug logging
-    const commandArgs = ['--model', 'auto', '--print', '--force', '--debug', fullPrompt];
+    // --approve-mcps automatically approves all MCP servers (required for headless mode)
+    const commandArgs = ['--model', 'auto', '--print', '--force', '--approve-mcps', fullPrompt];
 
     // Prepare command with instructions
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
@@ -828,8 +828,15 @@ export class CursorExecutionService {
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
-    // --debug enables debug logging
-    const commandArgs = ['--model', 'auto', '--print', '--force', '--debug', initialFullPrompt];
+    // --approve-mcps automatically approves all MCP servers (required for headless mode)
+    const commandArgs = [
+      '--model',
+      'auto',
+      '--print',
+      '--force',
+      '--approve-mcps',
+      initialFullPrompt,
+    ];
     const modifiedArgs = this.prepareCommandArgs(commandArgs);
 
     logger.info('Executing initial cursor command for iterate', {
@@ -1085,13 +1092,13 @@ export class CursorExecutionService {
 
       // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
-      // --debug enables debug logging
+      // --approve-mcps automatically approves all MCP servers (required for headless mode)
       const resumeCommandArgs = [
         '--model',
         'auto',
         '--print',
         '--force',
-        '--debug',
+        '--approve-mcps',
         fullResumePrompt,
       ];
       const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
@@ -1374,13 +1381,13 @@ ${contextString}
 Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
-      // --debug enables debug logging
+      // --approve-mcps automatically approves all MCP servers (required for headless mode)
       const summarizeCommandArgs = [
         '--model',
         'auto',
         '--print',
         '--force',
-        '--debug',
+        '--approve-mcps',
         summarizePrompt,
       ];
       const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);

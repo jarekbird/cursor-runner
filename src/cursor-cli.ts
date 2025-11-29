@@ -315,6 +315,12 @@ export class CursorCLI {
       let child: ChildProcess | IPtyProcess | undefined;
       let usePty = false;
 
+      // Set environment with LOG_LEVEL=debug for verbose cursor-agent output
+      const env = {
+        ...process.env,
+        LOG_LEVEL: 'debug',
+      };
+
       if (this._ptyModule) {
         try {
           child = this._ptyModule.spawn(this.cursorPath, [...args], {
@@ -322,7 +328,7 @@ export class CursorCLI {
             cols: 80,
             rows: 30,
             cwd,
-            env: process.env,
+            env,
           });
           usePty = true;
           logger.info('Using PTY for cursor-cli execution', {
@@ -347,7 +353,7 @@ export class CursorCLI {
           cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: false,
-          env: process.env,
+          env,
         });
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
@@ -732,9 +738,9 @@ export class CursorCLI {
 
     // Build cursor command to generate tests
     // Use --model auto for consistent model selection (same as main execution)
-    // --debug enables debug logging
+    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--debug', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -769,9 +775,9 @@ export class CursorCLI {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     // Use --model auto for consistent model selection (same as main execution)
-    // --debug enables debug logging
+    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--debug', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -806,9 +812,9 @@ export class CursorCLI {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     // Use --model auto for consistent model selection (same as main execution)
-    // --debug enables debug logging
+    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--debug', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });

@@ -316,10 +316,11 @@ describe('Server', () => {
         mockFilesystem.exists.mockReturnValue(true);
         mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
 
+        const testPrompt = 'Create user service with authentication';
         await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
           branchName: 'main',
-          prompt: 'Create user service with authentication',
+          prompt: testPrompt,
         });
 
         expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
@@ -336,8 +337,12 @@ describe('Server', () => {
         if (callArgs[promptIndex] === '--model') {
           promptIndex += 2; // Skip --model and its value
         }
+        // Skip --approve-mcps if present
+        if (callArgs[promptIndex] === '--approve-mcps') {
+          promptIndex += 1; // Skip --approve-mcps
+        }
         const promptArg = callArgs[promptIndex];
-        expect(promptArg).toContain('agent task');
+        expect(promptArg).toContain(testPrompt);
       });
     });
 

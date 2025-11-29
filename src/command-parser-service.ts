@@ -65,6 +65,7 @@ export class CommandParserService {
       '--verbose',
       '--quiet',
       '--model',
+      '--approve-mcps',
     ] as const;
 
     for (let i = 0; i < modifiedArgs.length; i++) {

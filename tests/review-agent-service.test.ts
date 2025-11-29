@@ -355,6 +355,10 @@ Some text after (missing closing brace)`;
       if (args[promptIndex] === '--debug') {
         promptIndex += 1; // Skip --debug
       }
+      // Skip --approve-mcps if present
+      if (args[promptIndex] === '--approve-mcps') {
+        promptIndex += 1; // Skip --approve-mcps
+      }
       // Skip --model and its value if present (for backward compatibility)
       if (args[promptIndex] === '--model') {
         promptIndex += 2; // Skip --model and its value

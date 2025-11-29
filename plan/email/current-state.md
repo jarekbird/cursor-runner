@@ -49,12 +49,14 @@ Currently, three MCP servers are configured:
 
 #### 1.3.2 `cursor-runner-shared-redis`
 
-- **Command**: `mcp-server-redis`
-- **Args**: `["--url", "redis://redis:6379/0"]`
+- **Command**: `npx`
+- **Args**: `["-y", "@liangshanli/mcp-server-redis", "--url", "redis://redis:6379/0"]`
 - **Purpose**: Provides Redis access via MCP
+- **Package**: `@liangshanli/mcp-server-redis` (installed globally in Dockerfile)
+- **Note**: Using `@liangshanli/mcp-server-redis` as the official `@modelcontextprotocol/server-redis` doesn't exist yet
 - **Environment Variables**: 
   - `REDIS_URL`: `redis://redis:6379/0`
-- **Reference**: `cursor-runner/mcp.json` (lines 9-18)
+- **Reference**: `cursor-runner/mcp.json` (lines 9-20)
 
 #### 1.3.3 `gmail`
 
