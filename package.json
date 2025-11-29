@@ -24,7 +24,7 @@
     "format": "prettier --write \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check:changed": "tsx scripts/format-check-changed.ts",
-    "mcp:gmail:version": "mcp-server-gmail --version || echo 'Gmail MCP server not found'",
+    "mcp:gmail:version": "npx -y @modelcontextprotocol/server-gmail --version || echo 'Gmail MCP server not found (package may not be published yet)'",
     "test:gmail:smoke": "ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts",
     "migrate": "tsx src/migrations/cli.ts migrate",
     "migrate:rollback": "tsx src/migrations/cli.ts rollback",
@@ -52,7 +52,6 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
-    "@modelcontextprotocol/server-gmail": "^0.1.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.5",
     "@types/jest": "^29.5.11",
