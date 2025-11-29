@@ -36,7 +36,8 @@ describe('Gmail MCP Integration', () => {
         // The actual conditional inclusion is tested in merge-mcp-config.js logic
         if (config.mcpServers && config.mcpServers.gmail) {
           expect(config.mcpServers.gmail).toBeDefined();
-          expect(config.mcpServers.gmail.command).toBe('mcp-server-gmail');
+          expect(config.mcpServers.gmail.command).toBe('npx');
+          expect(config.mcpServers.gmail.args).toContain('@modelcontextprotocol/server-gmail');
         }
       }
     });

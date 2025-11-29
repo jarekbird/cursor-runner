@@ -19,8 +19,11 @@
       }
     },
     "gmail": {
-      "command": "mcp-server-gmail",
-      "args": [],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-gmail"
+      ],
       "env": {
         "GMAIL_CLIENT_ID": "${GMAIL_CLIENT_ID}",
         "GMAIL_CLIENT_SECRET": "${GMAIL_CLIENT_SECRET}",

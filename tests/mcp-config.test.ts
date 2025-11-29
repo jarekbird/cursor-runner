@@ -34,11 +34,13 @@ describe('MCP Configuration', () => {
     expect(typeof gmailEntry.env).toBe('object');
   });
 
-  it('should have gmail command pointing to mcp-server-gmail', () => {
+  it('should have gmail command using npx with @modelcontextprotocol/server-gmail', () => {
     const configContent = readFileSync(mcpConfigPath, 'utf-8');
     const config = JSON.parse(configContent);
 
-    expect(config.mcpServers.gmail.command).toBe('mcp-server-gmail');
+    expect(config.mcpServers.gmail.command).toBe('npx');
+    expect(config.mcpServers.gmail.args).toContain('@modelcontextprotocol/server-gmail');
+    expect(config.mcpServers.gmail.args).toContain('-y');
   });
 
   it('should have gmail env vars referencing GMAIL_* variables', () => {
