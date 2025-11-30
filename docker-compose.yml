@@ -1,4 +1,20 @@
 services:
+  # Redis service - shared by cursor-runner and other services
+  redis:
+    image: redis:7-alpine
+    container_name: virtual-assistant-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - shared_redis_data:/data
+    networks:
+      - virtual-assistant-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # cursor-runner Node.js application service
   cursor-runner:
     build:
@@ -84,6 +100,9 @@ services:
       # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:
       - virtual-assistant-network
+    depends_on:
+      redis:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       # Path-based routing - only route /conversations/api/* to cursor-runner (API endpoints)
