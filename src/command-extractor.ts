@@ -67,8 +67,8 @@ export function extractCommands(output: string): Array<{
     }
 
     // Look for command prompts ($, >, #)
-    if (/^[\$#>]\s+/.test(trimmed)) {
-      const command = trimmed.replace(/^[\$#>]\s+/, '').trim();
+    if (/^[$#>]\s+/.test(trimmed)) {
+      const command = trimmed.replace(/^[$#>]\s+/, '').trim();
       if (command && !isLikelyOutput(command)) {
         commands.push({
           command,
@@ -128,7 +128,7 @@ function extractCommandFromLine(line: string): string | null {
   if (!withoutComment) return null;
 
   // Remove command prompt characters if present
-  const cleaned = withoutComment.replace(/^[\$#>]\s+/, '').trim();
+  const cleaned = withoutComment.replace(/^[$#>]\s+/, '').trim();
 
   return cleaned || null;
 }
@@ -221,7 +221,9 @@ function isLikelyOutput(line: string): boolean {
 /**
  * Format extracted commands for display
  */
-export function formatCommandsForDisplay(commands: Array<{ command: string; lineNumber: number; context: string }>): string {
+export function formatCommandsForDisplay(
+  commands: Array<{ command: string; lineNumber: number; context: string }>
+): string {
   if (commands.length === 0) {
     return '';
   }
@@ -239,4 +241,3 @@ export function formatCommandsForDisplay(commands: Array<{ command: string; line
 
   return lines.join('\n');
 }
-
