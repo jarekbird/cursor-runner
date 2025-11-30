@@ -226,6 +226,11 @@ Queue Management:
 - To delete an empty queue: python3 ${CURSOR_AGENTS_TOOLS_PATH}/delete_queue.py --queue-name <queue-name>
   - Note: Cannot delete the "default" queue or queues with active jobs
 
+Task Operator Lock Management:
+- To release the task operator lock (when user requests it): python3 ${CURSOR_AGENTS_TOOLS_PATH}/clear_task_operator_lock.py
+  - Use this when the user explicitly asks to release the task operator lock
+  - WARNING: Only use this if you're sure no task is currently being processed, as clearing the lock while a task is in progress could cause issues
+
 When creating an agent, the target URL should be the cursor-runner docker networked URL (http://cursor-runner:3001/cursor/iterate/async) with a prompt that this agent will later execute. However, DO NOT create agents for processing tasks - use the task operator system setting instead.
 
 Queue Organization: Agents can be organized into queues to avoid queue bloat. By default, agents are created in the "default" queue. Use descriptive queue names like "daily-tasks", "hourly-sync", or "urgent-jobs" to group related agents together.
