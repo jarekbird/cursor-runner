@@ -450,6 +450,8 @@ export class CursorCLI {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null; // Clear reference to prevent memory leaks
         }
+        // Force release semaphore to prevent semaphore leak on timeout
+        this.semaphore.release();
         const timeoutError: CommandError = new Error(`Command timeout after ${validTimeout}ms`);
         // Attach partial output to error so it can be retrieved by caller
         timeoutError.stdout = stdout;
@@ -528,6 +530,8 @@ export class CursorCLI {
             clearInterval(heartbeatInterval);
             heartbeatInterval = null; // Clear reference to prevent memory leaks
           }
+          // Force release semaphore to prevent semaphore leak on idle timeout
+          this.semaphore.release();
           const idleError: CommandError = new Error(
             `No output from cursor-cli for ${idleTimeout}ms`
           );
