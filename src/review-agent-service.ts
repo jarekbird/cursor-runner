@@ -533,6 +533,7 @@ Evaluate the output for:
 2. Are there permission or other unfixable issues that require breaking iterations (set break_iteration: true)?
 3. If any command seems to be creating an interactive prompt, set break_iteration: true
 4. Are there deployment issues, warnings, or errors that indicate the deployment is broken?
+5. If you encounter errors parsing the output, cannot properly evaluate the output, or are unable to determine completion status, use break_iteration as a circuit breaker (set code_complete: false, break_iteration: true)
 
 CRITICAL DEPLOYMENT CHECKS - REJECT (set code_complete: false) if any of these are present:
 - Warnings about missing MCP servers (e.g., "MCP server not found", "cursor-agents MCP server not found")
@@ -547,6 +548,13 @@ IMPORTANT: When deployment issues are detected:
 - Set "break_iteration" to false (do NOT break - allow continuation to fix the issue)
 - Provide a clear justification describing the deployment issue
 - The system will generate a continuation prompt to guide the worker agent to fix the deployment
+
+CRITICAL: Use break_iteration as a circuit breaker when:
+- You cannot parse or properly evaluate the agent's output
+- The output format is unclear or malformed
+- You encounter errors that prevent you from determining completion status
+- The review process itself fails or encounters unexpected issues
+In these cases, set code_complete: false and break_iteration: true to stop iterations and require manual intervention, rather than incorrectly marking the task as complete.
 
 ${
   definitionOfDone
@@ -570,6 +578,13 @@ If deployment issues are found, use this structure:
   "code_complete": false,
   "break_iteration": false,
   "justification": "Deployment issue detected: [describe the issue]. The worker agent must fix the deployment before the task can be considered complete."
+}
+
+If you cannot parse or evaluate the output (circuit breaker scenario), use this structure:
+{
+  "code_complete": false,
+  "break_iteration": true,
+  "justification": "Failed to parse or evaluate agent output. Breaking iteration to prevent incorrect completion status."
 }
 
 Previous agent output:

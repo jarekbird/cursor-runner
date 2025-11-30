@@ -806,13 +806,14 @@ describe('Server', () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verify callback webhook was called
-        // When review agent fails to parse but command succeeded, we infer completion to prevent infinite loops
+        // When review agent fails to parse, we use break_iteration as a circuit breaker
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
-            success: true,
+            success: false,
             output: originalOutput,
             iterations: 0,
+            error: expect.stringContaining('Invalid JSON response'),
           }),
           expect.any(String)
         );
@@ -854,13 +855,14 @@ describe('Server', () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verify callback webhook was called
-        // Note: When review agent throws but command succeeded, we infer completion to prevent infinite loops
+        // Note: When review agent throws, we use break_iteration as a circuit breaker
         expect(callbackWebhookSpy).toHaveBeenCalledWith(
           mockCallbackUrl,
           expect.objectContaining({
-            success: true,
+            success: false,
             output: originalOutput,
             iterations: 0,
+            error: expect.stringContaining('Review agent execution failed'),
           }),
           expect.any(String)
         );

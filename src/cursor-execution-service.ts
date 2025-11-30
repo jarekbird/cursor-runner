@@ -1000,14 +1000,14 @@ export class CursorExecutionService {
           originalOutputLength: originalOutput.length,
           reviewAgentOutput: reviewResponse.rawOutput?.substring(0, 200),
         });
-        // When review agent fails to parse but command succeeded, infer completion to prevent infinite loops
-        // This is safer than breaking iteration, as we can't determine if work is actually complete
+        // When review agent fails to parse, use break_iteration as a circuit breaker
+        // This prevents incorrectly marking tasks as complete when we can't determine status
         reviewResult = {
-          code_complete: true,
-          break_iteration: false,
+          code_complete: false,
+          break_iteration: true,
           justification:
             reviewResponse.rawOutput ||
-            'Failed to parse review agent output. Inferring completion to prevent infinite loops.',
+            'Failed to parse review agent output. Breaking iteration to prevent incorrect completion status.',
         };
       }
 
