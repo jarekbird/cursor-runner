@@ -7,6 +7,7 @@ import { WorkspaceTrustService } from './workspace-trust-service.js';
 import { getErrorMessage } from './error-utils.js';
 import { ConversationService, type QueueType } from './conversation-service.js';
 import { TerminalService } from './terminal-service.js';
+import { extractCommands, formatCommandsForDisplay } from './command-extractor.js';
 import type { GitService } from './git-service.js';
 import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
@@ -624,6 +625,25 @@ export class CursorExecutionService {
     // Store what we received from cursor in Redis (right after receiving)
     const assistantOutput = result.stdout || result.stderr || '';
     if (assistantOutput) {
+      // Extract and display commands executed by the agent
+      const commands = extractCommands(assistantOutput);
+      if (commands.length > 0) {
+        const commandsDisplay = formatCommandsForDisplay(commands);
+        logger.info('Extracted commands from cursor-cli output', {
+          requestId,
+          commandCount: commands.length,
+          commands: commands.map((c) => c.command),
+        });
+
+        // Add commands to conversation history before the main output
+        await this.conversationService.addMessage(
+          actualConversationId,
+          'assistant',
+          commandsDisplay,
+          false
+        );
+      }
+
       await this.conversationService.addMessage(
         actualConversationId,
         'assistant',
@@ -861,6 +881,26 @@ export class CursorExecutionService {
       // Store what we received from cursor in Redis (right after receiving)
       const assistantOutput = lastResult.stdout || lastResult.stderr || '';
       if (assistantOutput) {
+        // Extract and display commands executed by the agent
+        const commands = extractCommands(assistantOutput);
+        if (commands.length > 0) {
+          const commandsDisplay = formatCommandsForDisplay(commands);
+          logger.info('Extracted commands from cursor-cli output', {
+            requestId,
+            iteration,
+            commandCount: commands.length,
+            commands: commands.map((c) => c.command),
+          });
+
+          // Add commands to conversation history before the main output
+          await this.conversationService.addMessage(
+            actualConversationId,
+            'assistant',
+            commandsDisplay,
+            false
+          );
+        }
+
         await this.conversationService.addMessage(
           actualConversationId,
           'assistant',
@@ -1124,6 +1164,26 @@ export class CursorExecutionService {
         // Store what we received from cursor in Redis (right after receiving)
         const resumeAssistantOutput = lastResult.stdout || lastResult.stderr || '';
         if (resumeAssistantOutput) {
+          // Extract and display commands executed by the agent
+          const commands = extractCommands(resumeAssistantOutput);
+          if (commands.length > 0) {
+            const commandsDisplay = formatCommandsForDisplay(commands);
+            logger.info('Extracted commands from cursor-cli resume output', {
+              requestId,
+              iteration,
+              commandCount: commands.length,
+              commands: commands.map((c) => c.command),
+            });
+
+            // Add commands to conversation history before the main output
+            await this.conversationService.addMessage(
+              actualConversationId,
+              'assistant',
+              commandsDisplay,
+              false
+            );
+          }
+
           await this.conversationService.addMessage(
             actualConversationId,
             'assistant',
