@@ -887,7 +887,6 @@ export class CursorExecutionService {
           const commandsDisplay = formatCommandsForDisplay(commands);
           logger.info('Extracted commands from cursor-cli output', {
             requestId,
-            iteration,
             commandCount: commands.length,
             commands: commands.map((c) => c.command),
           });
