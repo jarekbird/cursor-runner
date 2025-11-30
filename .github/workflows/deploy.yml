@@ -97,74 +97,73 @@ jobs:
             # Release task operator lock (non-critical step)
             # Run from within the Docker network so it can reach cursor-agents:3002
             # This step is non-critical and should never fail the deployment
-            echo "Releasing task operator lock..."
-            CURSOR_AGENTS_URL="http://cursor-agents:3002"
-            # Temporarily disable exit on error for this non-critical step
-            set +e
-            # Check if cursor-runner container is running
-            if ! docker compose ps cursor-runner | grep -q "Up"; then
-              echo "⚠ cursor-runner container is not running, skipping lock release"
-            else
-              # Try to release the lock using Node.js (more reliable than curl)
-              # Node.js is definitely available in the container
-              # Capture both stdout and stderr separately
-              LOCK_OUTPUT=$(docker compose exec -T cursor-runner node -e "
-                const http = require('http');
-                const url = require('url');
-                const targetUrl = '${CURSOR_AGENTS_URL}/task-operator/lock';
-                const parsedUrl = url.parse(targetUrl);
-                const options = {
-                  hostname: parsedUrl.hostname,
-                  port: parsedUrl.port,
-                  path: parsedUrl.path,
-                  method: 'DELETE',
-                  timeout: 5000
-                };
-                const req = http.request(options, (res) => {
-                  let data = '';
-                  res.on('data', (chunk) => { data += chunk; });
-                  res.on('end', () => {
-                    process.stdout.write(data);
-                    process.exit(res.statusCode === 200 ? 0 : 1);
-                  });
-                });
-                req.on('error', (e) => {
-                  process.stderr.write('Connection error: ' + e.message);
-                  process.exit(1);
-                });
-                req.on('timeout', () => {
-                  req.destroy();
-                  process.stderr.write('Request timeout after 5s');
-                  process.exit(1);
-                });
-                req.end();
-              " 2>&1) || true
-              LOCK_EXIT_CODE=$?
-              # Extract stdout (response) and stderr (errors) from combined output
-              LOCK_RESULT=$(echo "$LOCK_OUTPUT" | grep -v "Connection error:" | grep -v "Request timeout" | tr -d '\n')
-              LOCK_ERROR=$(echo "$LOCK_OUTPUT" | grep -E "(Connection error|Request timeout)" || true)
-              
-              if [ $LOCK_EXIT_CODE -eq 0 ] && echo "$LOCK_RESULT" | grep -q '"success":true'; then
-                echo "✓ Task operator lock released"
+            # Wrap entire section to ensure it never causes deployment failure
+            (
+              set +e
+              echo "Releasing task operator lock..."
+              CURSOR_AGENTS_URL="http://cursor-agents:3002"
+              # Check if cursor-runner container is running
+              if ! docker compose ps cursor-runner | grep -q "Up"; then
+                echo "⚠ cursor-runner container is not running, skipping lock release"
               else
-                echo "⚠ Failed to release task operator lock via API (non-critical - deployment continues)"
-                if [ -n "$LOCK_ERROR" ]; then
-                  echo "  Error: $LOCK_ERROR"
-                fi
-                if [ -n "$LOCK_RESULT" ]; then
-                  echo "  Response: $LOCK_RESULT" | head -3
-                elif [ -z "$LOCK_RESULT" ] && [ -z "$LOCK_ERROR" ]; then
-                  echo "  No response received (cursor-agents service may not be accessible)"
-                fi
-                if [ $LOCK_EXIT_CODE -ne 0 ]; then
-                  echo "  Exit code: $LOCK_EXIT_CODE"
+                # Try to release the lock using Node.js (more reliable than curl)
+                # Node.js is definitely available in the container
+                LOCK_OUTPUT=$(docker compose exec -T cursor-runner node -e "
+                  const http = require('http');
+                  const url = require('url');
+                  const targetUrl = '${CURSOR_AGENTS_URL}/task-operator/lock';
+                  const parsedUrl = url.parse(targetUrl);
+                  const options = {
+                    hostname: parsedUrl.hostname,
+                    port: parsedUrl.port,
+                    path: parsedUrl.path,
+                    method: 'DELETE',
+                    timeout: 5000
+                  };
+                  const req = http.request(options, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => { data += chunk; });
+                    res.on('end', () => {
+                      process.stdout.write(data);
+                      process.exit(res.statusCode === 200 ? 0 : 1);
+                    });
+                  });
+                  req.on('error', (e) => {
+                    process.stderr.write('Connection error: ' + e.message);
+                    process.exit(1);
+                  });
+                  req.on('timeout', () => {
+                    req.destroy();
+                    process.stderr.write('Request timeout after 5s');
+                    process.exit(1);
+                  });
+                  req.end();
+                " 2>&1) || LOCK_OUTPUT=""
+                LOCK_EXIT_CODE=$?
+                # Extract stdout (response) and stderr (errors) from combined output
+                LOCK_RESULT=$(echo "$LOCK_OUTPUT" | grep -v "Connection error:" | grep -v "Request timeout" | tr -d '\n' || true)
+                LOCK_ERROR=$(echo "$LOCK_OUTPUT" | grep -E "(Connection error|Request timeout)" || true)
+                
+                if [ $LOCK_EXIT_CODE -eq 0 ] && echo "$LOCK_RESULT" | grep -q '"success":true'; then
+                  echo "✓ Task operator lock released"
+                else
+                  echo "⚠ Failed to release task operator lock via API (non-critical - deployment continues)"
+                  if [ -n "$LOCK_ERROR" ]; then
+                    echo "  Error: $LOCK_ERROR"
+                  fi
+                  if [ -n "$LOCK_RESULT" ]; then
+                    echo "  Response: $LOCK_RESULT" | head -3
+                  elif [ -z "$LOCK_RESULT" ] && [ -z "$LOCK_ERROR" ]; then
+                    echo "  No response received (cursor-agents service may not be accessible)"
+                  fi
+                  if [ $LOCK_EXIT_CODE -ne 0 ]; then
+                    echo "  Exit code: $LOCK_EXIT_CODE"
+                  fi
                 fi
               fi
-            fi
-            # Ensure we don't exit on error from the lock release step
-            true
-            # Re-enable exit on error
-            set -e
+              # Always exit successfully from this subshell
+              exit 0
+            ) || true
             
             echo "Deployment completed successfully"
           script_stop: true
