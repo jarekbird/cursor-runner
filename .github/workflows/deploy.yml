@@ -100,14 +100,54 @@ jobs:
             CURSOR_AGENTS_URL="http://cursor-agents:3002"
             # Temporarily disable exit on error for this non-critical step
             set +e
-            # Try to release the lock using curl from within the cursor-runner container (on the network)
-            LOCK_RESULT=$(docker compose exec -T cursor-runner curl -s -X DELETE "${CURSOR_AGENTS_URL}/task-operator/lock" 2>/dev/null)
-            if echo "$LOCK_RESULT" | grep -q '"success":true'; then
-              echo "✓ Task operator lock released"
+            # Check if cursor-runner container is running
+            if ! docker compose ps cursor-runner | grep -q "Up"; then
+              echo "⚠ cursor-runner container is not running, skipping lock release"
             else
-              echo "⚠ Failed to release task operator lock via API (non-critical)"
-              if [ -n "$LOCK_RESULT" ]; then
-                echo "  Response: $LOCK_RESULT" | head -3
+              # Try to release the lock using Node.js (more reliable than curl)
+              # Node.js is definitely available in the container
+              LOCK_RESULT=$(docker compose exec -T cursor-runner node -e "
+                const http = require('http');
+                const url = require('url');
+                const targetUrl = '${CURSOR_AGENTS_URL}/task-operator/lock';
+                const parsedUrl = url.parse(targetUrl);
+                const options = {
+                  hostname: parsedUrl.hostname,
+                  port: parsedUrl.port,
+                  path: parsedUrl.path,
+                  method: 'DELETE',
+                  timeout: 5000
+                };
+                const req = http.request(options, (res) => {
+                  let data = '';
+                  res.on('data', (chunk) => { data += chunk; });
+                  res.on('end', () => {
+                    process.stdout.write(data);
+                    process.exit(res.statusCode === 200 ? 0 : 1);
+                  });
+                });
+                req.on('error', (e) => {
+                  process.stderr.write('Error: ' + e.message);
+                  process.exit(1);
+                });
+                req.on('timeout', () => {
+                  req.destroy();
+                  process.stderr.write('Request timeout');
+                  process.exit(1);
+                });
+                req.end();
+              " 2>/dev/null)
+              LOCK_EXIT_CODE=$?
+              if [ $LOCK_EXIT_CODE -eq 0 ] && echo "$LOCK_RESULT" | grep -q '"success":true'; then
+                echo "✓ Task operator lock released"
+              else
+                echo "⚠ Failed to release task operator lock via API (non-critical)"
+                if [ -n "$LOCK_RESULT" ]; then
+                  echo "  Response: $LOCK_RESULT" | head -3
+                fi
+                if [ $LOCK_EXIT_CODE -ne 0 ]; then
+                  echo "  Exit code: $LOCK_EXIT_CODE"
+                fi
               fi
             fi
             # Re-enable exit on error
