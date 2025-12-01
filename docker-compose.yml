@@ -36,8 +36,9 @@ services:
     networks:
       - virtual-assistant-network
     healthcheck:
-      # Check if Traefik is responding on port 80
-      test: ["CMD", "sh", "-c", "timeout 1 sh -c '</dev/tcp/localhost/80'"]
+      # Check if Traefik is listening on port 80
+      # Simple TCP connection test (works in all Traefik images)
+      test: ["CMD", "sh", "-c", "</dev/tcp/localhost/80"]
       interval: 30s
       timeout: 10s
       retries: 3
