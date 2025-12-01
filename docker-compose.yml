@@ -36,9 +36,9 @@ services:
     networks:
       - virtual-assistant-network
     healthcheck:
-      # Check if Traefik is listening on port 80
-      # Simple TCP connection test (works in all Traefik images)
-      test: ["CMD", "sh", "-c", "</dev/tcp/localhost/80"]
+      # Simple check: verify Traefik is responding on port 80
+      # Using basic TCP connection test (works in all containers with bash)
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/80'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -156,7 +156,7 @@ services:
       - virtual-assistant-network
     depends_on:
       traefik:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     labels:
