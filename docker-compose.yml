@@ -1,7 +1,7 @@
 services:
   # Traefik reverse proxy - foundational service for routing all traffic
   traefik:
-    image: traefik:v3.2
+    image: traefik:v3.6
     container_name: virtual-assistant-traefik
     restart: unless-stopped
     command:
