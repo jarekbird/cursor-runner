@@ -35,14 +35,6 @@ services:
       - traefik_letsencrypt:/letsencrypt
     networks:
       - virtual-assistant-network
-    healthcheck:
-      # Simple check: verify Traefik is responding on port 80
-      # Using basic TCP connection test (works in all containers with bash)
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/80'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     labels:
       # HTTP to HTTPS redirect middleware (applied globally via default router)
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
