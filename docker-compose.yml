@@ -36,10 +36,12 @@ services:
     networks:
       - virtual-assistant-network
     labels:
+      # Enable Traefik's own labels so it can host the global HTTP->HTTPS redirect router
+      - "traefik.enable=true"
       # HTTP to HTTPS redirect middleware (applied globally via default router)
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
-      # Default router for HTTP -> HTTPS redirect
+      # Default router for HTTP -> HTTPS redirect on port 80
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
