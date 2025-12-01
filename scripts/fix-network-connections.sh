@@ -140,3 +140,5 @@ echo "  docker logs cursor-runner | grep -i redis"
 echo ""
 
 
+
+

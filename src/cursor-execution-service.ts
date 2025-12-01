@@ -129,6 +129,20 @@ function isCommandError(error: unknown): error is CommandError {
 }
 
 /**
+ * Detect whether a cursor-cli error was caused by a timeout / idle timeout.
+ * We rely on the error message text set in CursorCLI to distinguish this case
+ * so we can trigger a follow-up diagnostic iteration instead of failing hard.
+ */
+function isTimeoutLikeError(error: CommandError): boolean {
+  const message = (error.message || '').toLowerCase();
+  return (
+    message.includes('command timeout') ||
+    message.includes('no output from cursor-cli') ||
+    message.includes('idle timeout')
+  );
+}
+
+/**
  * Review result structure
  */
 interface ReviewResult {
@@ -857,6 +871,9 @@ export class CursorExecutionService {
     await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
     let lastResult: CommandResult;
+    // Ensure we only run a special diagnostic iteration once per request
+    let diagnosticIterationAttempted = false;
+
     try {
       lastResult = await this.cursorCLI.executeCommand([...modifiedArgs], {
         cwd: fullRepositoryPath,
@@ -927,9 +944,32 @@ export class CursorExecutionService {
       // Check for API key errors in error output
       this.checkForApiKeyErrors(combinedErrorOutput, requestId);
 
-      // If we have partial output, continue to review it; otherwise, throw to trigger error callback
+      // If we have partial output, continue to review it; otherwise, try a single
+      // diagnostic iteration for timeout-like errors before giving up.
       if (!commandError.stdout && !commandError.stderr) {
-        throw error;
+        if (isTimeoutLikeError(commandError) && !diagnosticIterationAttempted) {
+          diagnosticIterationAttempted = true;
+
+          logger.warn('Cursor command timed out without output, running diagnostic iteration', {
+            requestId,
+            repository,
+            branchName,
+          });
+
+          // Use the diagnostic iteration result as the starting point for the review loop
+          lastResult = await this.runTimeoutDiagnosticIteration({
+            requestId,
+            repository,
+            branchName,
+            taskPrompt: prompt,
+            fullRepositoryPath,
+            conversationId: actualConversationId,
+            iterateTimeout,
+          });
+        } else {
+          // Non-timeout error with no output (or diagnostic already attempted) - give up
+          throw error;
+        }
       }
     }
 
@@ -1187,9 +1227,35 @@ export class CursorExecutionService {
           await this.summarizeConversationIfNeeded(actualConversationId, fullRepositoryPath);
         }
 
-        // If we have no partial output, throw to break iteration
+        // If we have partial output, continue to review it; otherwise, try a single
+        // diagnostic iteration for timeout-like errors before breaking the loop.
         if (!commandError.stdout && !commandError.stderr) {
-          throw error;
+          if (isTimeoutLikeError(commandError) && !diagnosticIterationAttempted) {
+            diagnosticIterationAttempted = true;
+
+            logger.warn(
+              'Cursor resume command timed out without output, running diagnostic iteration',
+              {
+                requestId,
+                iteration,
+                repository,
+                branchName,
+              }
+            );
+
+            lastResult = await this.runTimeoutDiagnosticIteration({
+              requestId,
+              repository,
+              branchName,
+              taskPrompt: prompt,
+              fullRepositoryPath,
+              conversationId: actualConversationId,
+              iterateTimeout,
+            });
+          } else {
+            // Non-timeout error with no output (or diagnostic already attempted) - break
+            throw error;
+          }
         }
       }
 
@@ -1357,6 +1423,118 @@ export class CursorExecutionService {
       status: isSuccess ? 200 : 422,
       body: responseBody,
     };
+  }
+
+  /**
+   * Run a single diagnostic iteration after a timeout/idle timeout.
+   * This uses GPT-5 with additional instructions to investigate why cursor-cli hung,
+   * with access to task details for context.
+   */
+  private async runTimeoutDiagnosticIteration(options: {
+    requestId: string;
+    repository?: string | null;
+    branchName?: string;
+    taskPrompt: string;
+    fullRepositoryPath: string;
+    conversationId: string;
+    iterateTimeout: number;
+  }): Promise<CommandResult> {
+    const { requestId, repository, branchName, taskPrompt, fullRepositoryPath, conversationId } =
+      options;
+
+    // Build diagnostic prompt based on task details
+    const diagnosticPrompt = `Your last cursor-runner iteration timed out without finishing.
+
+Task details:
+- Request ID: ${requestId}
+- Repository: ${repository ?? '(none provided)'}
+${branchName ? `- Branch: ${branchName}` : ''}
+
+Original task prompt:
+${taskPrompt}
+
+Your last iteration timed out. Please investigate the task and check the current git status if needed. Is the task complete? Then it's likely that one of the tests is now hanging. Check task cleanup. Also check whether the task is starting a server that would cause the test to run infinitely or any other concern that would cause the cursor-cli to not complete execution on an operation. If the task is not complete, then what else might be causing the issue?
+
+Additional guidance:
+- Look carefully at test setup/teardown (beforeAll/afterAll, global setup files, mocked timers, and any long-lived resources).
+- Look for dev servers, watchers, background workers, or long-running loops started during tests that may prevent the process from exiting.
+- Consider unawaited Promises, stray setInterval/setTimeout calls, open handles (e.g., database connections, sockets), or infinite loops that could hang tests.
+- Make the smallest safe code changes needed to ensure tests exit cleanly while preserving existing passing behavior.
+- Once changes are applied, re-run the relevant tests/commands and ensure they complete successfully.
+
+When you respond, explain briefly:
+- Whether you believe the task is already complete.
+- What you think most likely caused the timeout.
+- Exactly what changes you made to fix the issue and how they ensure clean shutdown of tests and tools.`;
+
+    // Add diagnostic prompt to conversation as a user message
+    await this.conversationService.addMessage(conversationId, 'user', diagnosticPrompt, false);
+
+    // Rebuild context including the diagnostic request
+    const diagnosticConversationMessages =
+      await this.conversationService.getConversationContext(conversationId);
+    const diagnosticContextString = this.conversationService.buildContextString(
+      diagnosticConversationMessages
+    );
+
+    let fullDiagnosticPrompt = diagnosticPrompt;
+    if (diagnosticContextString) {
+      fullDiagnosticPrompt = `${diagnosticContextString}\n\n[Current Request]: ${diagnosticPrompt}`;
+    }
+
+    // Run a one-off diagnostic iteration using GPT-5 to reason about the timeout
+    const diagnosticCommandArgs = [
+      '--model',
+      'gpt-5',
+      '--print',
+      '--force',
+      '--approve-mcps',
+      fullDiagnosticPrompt,
+    ] as const;
+    const preparedDiagnosticArgs = this.prepareCommandArgs(diagnosticCommandArgs);
+
+    // Use a longer timeout (20 minutes) for diagnostic iterations to allow more time for investigation
+    const diagnosticTimeout = 20 * 60 * 1000; // 20 minutes
+
+    logger.info('Executing diagnostic cursor command after timeout', {
+      requestId,
+      command: preparedDiagnosticArgs,
+      cwd: fullRepositoryPath,
+      timeout: `${diagnosticTimeout}ms`,
+    });
+
+    const diagnosticResult = await this.cursorCLI.executeCommand([...preparedDiagnosticArgs], {
+      cwd: fullRepositoryPath,
+      timeout: diagnosticTimeout,
+    });
+
+    // Store diagnostic output in conversation
+    const diagnosticOutput = diagnosticResult.stdout || diagnosticResult.stderr || '';
+    if (diagnosticOutput) {
+      await this.conversationService.addMessage(
+        conversationId,
+        'assistant',
+        diagnosticOutput,
+        false
+      );
+    }
+
+    // Check for context window and API key issues on diagnostic run as well
+    const diagnosticCombinedOutput =
+      (diagnosticResult.stdout || '') + (diagnosticResult.stderr || '');
+    if (this.conversationService.isContextWindowError(diagnosticCombinedOutput)) {
+      logger.warn(
+        'Context window error detected during diagnostic iteration, summarizing conversation',
+        {
+          requestId,
+          conversationId,
+        }
+      );
+      await this.summarizeConversationIfNeeded(conversationId, fullRepositoryPath);
+    }
+    this.checkForApiKeyErrors(diagnosticCombinedOutput, requestId);
+
+    return diagnosticResult;
   }
 
   /**

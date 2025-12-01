@@ -88,3 +88,5 @@ echo "  docker restart virtual-assistant-redis  # if it exists"
 echo ""
 
 
+
+

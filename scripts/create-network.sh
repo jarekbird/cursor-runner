@@ -22,3 +22,5 @@ echo "Network details:"
 docker network inspect "$NETWORK_NAME" | grep -E "(Name|Driver|Subnet)"
 
 
+
+

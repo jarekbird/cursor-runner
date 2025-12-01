@@ -98,3 +98,5 @@ echo "  cd jarek-va && docker-compose up -d"
 echo "  cd cursor-agents && docker-compose up -d"
 
 
+
+
