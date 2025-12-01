@@ -1,4 +1,57 @@
 services:
+  # Traefik reverse proxy - foundational service for routing all traffic
+  traefik:
+    image: traefik:v2.10
+    container_name: virtual-assistant-traefik
+    restart: unless-stopped
+    command:
+      # Enable Docker provider to auto-discover services
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=virtual-assistant-network"
+      # HTTP entrypoint (port 80) - redirects to HTTPS
+      - "--entrypoints.web.address=:80"
+      # HTTPS entrypoint (port 443) - serves all traffic
+      - "--entrypoints.websecure.address=:443"
+      # Let's Encrypt certificate resolver
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@${DOMAIN_NAME:-localhost}}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Optional: Enable dashboard for debugging (disable in production or secure it)
+      - "--api.dashboard=false"
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      # HTTP port - redirects to HTTPS
+      - "80:80"
+      # HTTPS port - serves all traffic
+      - "443:443"
+    volumes:
+      # Docker socket for service discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Let's Encrypt certificate storage
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - virtual-assistant-network
+    healthcheck:
+      # Traefik doesn't expose a health endpoint by default, so we check if it's listening on port 80
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      # HTTP to HTTPS redirect middleware (applied globally via default router)
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+      # Default router for HTTP -> HTTPS redirect
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.routers.http-catchall.priority=1"
+
   # Redis service - shared by cursor-runner and other services
   redis:
     image: redis:7-alpine
@@ -101,6 +154,8 @@ services:
     networks:
       - virtual-assistant-network
     depends_on:
+      traefik:
+        condition: service_healthy
       redis:
         condition: service_healthy
     labels:
@@ -162,6 +217,10 @@ volumes:
   shared_redis_data:
     driver: local
     name: shared_redis_data
+  # Traefik Let's Encrypt certificate storage
+  traefik_letsencrypt:
+    driver: local
+    name: traefik_letsencrypt
 
 networks:
   virtual-assistant-network:

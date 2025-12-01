@@ -10,12 +10,12 @@ The API endpoints are served by **cursor-runner** at `/conversations/api/*`.
 ## Prerequisites
 
 1. **DOMAIN_NAME environment variable must be set**
-   - This should be the same `DOMAIN_NAME` used for `jarek-va` and `cursor-agents`
-   - Typically set in a `.env` file in the `jarek-va` directory
-   - Example: `DOMAIN_NAME=n8n.srv1099656.hstgr.cloud`
+   - This should be the same `DOMAIN_NAME` used across all services
+   - Typically set in a `.env` file in the `cursor-runner` directory
+   - Example: `DOMAIN_NAME=jarekva.com`
 
 2. **Traefik must be running**
-   - Traefik is defined in `jarek-va/docker-compose.yml`
+   - Traefik is defined in `cursor-runner/docker-compose.yml`
    - Must be on the same `virtual-assistant-network` as cursor-runner
 
 ## Configuration
@@ -168,7 +168,7 @@ Once deployed, the UI is available at:
 
 - **jarek-va-ui**: React frontend application (serves UI at `/conversations`)
 - **cursor-runner**: Node.js backend (serves API at `/conversations/api/*`)
-- **Traefik**: Defined in `jarek-va/docker-compose.yml` (routes traffic)
+- **Traefik**: Defined in `cursor-runner/docker-compose.yml` (routes traffic)
 - **Redis**: Stores conversation data (shared with cursor-agents)
 - **cursor-agents**: Similar Traefik setup at `/agents`
 
