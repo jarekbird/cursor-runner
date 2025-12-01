@@ -1,7 +1,7 @@
 services:
   # Traefik reverse proxy - foundational service for routing all traffic
   traefik:
-    image: traefik:v2.10
+    image: traefik:v3.2
     container_name: virtual-assistant-traefik
     restart: unless-stopped
     command:
@@ -36,8 +36,8 @@ services:
     networks:
       - virtual-assistant-network
     healthcheck:
-      # Traefik doesn't expose a health endpoint by default, so we check if it's listening on port 80
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      # Check if Traefik is responding on port 80
+      test: ["CMD", "sh", "-c", "timeout 1 sh -c '</dev/tcp/localhost/80'"]
       interval: 30s
       timeout: 10s
       retries: 3
