@@ -97,3 +97,4 @@ echo "  cd cursor-runner && docker-compose up -d  # Start cursor-runner first (d
 echo "  cd jarek-va && docker-compose up -d"
 echo "  cd cursor-agents && docker-compose up -d"
 
+

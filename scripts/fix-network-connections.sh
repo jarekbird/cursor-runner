@@ -139,3 +139,4 @@ echo "After connecting containers, check cursor-runner logs:"
 echo "  docker logs cursor-runner | grep -i redis"
 echo ""
 
+

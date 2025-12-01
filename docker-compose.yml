@@ -83,8 +83,9 @@ services:
       - CURSOR_CLI_MAX_CONCURRENT=${CURSOR_CLI_MAX_CONCURRENT:-5}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
       # Target Application (cursor) - mounted as volume
-      # Note: Update this path to point to your cursor directory
-      - TARGET_APP_PATH=/app/target/cursor
+      # Note: This is the parent directory of REPOSITORIES_PATH for file viewer
+      # The file viewer endpoint now uses REPOSITORIES_PATH parent, but keeping this for backward compatibility
+      - TARGET_APP_PATH=/cursor
       - TARGET_APP_TYPE=${TARGET_APP_TYPE:-rails}
       # Git Service Configuration
       - REPOSITORIES_PATH=/cursor/repositories

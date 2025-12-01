@@ -754,19 +754,43 @@ export class Server {
 
     /**
      * GET /api/working-directory/files
-     * Get file tree for the cursor working directory (TARGET_APP_PATH)
+     * Get file tree for the cursor working directory
+     * Uses REPOSITORIES_PATH parent directory (/cursor) to show full structure
      * Returns a FileNode[] tree structure
      * IMPORTANT: This route must come before /:conversationId to avoid route conflicts
      */
     router.get('/working-directory/files', async (req: Request, res: Response) => {
       try {
         const fileTreeService = new FileTreeService();
-        const workingDirectoryPath = process.env.TARGET_APP_PATH;
+
+        // Determine working directory path
+        // Priority: Use REPOSITORIES_PATH parent directory, fallback to TARGET_APP_PATH
+        // In production, REPOSITORIES_PATH=/cursor/repositories, so parent is /cursor
+        let workingDirectoryPath: string | undefined;
+
+        const repositoriesPath = process.env.REPOSITORIES_PATH;
+        if (repositoriesPath) {
+          // Use parent directory of REPOSITORIES_PATH to show full structure
+          // e.g., /cursor/repositories -> /cursor
+          const parentDir = path.dirname(repositoriesPath);
+          // If parent is root (/), use repositoriesPath itself
+          // Otherwise use parent to show full structure
+          if (parentDir === '/' || parentDir === repositoriesPath) {
+            workingDirectoryPath = repositoriesPath;
+          } else {
+            workingDirectoryPath = parentDir;
+          }
+        }
+
+        // Fallback to TARGET_APP_PATH if REPOSITORIES_PATH not available
+        if (!workingDirectoryPath) {
+          workingDirectoryPath = process.env.TARGET_APP_PATH;
+        }
 
         if (!workingDirectoryPath) {
           res.status(500).json({
             success: false,
-            error: 'TARGET_APP_PATH not configured',
+            error: 'Neither REPOSITORIES_PATH nor TARGET_APP_PATH configured',
             timestamp: new Date().toISOString(),
           });
           return;
@@ -784,6 +808,8 @@ export class Server {
 
         logger.info('Working directory file tree request received', {
           path: workingDirectoryPath,
+          repositoriesPath,
+          targetAppPath: process.env.TARGET_APP_PATH,
           ip: req.ip,
           userAgent: req.get('user-agent'),
         });

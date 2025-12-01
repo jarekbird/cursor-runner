@@ -85,3 +85,4 @@ echo "Test connection from cursor-runner:"
 echo "  docker exec cursor-runner getent hosts redis"
 echo ""
 
+
