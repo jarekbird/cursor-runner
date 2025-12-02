@@ -1,5 +1,5 @@
 import path from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { logger } from './logger.js';
 import { FilesystemService } from './filesystem-service.js';
 import { getWebhookSecret } from './callback-url-builder.js';
@@ -12,6 +12,7 @@ import type { CursorCLI, CommandResult } from './cursor-cli.js';
 import type { CommandParserService } from './command-parser-service.js';
 import type { ReviewAgentService, ReviewOutputResult } from './review-agent-service.js';
 import type Redis from 'ioredis';
+import { MCPSelectionService } from './mcp-selection-service.js';
 
 /**
  * Parameters for execute method
@@ -179,48 +180,15 @@ type CallbackWebhookPayload =
 const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
 const CURSOR_AGENTS_TOOLS_PATH =
   process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
-const SYSTEM_SETTINGS_MCP_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any prompt, you MUST clear all git changes (staged and unstaged) in the repository and pull the latest changes from origin. Use \`git reset --hard HEAD\` to discard all local changes, \`git clean -fd\` to remove untracked files, and then \`git pull\` to fetch and merge the latest changes from the remote repository. This ensures a clean, up-to-date working state before starting any task.
+
+/**
+ * Base system instructions (not MCP-specific)
+ */
+const BASE_SYSTEM_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any prompt, you MUST clear all git changes (staged and unstaged) in the repository and pull the latest changes from origin. Use \`git reset --hard HEAD\` to discard all local changes, \`git clean -fd\` to remove untracked files, and then \`git pull\` to fetch and merge the latest changes from the remote repository. This ensures a clean, up-to-date working state before starting any task.
 
 IMPORTANT: If you push any code to origin during this task, you MUST explicitly report this in your output. State clearly: "Code pushed to origin" or "No code pushed to origin" at the end of your response. This information is critical for task completion tracking.
 
 IMPORTANT: When a task file is referenced (e.g., "task at path/to/file.md"), you MUST output all sections labeled as definition of done from that task file in your response if it has one. Include the definition of done section from the task file in your output, in addition to any other work you perform. This helps verify that the task requirements are being met.
-
-IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
-
-IMPORTANT: When working with agent tasks (creating, querying, updating, or deleting agent tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The agent tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
-
-IMPORTANT: When working with conversation history in Redis (clearing, querying, or managing conversations), you MUST use the cursor-runner-shared-redis MCP connection. Conversation history is stored in Redis with keys like:
-- cursor:conversation:{conversationId} - Individual conversation data
-- cursor:last_conversation_id - Last conversation ID
-To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.
-
-Agent Tasks Table Schema:
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- prompt: TEXT NOT NULL (the agent task prompt/description to be executed)
-- status: INTEGER NOT NULL DEFAULT 0 (agent task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged, 4=in_progress)
-- createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
-- updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
-- order: INTEGER DEFAULT 0 (lower numbers are processed first)
-- uuid: TEXT (unique identifier, indexed)
-
-Agent Task Status Values:
-- 0 = ready (ready to be processed by task operator)
-- 1 = complete (agent task has been completed)
-- 2 = archived (agent task has been archived)
-- 3 = backlogged (agent task is in backlog, not ready for processing)
-- 4 = in_progress (agent task is currently being processed)
-
-Agent Task Management Examples:
-- To create a ready agent task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
-- To list ready agent tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
-- To mark an agent task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To archive an agent task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To backlog an agent task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
-- To get next ready agent task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
-
-The task operator agent (when enabled) automatically processes agent tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
-
-CRITICAL: DO NOT create agents or agent tasks that process agent tasks from the database. The task operator already handles this automatically. Creating agents or agent tasks with prompts like "Process ready agent tasks", "Query the agent tasks table", or "Send agent task prompts to cursor-runner" will create recursive loops and is strictly forbidden. If you need to process agent tasks, ensure the task_operator system setting is enabled - do not create additional agents or agent tasks for this purpose.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 
@@ -252,6 +220,70 @@ Queue Organization: Agents can be organized into queues to avoid queue bloat. By
 IMPORTANT: When creating one-time scripts (shell scripts, Python scripts, etc.), place them in ${SCRIPTS_PATH}. This directory is shared and persistent across container restarts. Do not create scripts in the repository directories or other temporary locations.`;
 
 /**
+ * MCP-specific instructions by MCP name
+ */
+const MCP_SPECIFIC_INSTRUCTIONS: Record<string, string> = {
+  'cursor-runner-shared-sqlite': `IMPORTANT: When updating system settings (SystemSetting model), you MUST use the cursor-runner-shared-sqlite MCP connection.
+
+IMPORTANT: When working with agent tasks (creating, querying, updating, or deleting agent tasks), you MUST use the cursor-runner-shared-sqlite MCP connection. The agent tasks table is in the shared SQLite database at /app/shared_db/shared.sqlite3.
+
+Agent Tasks Table Schema:
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- prompt: TEXT NOT NULL (the agent task prompt/description to be executed)
+- status: INTEGER NOT NULL DEFAULT 0 (agent task status enum: 0=ready, 1=complete, 2=archived, 3=backlogged, 4=in_progress)
+- createdat: DATETIME DEFAULT CURRENT_TIMESTAMP
+- updatedat: DATETIME DEFAULT CURRENT_TIMESTAMP
+- order: INTEGER DEFAULT 0 (lower numbers are processed first)
+- uuid: TEXT (unique identifier, indexed)
+
+Agent Task Status Values:
+- 0 = ready (ready to be processed by task operator)
+- 1 = complete (agent task has been completed)
+- 2 = archived (agent task has been archived)
+- 3 = backlogged (agent task is in backlog, not ready for processing)
+- 4 = in_progress (agent task is currently being processed)
+
+Agent Task Management Examples:
+- To create a ready agent task: INSERT INTO tasks (prompt, "order", status) VALUES ('your prompt here', 0, 0)
+- To list ready agent tasks: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC
+- To mark an agent task as complete: UPDATE tasks SET status = 1, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To archive an agent task: UPDATE tasks SET status = 2, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To backlog an agent task: UPDATE tasks SET status = 3, updatedat = CURRENT_TIMESTAMP WHERE id = ?
+- To get next ready agent task: SELECT * FROM tasks WHERE status = 0 ORDER BY "order" ASC, id ASC LIMIT 1
+
+The task operator agent (when enabled) automatically processes agent tasks with status = 0 (ready), sending the prompt to cursor-runner for execution.
+
+CRITICAL: DO NOT create agents or agent tasks that process agent tasks from the database. The task operator already handles this automatically. Creating agents or agent tasks with prompts like "Process ready agent tasks", "Query the agent tasks table", or "Send agent task prompts to cursor-runner" will create recursive loops and is strictly forbidden. If you need to process agent tasks, ensure the task_operator system setting is enabled - do not create additional agents or agent tasks for this purpose.`,
+  'cursor-runner-shared-redis': `IMPORTANT: When working with conversation history in Redis (clearing, querying, or managing conversations), you MUST use the cursor-runner-shared-redis MCP connection. Conversation history is stored in Redis with keys like:
+- cursor:conversation:{conversationId} - Individual conversation data
+- cursor:last_conversation_id - Last conversation ID
+To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.`,
+  gmail: `IMPORTANT: When working with Gmail (reading emails, sending emails, managing messages), you MUST use the gmail MCP connection. Use Gmail MCP tools like listMessages, getMessage, and sendReply.`,
+};
+
+/**
+ * Build filtered MCP instructions based on selected MCPs
+ * @param selectedMcps - Array of selected MCP connection names
+ * @returns Filtered instructions string
+ */
+function buildFilteredMcpInstructions(selectedMcps: string[]): string {
+  const mcpInstructions: string[] = [];
+
+  for (const mcpName of selectedMcps) {
+    const instructions = MCP_SPECIFIC_INSTRUCTIONS[mcpName];
+    if (instructions) {
+      mcpInstructions.push(instructions);
+    }
+  }
+
+  if (mcpInstructions.length === 0) {
+    return BASE_SYSTEM_INSTRUCTIONS;
+  }
+
+  return BASE_SYSTEM_INSTRUCTIONS + '\n\n' + mcpInstructions.join('\n\n');
+}
+
+/**
  * CursorExecutionService - Orchestrates cursor command execution
  *
  * Handles repository validation, command preparation,
@@ -267,6 +299,7 @@ export class CursorExecutionService {
   private workspaceTrust: WorkspaceTrustService;
   private terminalService: TerminalService;
   public conversationService: ConversationService;
+  private mcpSelectionService: MCPSelectionService;
 
   constructor(
     gitService: GitService,
@@ -286,6 +319,7 @@ export class CursorExecutionService {
     // Allow dependency injection of Redis for testing
     this.conversationService = new ConversationService(redisClient);
     this.scriptsPath = SCRIPTS_PATH;
+    this.mcpSelectionService = new MCPSelectionService();
     this.ensureScriptsDirectory();
   }
 
@@ -483,14 +517,69 @@ export class CursorExecutionService {
   }
 
   /**
+   * Write filtered MCP config with only selected MCPs
+   * @param selectedMcps - Array of selected MCP connection names
+   * @param requestId - Request ID for logging
+   */
+  private async writeFilteredMcpConfig(selectedMcps: string[], requestId: string): Promise<void> {
+    try {
+      // Read the base MCP config
+      const baseMcpPath = '/app/mcp.json';
+      const cursorCliMcpPath = '/root/.cursor/mcp.json';
+
+      if (!this.filesystem.exists(baseMcpPath)) {
+        logger.warn('Base MCP config not found, skipping filtered config generation', {
+          requestId,
+          path: baseMcpPath,
+        });
+        return;
+      }
+
+      const baseConfig = JSON.parse(readFileSync(baseMcpPath, 'utf8'));
+      const filteredConfig = {
+        mcpServers: {} as Record<string, unknown>,
+      };
+
+      // Only include selected MCPs
+      if (baseConfig.mcpServers) {
+        for (const mcpName of selectedMcps) {
+          if (baseConfig.mcpServers[mcpName]) {
+            filteredConfig.mcpServers[mcpName] = baseConfig.mcpServers[mcpName];
+          }
+        }
+      }
+
+      // Write filtered config to cursor-cli location
+      const cursorCliDir = path.dirname(cursorCliMcpPath);
+      if (!this.filesystem.exists(cursorCliDir)) {
+        mkdirSync(cursorCliDir, { recursive: true });
+      }
+
+      writeFileSync(cursorCliMcpPath, JSON.stringify(filteredConfig, null, 2) + '\n', 'utf8');
+
+      logger.info('Wrote filtered MCP config', {
+        requestId,
+        selectedMcps,
+        path: cursorCliMcpPath,
+      });
+    } catch (error) {
+      logger.error('Failed to write filtered MCP config', {
+        requestId,
+        error: getErrorMessage(error),
+      });
+      // Don't throw - continue execution even if config write fails
+    }
+  }
+
+  /**
    * Prepare command with instructions
    * @param command - Original command string
    * @returns Prepared command arguments
    */
   prepareCommand(command: string): readonly string[] {
     const commandArgs = this.commandParser.parseCommand(command);
-    // Append system settings MCP instructions to all prompts
-    return this.commandParser.appendInstructions(commandArgs, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+    // Use base instructions (will be filtered by prepareCommandArgsWithMcps)
+    return this.commandParser.appendInstructions(commandArgs, BASE_SYSTEM_INSTRUCTIONS);
   }
 
   /**
@@ -499,8 +588,19 @@ export class CursorExecutionService {
    * @returns Prepared command arguments with instructions appended
    */
   prepareCommandArgs(args: readonly string[]): readonly string[] {
-    // Append system settings MCP instructions to all prompts
-    return this.commandParser.appendInstructions(args, SYSTEM_SETTINGS_MCP_INSTRUCTIONS);
+    // Use base instructions (will be filtered by prepareCommandArgsWithMcps)
+    return this.commandParser.appendInstructions(args, BASE_SYSTEM_INSTRUCTIONS);
+  }
+
+  /**
+   * Prepare command arguments with filtered MCP instructions
+   * @param args - Command arguments array
+   * @param selectedMcps - Array of selected MCP connection names
+   * @returns Prepared command arguments with filtered instructions appended
+   */
+  prepareCommandArgsWithMcps(args: readonly string[], selectedMcps: string[]): readonly string[] {
+    const filteredInstructions = buildFilteredMcpInstructions(selectedMcps);
+    return this.commandParser.appendInstructions(args, filteredInstructions);
   }
 
   /**
@@ -614,6 +714,18 @@ export class CursorExecutionService {
       fullPrompt = `${contextString}\n\n[Current Request]: ${prompt}`;
     }
 
+    // Select relevant MCP connections based on prompt analysis
+    logger.info('Selecting MCP connections for request', { requestId });
+    const mcpSelection = await this.mcpSelectionService.selectMcps(prompt, contextString);
+    logger.info('MCP selection completed', {
+      requestId,
+      selectedMcps: mcpSelection.selectedMcps,
+      reasoning: mcpSelection.reasoning,
+    });
+
+    // Write filtered MCP config with only selected MCPs
+    await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
+
     // Construct command as array to avoid parsing issues with newlines in prompt
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
@@ -621,8 +733,8 @@ export class CursorExecutionService {
     // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const commandArgs = ['--model', 'auto', '--print', '--force', '--approve-mcps', fullPrompt];
 
-    // Prepare command with instructions
-    const modifiedArgs = this.prepareCommandArgs(commandArgs);
+    // Prepare command with filtered MCP instructions
+    const modifiedArgs = this.prepareCommandArgsWithMcps(commandArgs, mcpSelection.selectedMcps);
 
     // Execute cursor command
     logger.info('Executing cursor command', {
@@ -840,6 +952,18 @@ export class CursorExecutionService {
       initialFullPrompt = `${initialContextString}\n\n[Current Request]: ${prompt}`;
     }
 
+    // Select relevant MCP connections based on prompt analysis
+    logger.info('Selecting MCP connections for iterate request', { requestId });
+    const mcpSelection = await this.mcpSelectionService.selectMcps(prompt, initialContextString);
+    logger.info('MCP selection completed', {
+      requestId,
+      selectedMcps: mcpSelection.selectedMcps,
+      reasoning: mcpSelection.reasoning,
+    });
+
+    // Write filtered MCP config with only selected MCPs
+    await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
+
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
     const iterateTimeoutValue = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '1800000', 10);
@@ -857,7 +981,7 @@ export class CursorExecutionService {
       '--approve-mcps',
       initialFullPrompt,
     ];
-    const modifiedArgs = this.prepareCommandArgs(commandArgs);
+    const modifiedArgs = this.prepareCommandArgsWithMcps(commandArgs, mcpSelection.selectedMcps);
 
     logger.info('Executing initial cursor command for iterate', {
       requestId,
@@ -1130,11 +1254,25 @@ export class CursorExecutionService {
       await this.conversationService.addMessage(actualConversationId, 'user', resumePrompt, false);
 
       // Build full prompt with conversation context
-      // System settings MCP instructions will be appended by prepareCommandArgs
+      // System settings MCP instructions will be appended by prepareCommandArgsWithMcps
       let fullResumePrompt = resumePrompt;
       if (contextString) {
         fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePrompt}`;
       }
+
+      // Re-select MCPs for resume prompt (may need different MCPs for continuation)
+      const resumeMcpSelection = await this.mcpSelectionService.selectMcps(
+        resumePrompt,
+        contextString
+      );
+      logger.info('MCP selection for resume iteration', {
+        requestId,
+        iteration,
+        selectedMcps: resumeMcpSelection.selectedMcps,
+      });
+
+      // Update filtered MCP config if needed
+      await this.writeFilteredMcpConfig(resumeMcpSelection.selectedMcps, requestId);
 
       // Execute cursor with --model auto first, then --print (non-interactive) and --force
       // Never use --resume, instead pass full conversation context
@@ -1147,7 +1285,10 @@ export class CursorExecutionService {
         '--approve-mcps',
         fullResumePrompt,
       ];
-      const resumeArgs = this.prepareCommandArgs(resumeCommandArgs);
+      const resumeArgs = this.prepareCommandArgsWithMcps(
+        resumeCommandArgs,
+        resumeMcpSelection.selectedMcps
+      );
       logger.info('Executing cursor resume command', {
         requestId,
         iteration,
@@ -1483,6 +1624,19 @@ When you respond, explain briefly:
       fullDiagnosticPrompt = `${diagnosticContextString}\n\n[Current Request]: ${diagnosticPrompt}`;
     }
 
+    // Select MCPs for diagnostic iteration (may need different MCPs)
+    const diagnosticMcpSelection = await this.mcpSelectionService.selectMcps(
+      diagnosticPrompt,
+      diagnosticContextString
+    );
+    logger.info('MCP selection for diagnostic iteration', {
+      requestId,
+      selectedMcps: diagnosticMcpSelection.selectedMcps,
+    });
+
+    // Update filtered MCP config if needed
+    await this.writeFilteredMcpConfig(diagnosticMcpSelection.selectedMcps, requestId);
+
     // Run a one-off diagnostic iteration using GPT-5 to reason about the timeout
     const diagnosticCommandArgs = [
       '--model',
@@ -1492,7 +1646,10 @@ When you respond, explain briefly:
       '--approve-mcps',
       fullDiagnosticPrompt,
     ] as const;
-    const preparedDiagnosticArgs = this.prepareCommandArgs(diagnosticCommandArgs);
+    const preparedDiagnosticArgs = this.prepareCommandArgsWithMcps(
+      diagnosticCommandArgs,
+      diagnosticMcpSelection.selectedMcps
+    );
 
     // Use a longer timeout (20 minutes) for diagnostic iterations to allow more time for investigation
     const diagnosticTimeout = 20 * 60 * 1000; // 20 minutes
@@ -1564,6 +1721,16 @@ ${contextString}
 
 Provide a concise summary that captures the essential information:`;
 
+      // Select MCPs for summarization (typically none needed, but check anyway)
+      const summarizeMcpSelection = await this.mcpSelectionService.selectMcps(summarizePrompt);
+      logger.info('MCP selection for conversation summarization', {
+        conversationId,
+        selectedMcps: summarizeMcpSelection.selectedMcps,
+      });
+
+      // Update filtered MCP config if needed
+      await this.writeFilteredMcpConfig(summarizeMcpSelection.selectedMcps, conversationId);
+
       // Use cursor to generate the summary
       // --approve-mcps automatically approves all MCP servers (required for headless mode)
       const summarizeCommandArgs = [
@@ -1574,7 +1741,10 @@ Provide a concise summary that captures the essential information:`;
         '--approve-mcps',
         summarizePrompt,
       ];
-      const summarizeArgs = this.prepareCommandArgs(summarizeCommandArgs);
+      const summarizeArgs = this.prepareCommandArgsWithMcps(
+        summarizeCommandArgs,
+        summarizeMcpSelection.selectedMcps
+      );
 
       logger.info('Summarizing conversation using cursor', {
         conversationId,
