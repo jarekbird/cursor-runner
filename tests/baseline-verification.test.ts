@@ -5,10 +5,15 @@ import path from 'path';
 import { execSync } from 'child_process';
 
 describe('Baseline Verification (TASK-PY-001.01)', () => {
-  const baselineFilePath = path.join(process.cwd(), 'plan', 'python-conversion', 'baseline.md');
+  const baselineFilePath = path.join(
+    process.cwd(),
+    'plan',
+    'python-converstion',
+    'baseline.md'
+  );
 
   describe('Baseline file exists', () => {
-    it('should have baseline.md file in plan/python-conversion directory', () => {
+    it('should have baseline.md file in plan/python-converstion directory', () => {
       expect(fs.existsSync(baselineFilePath)).toBe(true);
     });
   });
@@ -44,10 +49,9 @@ describe('Baseline Verification (TASK-PY-001.01)', () => {
     beforeAll(() => {
       const baselineContent = fs.readFileSync(baselineFilePath, 'utf-8');
       // Match markdown format: - **Commit SHA**: `sha` (with optional markdown formatting)
-      const shaMatch =
-        baselineContent.match(/\*\*Commit SHA\*\*:\s*`([a-f0-9]{40})`/i) ||
-        baselineContent.match(/Commit SHA:\s*`([a-f0-9]{40})`/i) ||
-        baselineContent.match(/Commit SHA[:\s]+([a-f0-9]{40})/i);
+      const shaMatch = baselineContent.match(/\*\*Commit SHA\*\*:\s*`([a-f0-9]{40})`/i) ||
+                       baselineContent.match(/Commit SHA:\s*`([a-f0-9]{40})`/i) ||
+                       baselineContent.match(/Commit SHA[:\s]+([a-f0-9]{40})/i);
       expect(shaMatch).not.toBeNull();
       commitSha = shaMatch![1];
     });
@@ -67,7 +71,7 @@ describe('Baseline Verification (TASK-PY-001.01)', () => {
           stdio: 'pipe',
         });
         expect(result.trim()).toBe('commit');
-      } catch {
+      } catch (error) {
         // If git cat-file fails, the commit doesn't exist
         throw new Error(`Commit SHA ${commitSha} does not exist in repository`);
       }
@@ -83,7 +87,7 @@ describe('Baseline Verification (TASK-PY-001.01)', () => {
         });
         // If this succeeds, the commit is valid
         expect(true).toBe(true);
-      } catch {
+      } catch (error) {
         throw new Error(`Commit SHA ${commitSha} is not a valid commit in repository`);
       }
     });
