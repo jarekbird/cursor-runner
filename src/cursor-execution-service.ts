@@ -841,9 +841,9 @@ export class CursorExecutionService {
 
     // Prepare and execute initial command
     // Use longer timeout for iterate operations
-    const iterateTimeoutValue = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '900000', 10);
+    const iterateTimeoutValue = parseInt(process.env.CURSOR_CLI_ITERATE_TIMEOUT || '1800000', 10);
     const iterateTimeout =
-      isNaN(iterateTimeoutValue) || iterateTimeoutValue <= 0 ? 900000 : iterateTimeoutValue; // 15 minutes default
+      isNaN(iterateTimeoutValue) || iterateTimeoutValue <= 0 ? 1800000 : iterateTimeoutValue; // 30 minutes default
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
