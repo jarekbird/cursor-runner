@@ -634,7 +634,8 @@ export class CursorExecutionService {
     });
 
     // Store what we're sending to cursor in Redis (right before sending)
-    await this.conversationService.addMessage(actualConversationId, 'user', fullPrompt, false);
+    // Store only the original prompt, not fullPrompt, to avoid duplicating history
+    await this.conversationService.addMessage(actualConversationId, 'user', prompt, false);
 
     const result = await this.cursorCLI.executeCommand([...modifiedArgs], {
       cwd: fullRepositoryPath,

@@ -152,12 +152,13 @@ More log output`;
         stderr: 'Error occurred',
       });
 
-      // The method doesn't check exitCode, it just tries to parse stdout
-      // So this will try to parse empty string and return null
+      // When stdout is empty, the method returns an error message
       const response = (await reviewAgent.reviewOutput('test output', '/path/to/repo')) as any;
 
       expect(response.result).toBeNull();
-      expect(response.rawOutput).toBe('');
+      expect(response.rawOutput).toBe(
+        'Review agent error: executeCommand returned invalid result (missing stdout)'
+      );
     });
 
     it('should handle different JSON structures', async () => {

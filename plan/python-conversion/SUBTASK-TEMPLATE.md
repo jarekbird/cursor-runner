@@ -1,11 +1,35 @@
 # Subtask Template
 
+**⚠️ CRITICAL: ALL IMPLEMENTATION CHANGES MUST BE MADE IN THE CURSOR-EXECUTOR APPLICATION ⚠️**
+
+**Target Location**: All code changes, file creations, and modifications described in subtasks must be implemented in:
+- **`python-cursor/cursor-executor/cursor-executor-back/`**
+
+**DO NOT** make changes in:
+- `python-cursor/cursor-runner/` (this is the Node.js reference implementation)
+- Any other location
+
+The `cursor-executor` application is the Python port target. All Python source code files, tests, configuration files, and documentation should be created or modified within the `cursor-executor-back` directory structure.
+
+---
+
 When creating new subtask files, use this template structure. The **Order** field is required and must be included in the file header.
 
 ## File Header Template
 
 ```markdown
 # TASK-PY-XXX.YY: Subtask Title
+
+**⚠️ CRITICAL: ALL IMPLEMENTATION CHANGES MUST BE MADE IN THE CURSOR-EXECUTOR APPLICATION ⚠️**
+
+**Target Location**: All code changes, file creations, and modifications described in this task must be implemented in:
+- **`python-cursor/cursor-executor/cursor-executor-back/`**
+
+**DO NOT** make changes in:
+- `python-cursor/cursor-runner/` (this is the Node.js reference implementation)
+- Any other location
+
+The `cursor-executor` application is the Python port target. All Python source code files, tests, configuration files, and documentation should be created or modified within the `cursor-executor-back` directory structure.
 
 **Section**: X. Section Name
 **Subsection**: X.X.YY

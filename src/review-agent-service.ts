@@ -656,6 +656,18 @@ ${output}`;
         executeOptions
       );
 
+      // Check if result exists and has stdout
+      if (!result || !result.stdout) {
+        logger.error('Review agent executeCommand returned invalid result', {
+          result: result ? 'exists but no stdout' : 'null/undefined',
+        });
+        return {
+          result: null,
+          rawOutput: 'Review agent error: executeCommand returned invalid result (missing stdout)',
+          prompt: undefined,
+        };
+      }
+
       // Clean the output - remove ANSI escape sequences and trim whitespace
       // eslint-disable-next-line no-control-regex
       const ansiEscapeRegex = /\u001b\[[0-9;]*[a-zA-Z]/g;

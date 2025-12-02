@@ -1,5 +1,18 @@
 ### Cursor Executor Python Port – Master Plan
 
+**⚠️ CRITICAL: ALL IMPLEMENTATION CHANGES MUST BE MADE IN THE CURSOR-EXECUTOR APPLICATION ⚠️**
+
+**Target Location**: All code changes, file creations, and modifications described in this plan must be implemented in:
+- **`python-cursor/cursor-executor/cursor-executor-back/`**
+
+**DO NOT** make changes in:
+- `python-cursor/cursor-runner/` (this is the Node.js reference implementation)
+- Any other location
+
+The `cursor-executor` application is the Python port target. All Python source code files, tests, configuration files, and documentation should be created or modified within the `cursor-executor-back` directory structure.
+
+---
+
 Using the existing Node.js `cursor-runner` repository (`https://github.com/jarekbird/cursor-runner.git`) as the reference implementation, this plan describes how to build a **feature‑complete Python clone** called `cursor-executor`. The goal is to preserve all current behavior and edge‑case handling while adopting **Pythonic design, tooling, and deployment practices**.
 
 ---
