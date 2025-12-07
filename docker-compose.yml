@@ -14,9 +14,11 @@ services:
       # HTTPS entrypoint (port 443) - serves all traffic
       - "--entrypoints.websecure.address=:443"
       # Let's Encrypt certificate resolver
+      # Note: ACME_EMAIL should be set to a valid email address for production
+      # For localhost, certificates won't work, but we still need a valid email format
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@${DOMAIN_NAME:-localhost}}"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@${DOMAIN_NAME:-jarekva.com}}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       # Optional: Enable dashboard for debugging (disable in production or secure it)
       - "--api.dashboard=false"
@@ -84,17 +86,21 @@ services:
       - CURSOR_CLI_MAX_CONCURRENT=${CURSOR_CLI_MAX_CONCURRENT:-5}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
       # Target Application (cursor) - mounted as volume
-      # Note: This is the parent directory of REPOSITORIES_PATH for file viewer
-      # The file viewer endpoint now uses REPOSITORIES_PATH parent, but keeping this for backward compatibility
+      # REPOSITORIES_PATH, SCRIPTS_PATH, and CURSOR_AGENTS_TOOLS_PATH are now
+      # automatically resolved relative to TARGET_APP_PATH
+      # (e.g., TARGET_APP_PATH/repositories, TARGET_APP_PATH/scripts, etc.)
       - TARGET_APP_PATH=/cursor
       - TARGET_APP_TYPE=${TARGET_APP_TYPE:-rails}
       # Git Service Configuration
-      - REPOSITORIES_PATH=/cursor/repositories
+      # REPOSITORIES_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/repositories)
+      # Uncomment to override: - REPOSITORIES_PATH=/cursor/repositories
       - GIT_COMMAND_TIMEOUT=${GIT_COMMAND_TIMEOUT:-60000}
       # Scripts directory for one-time scripts created by cursor-cli
-      - SCRIPTS_PATH=/cursor/scripts
+      # SCRIPTS_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/scripts)
+      # Uncomment to override: - SCRIPTS_PATH=/cursor/scripts
       # Cursor-agents tools directory path
-      - CURSOR_AGENTS_TOOLS_PATH=/cursor/tools/cursor-agents
+      # CURSOR_AGENTS_TOOLS_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/tools/cursor-agents)
+      # Uncomment to override: - CURSOR_AGENTS_TOOLS_PATH=/cursor/tools/cursor-agents
       # Terminal Service Configuration
       - TERMINAL_COMMAND_TIMEOUT=${TERMINAL_COMMAND_TIMEOUT:-300000}
       - TERMINAL_MAX_OUTPUT_SIZE=${TERMINAL_MAX_OUTPUT_SIZE:-10485760}
@@ -159,30 +165,44 @@ services:
       - "traefik.enable=true"
       # Path-based routing - only route /conversations/api/* to cursor-runner (API endpoints)
       # Higher priority ensures API routes are matched before jarek-va-ui routes
+      # HTTPS router (for production domains only - exclude localhost)
       - "traefik.http.routers.cursor-runner-conversations-api.priority=20"
-      - "traefik.http.routers.cursor-runner-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`)"
+      - "traefik.http.routers.cursor-runner-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`) && !Host(`localhost`)"
       - "traefik.http.routers.cursor-runner-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-conversations-api.service=cursor-runner-api"
+      # HTTP router for localhost (no TLS required)
+      - "traefik.http.routers.cursor-runner-conversations-api-http.priority=20"
+      - "traefik.http.routers.cursor-runner-conversations-api-http.rule=Host(`localhost`) && PathPrefix(`/conversations/api`)"
+      - "traefik.http.routers.cursor-runner-conversations-api-http.entrypoints=web"
+      - "traefik.http.routers.cursor-runner-conversations-api-http.service=cursor-runner-api"
       # Strip /conversations prefix before forwarding to the service
       # So /conversations/api/list becomes /api/list at cursor-runner
       - "traefik.http.middlewares.cursor-runner-conversations-api-stripprefix.stripprefix.prefixes=/conversations"
-      # Security headers middleware
+      # Security headers middleware (only for HTTPS)
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.sslredirect=true"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsSeconds=31536000"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsIncludeSubdomains=true"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsPreload=true"
-      # Apply both strip prefix and security headers
+      # Apply strip prefix and security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-conversations-api.middlewares=cursor-runner-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
+      # Apply only strip prefix to HTTP router (no security headers for localhost)
+      - "traefik.http.routers.cursor-runner-conversations-api-http.middlewares=cursor-runner-conversations-api-stripprefix"
       # Shared service definition for both routers (same container, same port)
       - "traefik.http.services.cursor-runner-api.loadbalancer.server.port=3001"
       # Path-based routing for agent conversation API endpoints
       # Higher priority (25) ensures agent routes are matched before regular conversation routes
+      # HTTPS router (for production domains only - exclude localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=25"
-      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`) && !Host(`localhost`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.service=cursor-runner-api"
+      # HTTP router for localhost (no TLS required)
+      - "traefik.http.routers.cursor-runner-agent-conversations-api-http.priority=25"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api-http.rule=Host(`localhost`) && PathPrefix(`/agent-conversations/api`)"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api-http.entrypoints=web"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api-http.service=cursor-runner-api"
       # Strip /agent-conversations/api prefix, then rewrite to /api/agent/*
       # So /agent-conversations/api/list becomes /api/agent/list
       # Step 1: Strip /agent-conversations/api → /list
@@ -190,8 +210,10 @@ services:
       # Step 2: Rewrite /list to /api/agent/list
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.regex=^(.*)"
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.replacement=/api/agent/$$1"
-      # Apply strip prefix, rewrite, and security headers
+      # Apply strip prefix, rewrite, and security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite,cursor-runner-conversations-api-headers"
+      # Apply strip prefix and rewrite to HTTP router (no security headers for localhost)
+      - "traefik.http.routers.cursor-runner-agent-conversations-api-http.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s

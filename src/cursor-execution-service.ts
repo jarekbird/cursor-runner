@@ -13,6 +13,10 @@ import type { CommandParserService } from './command-parser-service.js';
 import type { ReviewAgentService, ReviewOutputResult } from './review-agent-service.js';
 import type Redis from 'ioredis';
 import { MCPSelectionService } from './mcp-selection-service.js';
+import {
+  getScriptsPath,
+  getCursorAgentsToolsPath,
+} from './utils/path-resolver.js';
 
 /**
  * Parameters for execute method
@@ -177,9 +181,9 @@ type CallbackWebhookPayload =
  * System settings MCP instructions
  * These instructions are appended to all non-review agent prompts
  */
-const SCRIPTS_PATH = process.env.SCRIPTS_PATH || '/cursor/scripts';
-const CURSOR_AGENTS_TOOLS_PATH =
-  process.env.CURSOR_AGENTS_TOOLS_PATH || '/cursor/tools/cursor-agents';
+// Paths are resolved relative to TARGET_APP_PATH
+const SCRIPTS_PATH = getScriptsPath();
+const CURSOR_AGENTS_TOOLS_PATH = getCursorAgentsToolsPath();
 
 /**
  * Base system instructions (not MCP-specific)

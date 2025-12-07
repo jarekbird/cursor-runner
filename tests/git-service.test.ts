@@ -17,7 +17,34 @@ describe('GitService', () => {
       expect(typeof gitService.repositoriesPath).toBe('string');
     });
 
-    it('should use REPOSITORIES_PATH environment variable if set', () => {
+    it('should resolve REPOSITORIES_PATH relative to TARGET_APP_PATH when TARGET_APP_PATH is set', () => {
+      const originalTargetAppPath = process.env.TARGET_APP_PATH;
+      const originalRepositoriesPath = process.env.REPOSITORIES_PATH;
+      
+      const tempTargetAppPath = `${os.tmpdir()}/test-target-app-${Date.now()}`;
+      process.env.TARGET_APP_PATH = tempTargetAppPath;
+      delete process.env.REPOSITORIES_PATH; // Clear explicit REPOSITORIES_PATH to test relative resolution
+
+      const customGitService = new GitService();
+      const expectedPath = `${tempTargetAppPath}/repositories`;
+      expect(customGitService.repositoriesPath).toBe(expectedPath);
+
+      // Clean up
+      if (fs.existsSync(tempTargetAppPath)) {
+        fs.rmSync(tempTargetAppPath, { recursive: true, force: true });
+      }
+
+      if (originalTargetAppPath) {
+        process.env.TARGET_APP_PATH = originalTargetAppPath;
+      } else {
+        delete process.env.TARGET_APP_PATH;
+      }
+      if (originalRepositoriesPath) {
+        process.env.REPOSITORIES_PATH = originalRepositoriesPath;
+      }
+    });
+
+    it('should use REPOSITORIES_PATH environment variable if explicitly set (overrides relative path)', () => {
       const originalEnv = process.env.REPOSITORIES_PATH;
       const tempPath = `${os.tmpdir()}/test-repositories-${Date.now()}`;
       process.env.REPOSITORIES_PATH = tempPath;

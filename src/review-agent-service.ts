@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 import { isSystemSettingEnabled } from './system-settings.js';
+import { getRepositoriesPath } from './utils/path-resolver.js';
 
 /**
  * Review result structure returned by the review agent
@@ -228,8 +229,8 @@ export class ReviewAgentService {
    */
   private loadDefinitionOfDoneFromTaskFile(filePath: string, cwd: string): string | undefined {
     // Get repositories path (same logic as GitService)
-    const repositoriesPath =
-      process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
+    // Path is resolved relative to TARGET_APP_PATH
+    const repositoriesPath = getRepositoriesPath();
 
     // Try multiple path resolutions
     const possiblePaths = [

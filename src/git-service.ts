@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import { logger } from './logger.js';
+import { getRepositoriesPath } from './utils/path-resolver.js';
 
 /**
  * GitService - Manages repository path configuration
@@ -12,8 +13,8 @@ export class GitService {
   public readonly repositoriesPath: string;
 
   constructor() {
-    this.repositoriesPath =
-      process.env.REPOSITORIES_PATH || path.join(process.cwd(), 'repositories');
+    // Path is resolved relative to TARGET_APP_PATH
+    this.repositoriesPath = getRepositoriesPath();
 
     // Ensure repositories directory exists
     this.ensureRepositoriesDirectory();

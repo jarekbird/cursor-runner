@@ -19,6 +19,7 @@ import { FileTreeService } from './file-tree-service.js';
 import { AgentConversationService } from './agent-conversation-service.js';
 import { TaskService } from './task-service.js';
 import type Redis from 'ioredis';
+import { getRepositoriesPath, getTargetAppPath } from './utils/path-resolver.js';
 
 /**
  * Request body for cursor execution endpoints
@@ -142,6 +143,49 @@ export class Server {
    * Setup Express middleware
    */
   setupMiddleware(): void {
+    // CORS middleware - allow requests from frontend
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      const origin = req.get('origin');
+      // Allow requests from localhost (development) and any configured origins
+      const allowedOrigins = [
+        'http://localhost:3002',
+        'http://localhost:80',
+        'http://localhost',
+        'https://localhost',
+        process.env.FRONTEND_URL,
+      ].filter(Boolean);
+
+      if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development')) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+      // Handle preflight requests
+      if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+      }
+
+      next();
+    });
+
+    // Request logging middleware (before routes)
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      // Only log API routes to reduce noise
+      if (req.path.startsWith('/api') || req.path.startsWith('/conversations/api')) {
+        logger.info('Incoming API request', {
+          method: req.method,
+          path: req.path,
+          url: req.url,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+      }
+      next();
+    });
+
     // JSON body parser
     this.app.use(express.json());
   }
@@ -200,6 +244,28 @@ export class Server {
     // Must be after other routes to avoid conflicts
     // IMPORTANT: This has a catch-all /:conversationId route, so more specific routes must come first
     this.setupConversationRoutes();
+
+    // 404 handler for unmatched routes (must be after all routes, before error handler)
+    this.app.use((req: Request, res: Response) => {
+      logger.warn('404 - Route not found', {
+        method: req.method,
+        path: req.path,
+        url: req.url,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        headers: {
+          host: req.get('host'),
+          'x-forwarded-for': req.get('x-forwarded-for'),
+          'x-forwarded-proto': req.get('x-forwarded-proto'),
+        },
+      });
+      res.status(404).json({
+        success: false,
+        error: 'Route not found',
+        path: req.path,
+        method: req.method,
+      });
+    });
 
     // Error handling middleware (must be after all routes)
     // Express requires 4 parameters (err, req, res, next) to recognize error handlers
@@ -696,8 +762,17 @@ export class Server {
      * Get list of all conversations
      */
     router.get('/list', async (req: Request, res: Response) => {
+      logger.info('List conversations request received', {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        path: req.path,
+        url: req.url,
+      });
       try {
         const conversations = await this.cursorExecution.conversationService.listConversations();
+        logger.info('List conversations success', {
+          count: conversations.length,
+        });
         res.json(conversations);
       } catch (error) {
         const err = error as Error;
@@ -765,13 +840,14 @@ export class Server {
 
         // Determine working directory path
         // Priority: Use REPOSITORIES_PATH parent directory, fallback to TARGET_APP_PATH
-        // In production, REPOSITORIES_PATH=/cursor/repositories, so parent is /cursor
+        // REPOSITORIES_PATH is now relative to TARGET_APP_PATH (e.g., TARGET_APP_PATH/repositories)
+        // So the parent directory of REPOSITORIES_PATH is TARGET_APP_PATH
         let workingDirectoryPath: string | undefined;
 
-        const repositoriesPath = process.env.REPOSITORIES_PATH;
+        const repositoriesPath = getRepositoriesPath();
         if (repositoriesPath) {
           // Use parent directory of REPOSITORIES_PATH to show full structure
-          // e.g., /cursor/repositories -> /cursor
+          // e.g., TARGET_APP_PATH/repositories -> TARGET_APP_PATH
           const parentDir = path.dirname(repositoriesPath);
           // If parent is root (/), use repositoriesPath itself
           // Otherwise use parent to show full structure
@@ -784,7 +860,7 @@ export class Server {
 
         // Fallback to TARGET_APP_PATH if REPOSITORIES_PATH not available
         if (!workingDirectoryPath) {
-          workingDirectoryPath = process.env.TARGET_APP_PATH;
+          workingDirectoryPath = getTargetAppPath();
         }
 
         if (!workingDirectoryPath) {
@@ -809,7 +885,7 @@ export class Server {
         logger.info('Working directory file tree request received', {
           path: workingDirectoryPath,
           repositoriesPath,
-          targetAppPath: process.env.TARGET_APP_PATH,
+          targetAppPath: getTargetAppPath(),
           ip: req.ip,
           userAgent: req.get('user-agent'),
         });
@@ -965,12 +1041,17 @@ export class Server {
       }
     });
 
-    // Mount conversation API routes at /api
+    // Mount conversation API routes at /api (for Traefik routing)
     // Traefik routes /conversations/api/* to cursor-runner (priority 20, higher than jarek-va-ui)
     // Traefik strips /conversations prefix, so /conversations/api/list becomes /api/list
     // Router mounted at /api with routes /list and /:conversationId
     // Final routes: /api/list and /api/:conversationId (accessible as /conversations/api/list from frontend)
     this.app.use('/api', router);
+
+    // Also mount at /conversations/api for direct access (bypassing Traefik)
+    // This allows the frontend to access the API directly when running locally
+    // e.g., http://localhost:3001/conversations/api/list
+    this.app.use('/conversations/api', router);
   }
 
   /**
