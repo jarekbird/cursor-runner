@@ -81,6 +81,81 @@ describe('CursorRunner', () => {
       expect(cursorRunner.server).toBe(mockServer);
       expect(cursorRunner.logger).toBeDefined();
     });
+
+    it('should accept and store all dependencies when injected', () => {
+      // Create a new instance with all dependencies explicitly injected
+      const customCursorCLI = {
+        validate: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
+        generateTests: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+        generateImplementation: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+        refactorCode: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+      };
+
+      const customTargetAppRunner = {
+        runTests: jest
+          .fn<(targetPath: string | null) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, output: 'Tests passed' }),
+      };
+
+      const customServer = {
+        start: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        stop: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        port: 3002,
+      };
+
+      const runner = new CursorRunner({
+        cursorCLI: customCursorCLI as any,
+        targetAppRunner: customTargetAppRunner as any,
+        server: customServer as any,
+      });
+
+      // Verify all dependencies are stored correctly
+      expect(runner.cursorCLI).toBe(customCursorCLI);
+      expect(runner.targetAppRunner).toBe(customTargetAppRunner);
+      expect(runner.server).toBe(customServer);
+      expect(runner.logger).toBeDefined();
+      expect(typeof runner.logger).toBe('object');
+    });
+
+    it('should handle partial dependency injection', () => {
+      // Create instance with only some dependencies
+      const customCursorCLI = {
+        validate: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
+        generateTests: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+        generateImplementation: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+        refactorCode: jest
+          .fn<(requirements: unknown, targetPath?: string) => Promise<unknown>>()
+          .mockResolvedValue({ success: true, files: [] }),
+      };
+
+      const customServer = {
+        start: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        stop: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        port: 3003,
+      };
+
+      const runner = new CursorRunner({
+        cursorCLI: customCursorCLI as any,
+        server: customServer as any,
+      });
+
+      // Verify provided dependencies are used
+      expect(runner.cursorCLI).toBe(customCursorCLI);
+      expect(runner.server).toBe(customServer);
+      // Verify default instance is created for targetAppRunner
+      expect(runner.targetAppRunner).toBeDefined();
+      expect(runner.logger).toBeDefined();
+    });
   });
 
   describe('validateConfig', () => {
