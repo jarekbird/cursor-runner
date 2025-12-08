@@ -453,6 +453,144 @@ describe('CursorRunner', () => {
       cursorCLIValidateSpy.mockRestore();
     });
 
+    it('should call verifyMcpConfig() during initialization', async () => {
+      // Spy on verifyMcpConfig method
+      const verifyMcpConfigSpy = jest.spyOn(cursorRunner, 'verifyMcpConfig').mockResolvedValue();
+
+      await cursorRunner.initialize();
+
+      // Verify verifyMcpConfig was called
+      expect(verifyMcpConfigSpy).toHaveBeenCalled();
+      expect(verifyMcpConfigSpy).toHaveBeenCalledTimes(1);
+
+      verifyMcpConfigSpy.mockRestore();
+    });
+
+    it('should call validateGmailConfig() during initialization', async () => {
+      // Spy on validateGmailConfig method
+      const validateGmailConfigSpy = jest
+        .spyOn(cursorRunner, 'validateGmailConfig')
+        .mockImplementation(() => {});
+
+      await cursorRunner.initialize();
+
+      // Verify validateGmailConfig was called
+      expect(validateGmailConfigSpy).toHaveBeenCalled();
+      expect(validateGmailConfigSpy).toHaveBeenCalledTimes(1);
+
+      validateGmailConfigSpy.mockRestore();
+    });
+
+    it('should call cursorCLI.validate() during initialization', async () => {
+      // Clear previous calls
+      mockCursorCLI.validate.mockClear();
+
+      await cursorRunner.initialize();
+
+      // Verify cursorCLI.validate was called
+      expect(mockCursorCLI.validate).toHaveBeenCalled();
+      expect(mockCursorCLI.validate).toHaveBeenCalledTimes(1);
+    });
+
+    it('should call cursorCLI.validate() after validateGmailConfig()', async () => {
+      // Spy on methods to verify call order
+      const validateGmailConfigSpy = jest
+        .spyOn(cursorRunner, 'validateGmailConfig')
+        .mockImplementation(() => {});
+      mockCursorCLI.validate.mockClear();
+
+      await cursorRunner.initialize();
+
+      // Verify both were called
+      expect(validateGmailConfigSpy).toHaveBeenCalled();
+      expect(mockCursorCLI.validate).toHaveBeenCalled();
+
+      // Verify call order: validateGmailConfig before cursorCLI.validate
+      const validateGmailConfigCallOrder = (validateGmailConfigSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+      const cursorCLIValidateCallOrder = (mockCursorCLI.validate as jest.Mock).mock
+        .invocationCallOrder[0];
+      expect(validateGmailConfigCallOrder).toBeLessThan(cursorCLIValidateCallOrder);
+
+      validateGmailConfigSpy.mockRestore();
+    });
+
+    it('should call server.start() during initialization', async () => {
+      // Clear previous calls
+      mockServer.start.mockClear();
+
+      await cursorRunner.initialize();
+
+      // Verify server.start was called
+      expect(mockServer.start).toHaveBeenCalled();
+      expect(mockServer.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('should call server.start() as the last step in initialization', async () => {
+      // Spy on methods to verify call order
+      const validateConfigSpy = jest.spyOn(cursorRunner, 'validateConfig');
+      const verifyMcpConfigSpy = jest.spyOn(cursorRunner, 'verifyMcpConfig').mockResolvedValue();
+      const validateGmailConfigSpy = jest
+        .spyOn(cursorRunner, 'validateGmailConfig')
+        .mockImplementation(() => {});
+      const githubAuthSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockResolvedValue(undefined);
+      mockCursorCLI.validate.mockClear();
+      mockServer.start.mockClear();
+
+      await cursorRunner.initialize();
+
+      // Verify server.start was called
+      expect(mockServer.start).toHaveBeenCalled();
+
+      // Verify server.start was called after all other initialization steps
+      const validateConfigCallOrder = (validateConfigSpy as jest.Mock).mock.invocationCallOrder[0];
+      const verifyMcpConfigCallOrder = (verifyMcpConfigSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+      const validateGmailConfigCallOrder = (validateGmailConfigSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+      const githubAuthCallOrder = (githubAuthSpy as jest.Mock).mock.invocationCallOrder[0];
+      const cursorCLIValidateCallOrder = (mockCursorCLI.validate as jest.Mock).mock
+        .invocationCallOrder[0];
+      const serverStartCallOrder = (mockServer.start as jest.Mock).mock.invocationCallOrder[0];
+
+      // Server.start should be called last
+      expect(serverStartCallOrder).toBeGreaterThan(validateConfigCallOrder);
+      expect(serverStartCallOrder).toBeGreaterThan(verifyMcpConfigCallOrder);
+      expect(serverStartCallOrder).toBeGreaterThan(validateGmailConfigCallOrder);
+      expect(serverStartCallOrder).toBeGreaterThan(githubAuthCallOrder);
+      expect(serverStartCallOrder).toBeGreaterThan(cursorCLIValidateCallOrder);
+
+      validateConfigSpy.mockRestore();
+      verifyMcpConfigSpy.mockRestore();
+      validateGmailConfigSpy.mockRestore();
+      githubAuthSpy.mockRestore();
+    });
+
+    it('should log startup messages during initialization', async () => {
+      // Spy on logger methods
+      const loggerInfoSpy = jest.spyOn(cursorRunner.logger, 'info');
+      const loggerWarnSpy = jest.spyOn(cursorRunner.logger, 'warn');
+
+      await cursorRunner.initialize();
+
+      // Verify startup messages were logged
+      const infoCalls = loggerInfoSpy.mock.calls.map((call) => {
+        const firstArg = call[0];
+        return typeof firstArg === 'string' ? firstArg : '';
+      });
+
+      // Verify key startup messages
+      expect(infoCalls).toContain('Initializing cursor-runner...');
+      expect(infoCalls.some((msg) => msg.includes('cursor-runner initialized successfully'))).toBe(
+        true
+      );
+
+      loggerInfoSpy.mockRestore();
+      loggerWarnSpy.mockRestore();
+    });
+
     it('should initialize successfully', async () => {
       // Mock GitHubAuthService.initialize to prevent actual git operations
       const githubAuthSpy = jest
