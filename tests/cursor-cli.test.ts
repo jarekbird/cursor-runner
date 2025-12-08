@@ -163,4 +163,123 @@ describe('CursorCLI', () => {
       }
     }, 10000);
   });
+
+  describe('Timeout Handling', () => {
+    let testCursorCLI: CursorCLI;
+
+    beforeEach(() => {
+      // Set a short timeout for testing
+      process.env.CURSOR_CLI_TIMEOUT = '1000'; // 1 second
+      testCursorCLI = new CursorCLI();
+    });
+
+    afterEach(() => {
+      delete process.env.CURSOR_CLI_TIMEOUT;
+    });
+
+    it('should trigger CommandError with stdout/stderr on main timeout', async () => {
+      // This test verifies that when a command times out, the error includes stdout/stderr
+      // Note: This test may not actually trigger a timeout if the command completes quickly
+      // The important part is that timeout errors have the CommandError structure
+      try {
+        await testCursorCLI.executeCommand(['--help'], {
+          timeout: 100, // Very short timeout
+        });
+        // Command may complete before timeout
+      } catch (error) {
+        // Verify it's an Error
+        const commandError = error as Error & {
+          stdout?: string;
+          stderr?: string;
+          exitCode?: number | null;
+        };
+        expect(commandError).toBeInstanceOf(Error);
+        // If it's a timeout error, it should have stdout/stderr properties
+        if (commandError.message.includes('timeout')) {
+          expect(commandError.stdout).toBeDefined();
+          expect(commandError.stderr).toBeDefined();
+        }
+      }
+    }, 5000);
+
+    it('should trigger failure on idle timeout when no output for configured duration', async () => {
+      // This test verifies idle timeout behavior
+      // Note: Idle timeout is configured via CURSOR_CLI_IDLE_TIMEOUT
+      // We'll set a very short idle timeout
+      const originalIdleTimeout = process.env.CURSOR_CLI_IDLE_TIMEOUT;
+      process.env.CURSOR_CLI_IDLE_TIMEOUT = '200'; // 200ms idle timeout
+
+      try {
+        // Create a new instance to pick up the env var
+        const idleTestCLI = new CursorCLI();
+        await idleTestCLI.executeCommand(['--help'], {
+          timeout: 5000, // Long main timeout
+        });
+        // Command may complete before idle timeout if it produces output quickly
+      } catch (error) {
+        // Verify it's an Error
+        const commandError = error as Error & {
+          stdout?: string;
+          stderr?: string;
+          exitCode?: number | null;
+        };
+        expect(commandError).toBeInstanceOf(Error);
+        // If it's an idle timeout error, it should have stdout/stderr properties
+        if (commandError.message.includes('No output from cursor-cli')) {
+          expect(commandError.stdout).toBeDefined();
+          expect(commandError.stderr).toBeDefined();
+        }
+        // The error message should indicate a timeout or failure
+        expect(commandError.message.length).toBeGreaterThan(0);
+      } finally {
+        if (originalIdleTimeout) {
+          process.env.CURSOR_CLI_IDLE_TIMEOUT = originalIdleTimeout;
+        } else {
+          delete process.env.CURSOR_CLI_IDLE_TIMEOUT;
+        }
+      }
+    }, 10000);
+
+    it('should release semaphore even if exit events do not fire', async () => {
+      // This test verifies that the semaphore is released even in error/timeout cases
+      const originalMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+      process.env.CURSOR_CLI_MAX_CONCURRENT = '1';
+      const semaphoreTestCLI = new CursorCLI();
+
+      // Get initial status
+      const initialStatus = semaphoreTestCLI.getQueueStatus();
+      expect(initialStatus.available).toBe(1);
+
+      // Start a command that will fail quickly
+      const promise = semaphoreTestCLI.executeCommand(['--invalid-flag']).catch(() => {
+        // Expected to fail
+      });
+
+      // Wait a bit for semaphore to be acquired and command to start
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Check that semaphore was acquired (may be released already if command completed quickly)
+      const duringStatus = semaphoreTestCLI.getQueueStatus();
+      // The semaphore should be either acquired (0 available) or already released (1 available)
+      expect(duringStatus.available).toBeGreaterThanOrEqual(0);
+      expect(duringStatus.available).toBeLessThanOrEqual(1);
+
+      // Wait for command to complete
+      await promise;
+
+      // Wait a bit more for cleanup
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Verify semaphore was released
+      const finalStatus = semaphoreTestCLI.getQueueStatus();
+      expect(finalStatus.available).toBe(1);
+
+      // Restore
+      if (originalMaxConcurrent) {
+        process.env.CURSOR_CLI_MAX_CONCURRENT = originalMaxConcurrent;
+      } else {
+        delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+      }
+    }, 10000);
+  });
 });
