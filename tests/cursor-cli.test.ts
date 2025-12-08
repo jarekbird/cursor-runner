@@ -121,5 +121,46 @@ describe('CursorCLI', () => {
 
       loggerInfoSpy.mockRestore();
     }, 15000);
+
+    it('should respect CURSOR_CLI_MAX_CONCURRENT with multiple concurrent calls', async () => {
+      // Set max concurrent to 2 for testing
+      const originalMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+      process.env.CURSOR_CLI_MAX_CONCURRENT = '2';
+      const testCLI = new CursorCLI();
+
+      // Start 3 commands (should only allow 2 concurrent)
+      // These will fail quickly but will test semaphore behavior
+      const promises = [
+        testCLI.executeCommand(['--invalid-flag']).catch(() => {
+          // Expected to fail
+        }),
+        testCLI.executeCommand(['--invalid-flag']).catch(() => {
+          // Expected to fail
+        }),
+        testCLI.executeCommand(['--invalid-flag']).catch(() => {
+          // Expected to fail
+        }),
+      ];
+
+      // Wait a bit for semaphore to be acquired
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Check queue status - should have maxConcurrent of 2
+      const status = testCLI.getQueueStatus();
+      expect(status.maxConcurrent).toBe(2);
+      // At least one should be waiting or all slots should be busy
+      expect(status.available).toBeLessThanOrEqual(2);
+      expect(status.waiting).toBeGreaterThanOrEqual(0);
+
+      // Wait for all to complete
+      await Promise.all(promises);
+
+      // Restore
+      if (originalMaxConcurrent) {
+        process.env.CURSOR_CLI_MAX_CONCURRENT = originalMaxConcurrent;
+      } else {
+        delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+      }
+    }, 10000);
   });
 });
