@@ -618,6 +618,61 @@ describe('CursorRunner', () => {
     });
   });
 
+  describe('initialize - critical failure handling', () => {
+    it('should fail when GitHubAuthService.initialize() throws', async () => {
+      // Mock GitHubAuthService.initialize to throw an error
+      const githubAuthSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockRejectedValue(new Error('GitHub authentication failed'));
+
+      // Clear previous calls
+      mockServer.start.mockClear();
+
+      // Call initialize - it should fail
+      await expect(cursorRunner.initialize()).rejects.toThrow('GitHub authentication failed');
+
+      // Verify server.start() was NOT called (startup didn't complete)
+      expect(mockServer.start).not.toHaveBeenCalled();
+
+      githubAuthSpy.mockRestore();
+    });
+
+    it('should fail when cursorCLI.validate() throws', async () => {
+      // Mock cursorCLI.validate to throw an error
+      mockCursorCLI.validate.mockRejectedValue(new Error('Cursor CLI validation failed'));
+
+      // Clear previous calls
+      mockServer.start.mockClear();
+
+      // Call initialize - it should fail
+      await expect(cursorRunner.initialize()).rejects.toThrow('Cursor CLI validation failed');
+
+      // Verify server.start() was NOT called (startup didn't complete)
+      expect(mockServer.start).not.toHaveBeenCalled();
+    });
+
+    it('should not start server when critical failure occurs', async () => {
+      // Test that server.start() is never called when a critical failure happens
+      // This ensures no partial startup state
+
+      // Mock GitHubAuthService to throw
+      const githubAuthSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockRejectedValue(new Error('Critical failure'));
+
+      // Clear previous calls
+      mockServer.start.mockClear();
+
+      // Attempt to initialize - should fail
+      await expect(cursorRunner.initialize()).rejects.toThrow();
+
+      // Verify server was never started
+      expect(mockServer.start).not.toHaveBeenCalled();
+
+      githubAuthSpy.mockRestore();
+    });
+  });
+
   describe('initialize - migration failure handling', () => {
     it('should continue startup when migrations throw', async () => {
       // To test migration failure, we need to mock runMigrations to throw.
