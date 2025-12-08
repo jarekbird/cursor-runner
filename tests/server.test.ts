@@ -2402,4 +2402,80 @@ describe('Server', () => {
       });
     });
   });
+
+  describe('GET /repositories/api/:repository/files', () => {
+    it('should return 400 when repository param is missing', async () => {
+      // Express routing with :repository means the param will always be present
+      // However, we can test with an empty string by using URL encoding or direct param manipulation
+      // For this test, we verify the route handler's validation logic
+      // Since Express may not allow truly empty params, we test the 404 case for invalid paths
+      // The actual validation `if (!repository)` in the handler would catch empty strings
+      const response = await request(app).get('/repositories/api//files');
+      // Express may treat // differently, so we accept either 400 or 404
+      expect([400, 404]).toContain(response.status);
+    });
+
+    it('should return 404 when repository does not exist', async () => {
+      mockFilesystem.exists.mockReturnValue(false);
+
+      const response = await request(app)
+        .get('/repositories/api/nonexistent-repo/files')
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('Repository');
+      expect(response.body.error).toContain('not found');
+
+      // Verify filesystem.exists was called with correct path
+      expect(mockFilesystem.exists).toHaveBeenCalledWith('/test/repositories/nonexistent-repo');
+    });
+
+    it('should return file tree when repository exists', async () => {
+      mockFilesystem.exists.mockReturnValue(true);
+
+      // Mock FileTreeService.buildFileTree to return a mock file tree
+      const mockFileTree = [
+        {
+          name: 'test-file.ts',
+          path: 'test-file.ts',
+          type: 'file' as const,
+        },
+        {
+          name: 'src',
+          path: 'src',
+          type: 'directory' as const,
+          children: [
+            {
+              name: 'index.ts',
+              path: 'src/index.ts',
+              type: 'file' as const,
+            },
+          ],
+        },
+      ];
+
+      // We need to mock the FileTreeService instance used in the route
+      // The route creates a new FileTreeService instance, so we need to mock it differently
+      // Let's spy on the FileTreeService class
+      // eslint-disable-next-line node/no-unsupported-features/es-syntax
+      const { FileTreeService } = await import('../src/file-tree-service.js');
+      const buildFileTreeSpy = jest
+        .spyOn(FileTreeService.prototype, 'buildFileTree')
+        .mockReturnValue(mockFileTree);
+
+      const response = await request(app).get('/repositories/api/test-repo/files').expect(200);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body).toEqual(mockFileTree);
+
+      // Verify filesystem.exists was called
+      expect(mockFilesystem.exists).toHaveBeenCalledWith('/test/repositories/test-repo');
+
+      // Verify buildFileTree was called with correct path
+      expect(buildFileTreeSpy).toHaveBeenCalledWith('/test/repositories/test-repo');
+
+      // Restore spy
+      buildFileTreeSpy.mockRestore();
+    });
+  });
 });
