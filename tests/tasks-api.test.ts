@@ -439,3 +439,176 @@ describe('POST /api/tasks', () => {
     expect(response.body.status).toBe(4);
   });
 });
+
+describe('PUT /api/tasks/:id', () => {
+  let tempDb: TempSqliteDb;
+  let originalSharedDbPath: string | undefined;
+  let server: Server;
+  let cleanup: () => Promise<void>;
+  let taskId: number;
+
+  beforeAll(async () => {
+    // Save original SHARED_DB_PATH
+    originalSharedDbPath = process.env.SHARED_DB_PATH;
+
+    // Create temp SQLite DB and run migrations
+    tempDb = await createTempSqliteDb();
+
+    // Set SHARED_DB_PATH to temp DB path
+    process.env.SHARED_DB_PATH = tempDb.dbPath;
+
+    // Dynamically import createMockServer after setting env var
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const { createMockServer } = await import('./test-utils.js');
+
+    // Create mock server
+    const mockServerResult = createMockServer();
+    server = mockServerResult.server;
+    cleanup = mockServerResult.cleanup;
+
+    // Start server
+    await server.start();
+  });
+
+  afterAll(async () => {
+    // Stop server
+    if (cleanup) {
+      await cleanup();
+    }
+
+    // Restore original SHARED_DB_PATH
+    if (originalSharedDbPath !== undefined) {
+      process.env.SHARED_DB_PATH = originalSharedDbPath;
+    } else {
+      delete process.env.SHARED_DB_PATH;
+    }
+
+    // Clean up temp DB
+    if (tempDb) {
+      await tempDb.cleanup();
+    }
+  });
+
+  /**
+   * Helper to create a test task
+   */
+  beforeEach(async () => {
+    // Clear all tasks from the database
+    const db = tempDb.db;
+    db.prepare('DELETE FROM tasks').run();
+
+    // Create a test task
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        'INSERT INTO tasks (prompt, "order", status, createdat, updatedat) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Original Task', 0, 0, now, now);
+    taskId = result.lastInsertRowid as number;
+  });
+
+  it('should return 400 when id is not numeric', async () => {
+    const response = await request(server.app)
+      .put('/api/tasks/abc')
+      .send({ prompt: 'Updated Task' })
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Invalid task ID');
+  });
+
+  it('should return 400 when prompt is empty string', async () => {
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ prompt: '' })
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Prompt must be a non-empty string');
+  });
+
+  it('should return 400 when status is not a number', async () => {
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ status: 'invalid' })
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Status must be a number');
+  });
+
+  it('should return 400 when order is not a number', async () => {
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ order: 'invalid' })
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Order must be a number');
+  });
+
+  it('should return 404 when task not found', async () => {
+    const response = await request(server.app)
+      .put('/api/tasks/99999')
+      .send({ prompt: 'Updated Task' })
+      .expect(404);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('Task not found');
+  });
+
+  it('should update only provided fields', async () => {
+    // First, get the original task
+    const originalResponse = await request(server.app).get(`/api/tasks/${taskId}`).expect(200);
+    const originalTask = originalResponse.body;
+    const originalCreatedAt = originalTask.createdat;
+
+    // Wait a bit to ensure updatedat will be different
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Update only the prompt
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ prompt: 'Updated Prompt' })
+      .expect(200);
+
+    expect(response.body.prompt).toBe('Updated Prompt');
+    expect(response.body.status).toBe(originalTask.status); // Unchanged
+    expect(response.body.order).toBe(originalTask.order); // Unchanged
+    expect(response.body.createdat).toBe(originalCreatedAt); // Unchanged
+    expect(response.body.updatedat).not.toBe(originalTask.updatedat); // Changed
+  });
+
+  it('should update updatedat timestamp', async () => {
+    // Get the original task
+    const originalResponse = await request(server.app).get(`/api/tasks/${taskId}`).expect(200);
+    const originalUpdatedAt = originalResponse.body.updatedat;
+
+    // Wait a bit to ensure updatedat will be different
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Update the task
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ prompt: 'Updated Task' })
+      .expect(200);
+
+    expect(response.body.updatedat).not.toBe(originalUpdatedAt);
+    expect(new Date(response.body.updatedat).getTime()).toBeGreaterThan(
+      new Date(originalUpdatedAt).getTime()
+    );
+  });
+
+  it('should return updated task with status_label', async () => {
+    const response = await request(server.app)
+      .put(`/api/tasks/${taskId}`)
+      .send({ prompt: 'Updated Task', status: 1 })
+      .expect(200);
+
+    expect(response.body.id).toBe(taskId);
+    expect(response.body.prompt).toBe('Updated Task');
+    expect(response.body.status).toBe(1);
+    expect(response.body.status_label).toBe('complete');
+    expect(response.body.updatedat).toBeDefined();
+  });
+});
