@@ -2168,6 +2168,124 @@ describe('Server', () => {
         getConversationByIdSpy.mockRestore();
       });
     });
+
+    describe('POST /api/:conversationId/message', () => {
+      it('should return 400 when message is missing', async () => {
+        const response = await request(app).post('/api/test-conversation-id/message').send({});
+
+        // Verify error response
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Message is required');
+      });
+
+      it('should return 400 when message is empty string', async () => {
+        const response = await request(app)
+          .post('/api/test-conversation-id/message')
+          .send({ message: '' });
+
+        // Verify error response
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toContain('Message is required');
+      });
+
+      it('should return 404 when conversation not found', async () => {
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(null);
+
+        const response = await request(app)
+          .post('/api/non-existent-conversation-id/message')
+          .send({ message: 'test message' });
+
+        // Verify error response
+        expect(response.status).toBe(404);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Conversation not found');
+
+        // Verify getConversationById was called
+        expect(getConversationByIdSpy).toHaveBeenCalledTimes(1);
+        expect(getConversationByIdSpy).toHaveBeenCalledWith('non-existent-conversation-id');
+
+        getConversationByIdSpy.mockRestore();
+      });
+
+      it('should return 200 immediately', async () => {
+        const mockConversation = {
+          conversationId: 'test-conversation-id',
+          messages: [],
+          createdAt: '2024-01-01T00:00:00Z',
+          lastAccessedAt: '2024-01-01T00:00:00Z',
+        };
+
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(mockConversation);
+
+        const iterateSpy = jest.spyOn(server.cursorExecution, 'iterate').mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => resolve({ status: 200, body: {} } as any), 1000);
+            })
+        );
+
+        const startTime = Date.now();
+        const response = await request(app)
+          .post('/api/test-conversation-id/message')
+          .send({ message: 'test message' });
+        const responseTime = Date.now() - startTime;
+
+        // Verify immediate response (should be much faster than 1 second)
+        expect(responseTime).toBeLessThan(500);
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Message accepted, processing asynchronously');
+        expect(response.body.requestId).toBeDefined();
+        expect(response.body.conversationId).toBe('test-conversation-id');
+
+        getConversationByIdSpy.mockRestore();
+        iterateSpy.mockRestore();
+      });
+
+      it('should trigger background cursorExecution.iterate() with queueType=api', async () => {
+        const mockConversation = {
+          conversationId: 'test-conversation-id',
+          messages: [],
+          createdAt: '2024-01-01T00:00:00Z',
+          lastAccessedAt: '2024-01-01T00:00:00Z',
+        };
+
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(mockConversation);
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue({ status: 200, body: {} } as any);
+
+        const response = await request(app)
+          .post('/api/test-conversation-id/message')
+          .send({ message: 'test message', repository: 'test-repo' });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify iterate() was called in background with queueType='api'
+        expect(iterateSpy).toHaveBeenCalledTimes(1);
+        const iterateCall = iterateSpy.mock.calls[0][0];
+        expect(iterateCall.queueType).toBe('api');
+        expect(iterateCall.prompt).toBe('test message');
+        expect(iterateCall.repository).toBe('test-repo');
+        expect(iterateCall.conversationId).toBe('test-conversation-id');
+
+        getConversationByIdSpy.mockRestore();
+        iterateSpy.mockRestore();
+      });
+    });
   });
 
   describe('Telegram Webhook Endpoints', () => {
