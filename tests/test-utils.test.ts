@@ -8,6 +8,9 @@ import {
   createTempSqliteDb,
   createMockCursorCLI,
   createMockServer,
+  assertErrorResponse,
+  assertSuccessResponse,
+  type SupertestErrorResponse,
 } from './test-utils.js';
 import { existsSync } from 'fs';
 
@@ -749,5 +752,307 @@ describe('createMockServer', () => {
     expect(server.cursorCLI).toBe(mockCLI);
     const result = await server.cursorCLI.executeCommand(['test']);
     expect(result.stdout).toBe('test output');
+  });
+});
+
+describe('assertErrorResponse', () => {
+  it('should validate correct error response with status code', () => {
+    const response: SupertestErrorResponse = {
+      status: 404,
+      body: {
+        success: false,
+        error: 'Not found',
+        timestamp: new Date().toISOString(),
+        path: '/test',
+      },
+    };
+
+    expect(() => assertErrorResponse(response, { expectedStatus: 404 })).not.toThrow();
+  });
+
+  it('should validate error response without specifying status', () => {
+    const response: SupertestErrorResponse = {
+      status: 500,
+      body: {
+        success: false,
+        error: 'Internal server error',
+      },
+    };
+
+    expect(() => assertErrorResponse(response)).not.toThrow();
+  });
+
+  it('should fail on wrong status code', () => {
+    const response: SupertestErrorResponse = {
+      status: 404,
+      body: {
+        success: false,
+        error: 'Not found',
+      },
+    };
+
+    expect(() => assertErrorResponse(response, { expectedStatus: 400 })).toThrow(
+      'Expected status code 400, but got 404'
+    );
+  });
+
+  it('should fail on success status code', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertErrorResponse(response)).toThrow('Expected error status code (4xx or 5xx)');
+  });
+
+  it('should fail on missing error field', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertErrorResponse(response)).toThrow(
+      "Expected error response to have 'error' or 'message' field"
+    );
+  });
+
+  it('should validate error message when provided as string', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        error: 'Validation failed: missing required field',
+      },
+    };
+
+    expect(() =>
+      assertErrorResponse(response, { expectedMessage: 'Validation failed' })
+    ).not.toThrow();
+  });
+
+  it('should fail when error message does not match', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        error: 'Invalid input',
+      },
+    };
+
+    expect(() => assertErrorResponse(response, { expectedMessage: 'Validation failed' })).toThrow(
+      'Expected error message to contain "Validation failed"'
+    );
+  });
+
+  it('should validate error message when provided as regex', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        error: 'Validation failed: missing required field',
+      },
+    };
+
+    expect(() =>
+      assertErrorResponse(response, { expectedMessage: /Validation failed/ })
+    ).not.toThrow();
+  });
+
+  it('should fail when error message does not match regex', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        error: 'Invalid input',
+      },
+    };
+
+    expect(() => assertErrorResponse(response, { expectedMessage: /Validation failed/ })).toThrow(
+      'Expected error message to match'
+    );
+  });
+
+  it('should accept message field instead of error field', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        success: false,
+        message: 'Error occurred',
+      },
+    };
+
+    expect(() => assertErrorResponse(response)).not.toThrow();
+  });
+
+  it('should skip success field verification when verifySuccess is false', () => {
+    const response: SupertestErrorResponse = {
+      status: 400,
+      body: {
+        error: 'Error occurred',
+      },
+    };
+
+    expect(() => assertErrorResponse(response, { verifySuccess: false })).not.toThrow();
+  });
+
+  it('should fail on invalid response body type', () => {
+    const response = {
+      status: 400,
+      body: 'invalid',
+    } as unknown as SupertestErrorResponse;
+
+    expect(() => assertErrorResponse(response)).toThrow(
+      'Expected error response body to be an object'
+    );
+  });
+});
+
+describe('assertSuccessResponse', () => {
+  it('should validate correct success response with default status 200', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response)).not.toThrow();
+  });
+
+  it('should validate success response with custom status code', () => {
+    const response: SupertestErrorResponse = {
+      status: 201,
+      body: {
+        success: true,
+        id: '123',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response, { expectedStatus: 201 })).not.toThrow();
+  });
+
+  it('should fail on wrong status code', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response, { expectedStatus: 201 })).toThrow(
+      'Expected status code 201, but got 200'
+    );
+  });
+
+  it('should validate expected fields exist', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        conversationId: 'conv-123',
+        message: 'Created',
+      },
+    };
+
+    expect(() =>
+      assertSuccessResponse(response, {
+        expectedFields: {
+          conversationId: 'conv-123',
+          message: 'Created',
+        },
+      })
+    ).not.toThrow();
+  });
+
+  it('should fail when expected field is missing', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: 'test',
+      },
+    };
+
+    expect(() =>
+      assertSuccessResponse(response, {
+        expectedFields: {
+          conversationId: 'conv-123',
+        },
+      })
+    ).toThrow('Expected field "conversationId" in response body');
+  });
+
+  it('should fail when expected field value does not match', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        conversationId: 'conv-456',
+      },
+    };
+
+    expect(() =>
+      assertSuccessResponse(response, {
+        expectedFields: {
+          conversationId: 'conv-123',
+        },
+      })
+    ).toThrow('Expected field "conversationId" to be');
+  });
+
+  it('should validate success field when verifySuccess is true', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: true,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response, { verifySuccess: true })).not.toThrow();
+  });
+
+  it('should fail when success field is false and verifySuccess is true', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        success: false,
+        data: 'test',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response, { verifySuccess: true })).toThrow(
+      'Expected success response to have success: true'
+    );
+  });
+
+  it('should fail on invalid response body type', () => {
+    const response = {
+      status: 200,
+      body: 'invalid',
+    } as unknown as SupertestErrorResponse;
+
+    expect(() => assertSuccessResponse(response)).toThrow(
+      'Expected success response body to be an object'
+    );
+  });
+
+  it('should handle response without success field when verifySuccess is false', () => {
+    const response: SupertestErrorResponse = {
+      status: 200,
+      body: {
+        data: 'test',
+      },
+    };
+
+    expect(() => assertSuccessResponse(response, { verifySuccess: false })).not.toThrow();
   });
 });

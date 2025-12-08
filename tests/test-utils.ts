@@ -746,3 +746,217 @@ export function createMockServer(options: MockServerOptions = {}): MockServerRes
     cleanup,
   };
 }
+
+/**
+ * Supertest response type for error assertions
+ */
+export interface SupertestErrorResponse {
+  status: number;
+  body: {
+    success?: boolean;
+    error?: string;
+    message?: string;
+    timestamp?: string;
+    path?: string;
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Options for asserting error responses
+ */
+export interface AssertErrorResponseOptions {
+  /**
+   * Expected status code (default: any 4xx or 5xx)
+   */
+  expectedStatus?: number;
+  /**
+   * Expected error message (optional, can be partial match)
+   */
+  expectedMessage?: string | RegExp;
+  /**
+   * Whether to verify success field is false
+   */
+  verifySuccess?: boolean;
+}
+
+/**
+ * Asserts that a response is an error response with the expected structure.
+ * Validates status code, error field, and optionally the error message.
+ *
+ * @param response - Supertest response object
+ * @param options - Assertion options
+ * @throws If assertion fails
+ *
+ * @example
+ * ```typescript
+ * const response = await request(server.app).get('/invalid');
+ * assertErrorResponse(response, { expectedStatus: 404, expectedMessage: 'Not found' });
+ * ```
+ */
+export function assertErrorResponse(
+  response: SupertestErrorResponse,
+  options: AssertErrorResponseOptions = {}
+): void {
+  const { expectedStatus, expectedMessage, verifySuccess = true } = options;
+
+  // Verify status code
+  if (expectedStatus !== undefined) {
+    if (response.status !== expectedStatus) {
+      throw new Error(
+        `Expected status code ${expectedStatus}, but got ${response.status}. Response body: ${JSON.stringify(response.body)}`
+      );
+    }
+  } else {
+    // Default: should be 4xx or 5xx
+    if (response.status < 400) {
+      throw new Error(
+        `Expected error status code (4xx or 5xx), but got ${response.status}. Response body: ${JSON.stringify(response.body)}`
+      );
+    }
+  }
+
+  // Verify response body is an object
+  if (!response.body || typeof response.body !== 'object') {
+    throw new Error(
+      `Expected error response body to be an object, but got ${typeof response.body}. Response: ${JSON.stringify(response)}`
+    );
+  }
+
+  // Verify success field is false (if verifySuccess is true)
+  if (verifySuccess && response.body.success !== false) {
+    throw new Error(
+      `Expected error response to have success: false, but got success: ${response.body.success}. Response body: ${JSON.stringify(response.body)}`
+    );
+  }
+
+  // Verify error or message field exists
+  if (!response.body.error && !response.body.message) {
+    throw new Error(
+      `Expected error response to have 'error' or 'message' field, but got: ${JSON.stringify(response.body)}`
+    );
+  }
+
+  // Verify error message if provided
+  if (expectedMessage !== undefined) {
+    const actualMessage = response.body.error || response.body.message || '';
+    if (typeof expectedMessage === 'string') {
+      if (!actualMessage.includes(expectedMessage)) {
+        throw new Error(
+          `Expected error message to contain "${expectedMessage}", but got "${actualMessage}". Response body: ${JSON.stringify(response.body)}`
+        );
+      }
+    } else if (expectedMessage instanceof RegExp) {
+      if (!expectedMessage.test(actualMessage)) {
+        throw new Error(
+          `Expected error message to match ${expectedMessage}, but got "${actualMessage}". Response body: ${JSON.stringify(response.body)}`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Options for asserting success responses
+ */
+export interface AssertSuccessResponseOptions {
+  /**
+   * Expected status code (default: 200)
+   */
+  expectedStatus?: number;
+  /**
+   * Expected fields that should exist in the response
+   */
+  expectedFields?: Record<string, unknown>;
+  /**
+   * Whether to verify success field is true
+   */
+  verifySuccess?: boolean;
+}
+
+/**
+ * Asserts that a response is a success response with the expected structure.
+ * Validates status code, response structure, and optionally specific fields.
+ *
+ * @param response - Supertest response object
+ * @param options - Assertion options
+ * @throws If assertion fails
+ *
+ * @example
+ * ```typescript
+ * const response = await request(server.app).get('/health');
+ * assertSuccessResponse(response, { expectedStatus: 200 });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * const response = await request(server.app).post('/api/new');
+ * assertSuccessResponse(response, {
+ *   expectedStatus: 201,
+ *   expectedFields: { conversationId: expect.any(String) }
+ * });
+ * ```
+ */
+export function assertSuccessResponse(
+  response: SupertestErrorResponse,
+  options: AssertSuccessResponseOptions = {}
+): void {
+  const { expectedStatus = 200, expectedFields, verifySuccess = false } = options;
+
+  // Verify status code
+  if (response.status !== expectedStatus) {
+    throw new Error(
+      `Expected status code ${expectedStatus}, but got ${response.status}. Response body: ${JSON.stringify(response.body)}`
+    );
+  }
+
+  // Verify response body is an object
+  if (!response.body || typeof response.body !== 'object') {
+    throw new Error(
+      `Expected success response body to be an object, but got ${typeof response.body}. Response: ${JSON.stringify(response)}`
+    );
+  }
+
+  // Verify success field is true (if verifySuccess is true)
+  if (verifySuccess && response.body.success !== true) {
+    throw new Error(
+      `Expected success response to have success: true, but got success: ${response.body.success}. Response body: ${JSON.stringify(response.body)}`
+    );
+  }
+
+  // Verify expected fields if provided
+  if (expectedFields) {
+    for (const [key, expectedValue] of Object.entries(expectedFields)) {
+      if (!(key in response.body)) {
+        throw new Error(
+          `Expected field "${key}" in response body, but it was missing. Response body: ${JSON.stringify(response.body)}`
+        );
+      }
+
+      const actualValue = response.body[key];
+
+      // If expectedValue is a Jest matcher (like expect.any()), we can't validate it here
+      // The test should use expect() directly for complex matchers
+      // For simple values, do a deep equality check
+      if (
+        expectedValue !== null &&
+        typeof expectedValue === 'object' &&
+        !Array.isArray(expectedValue) &&
+        !(expectedValue instanceof RegExp)
+      ) {
+        // Skip validation for complex objects - let Jest handle it
+        continue;
+      }
+
+      // For primitive values, do equality check
+      if (
+        actualValue !== expectedValue &&
+        !(expectedValue instanceof RegExp && expectedValue.test(String(actualValue)))
+      ) {
+        throw new Error(
+          `Expected field "${key}" to be ${JSON.stringify(expectedValue)}, but got ${JSON.stringify(actualValue)}. Response body: ${JSON.stringify(response.body)}`
+        );
+      }
+    }
+  }
+}
