@@ -612,3 +612,96 @@ describe('PUT /api/tasks/:id', () => {
     expect(response.body.updatedat).toBeDefined();
   });
 });
+
+describe('DELETE /api/tasks/:id', () => {
+  let tempDb: TempSqliteDb;
+  let originalSharedDbPath: string | undefined;
+  let server: Server;
+  let cleanup: () => Promise<void>;
+  let taskId: number;
+
+  beforeAll(async () => {
+    // Save original SHARED_DB_PATH
+    originalSharedDbPath = process.env.SHARED_DB_PATH;
+
+    // Create temp SQLite DB and run migrations
+    tempDb = await createTempSqliteDb();
+
+    // Set SHARED_DB_PATH to temp DB path
+    process.env.SHARED_DB_PATH = tempDb.dbPath;
+
+    // Dynamically import createMockServer after setting env var
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const { createMockServer } = await import('./test-utils.js');
+
+    // Create mock server
+    const mockServerResult = createMockServer();
+    server = mockServerResult.server;
+    cleanup = mockServerResult.cleanup;
+
+    // Start server
+    await server.start();
+  });
+
+  afterAll(async () => {
+    // Stop server
+    if (cleanup) {
+      await cleanup();
+    }
+
+    // Restore original SHARED_DB_PATH
+    if (originalSharedDbPath !== undefined) {
+      process.env.SHARED_DB_PATH = originalSharedDbPath;
+    } else {
+      delete process.env.SHARED_DB_PATH;
+    }
+
+    // Clean up temp DB
+    if (tempDb) {
+      await tempDb.cleanup();
+    }
+  });
+
+  /**
+   * Helper to create a test task
+   */
+  beforeEach(async () => {
+    // Clear all tasks from the database
+    const db = tempDb.db;
+    db.prepare('DELETE FROM tasks').run();
+
+    // Create a test task
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        'INSERT INTO tasks (prompt, "order", status, createdat, updatedat) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Task to Delete', 0, 0, now, now);
+    taskId = result.lastInsertRowid as number;
+  });
+
+  it('should return 400 when id is not numeric', async () => {
+    const response = await request(server.app).delete('/api/tasks/abc').expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Invalid task ID');
+  });
+
+  it('should return 404 when task not found', async () => {
+    const response = await request(server.app).delete('/api/tasks/99999').expect(404);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('Task not found');
+  });
+
+  it('should return 200 with success message when deleted', async () => {
+    const response = await request(server.app).delete(`/api/tasks/${taskId}`).expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe('Task deleted');
+
+    // Verify task is actually deleted
+    const getResponse = await request(server.app).get(`/api/tasks/${taskId}`).expect(404);
+    expect(getResponse.body.error).toBe('Task not found');
+  });
+});
