@@ -347,6 +347,44 @@ describe('CursorRunner', () => {
   });
 
   describe('initialize', () => {
+    it('should call validateConfig() during initialization', async () => {
+      // Spy on validateConfig to verify it's called
+      const validateConfigSpy = jest.spyOn(cursorRunner, 'validateConfig');
+
+      await cursorRunner.initialize();
+
+      // Verify validateConfig was called
+      expect(validateConfigSpy).toHaveBeenCalled();
+      expect(validateConfigSpy).toHaveBeenCalledTimes(1);
+
+      validateConfigSpy.mockRestore();
+    });
+
+    it('should call validateConfig() before other initialization steps', async () => {
+      // Spy on validateConfig and other methods to verify call order
+      const validateConfigSpy = jest.spyOn(cursorRunner, 'validateConfig');
+      const cursorCLIValidateSpy = jest.spyOn(cursorRunner.cursorCLI, 'validate');
+      const serverStartSpy = jest.spyOn(cursorRunner.server, 'start');
+
+      await cursorRunner.initialize();
+
+      // Verify validateConfig was called
+      expect(validateConfigSpy).toHaveBeenCalled();
+      // Verify call order by checking that validateConfig was called first
+      // Get the call order by checking mock.invocationCallOrder
+      const validateConfigCallOrder = (validateConfigSpy as jest.Mock).mock.invocationCallOrder[0];
+      const cursorCLIValidateCallOrder = (cursorCLIValidateSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+      const serverStartCallOrder = (serverStartSpy as jest.Mock).mock.invocationCallOrder[0];
+
+      // Verify validateConfig was called before cursorCLI.validate
+      expect(validateConfigCallOrder).toBeLessThan(cursorCLIValidateCallOrder);
+      // Verify validateConfig was called before server.start
+      expect(validateConfigCallOrder).toBeLessThan(serverStartCallOrder);
+
+      validateConfigSpy.mockRestore();
+    });
+
     it('should initialize successfully', async () => {
       await cursorRunner.initialize();
 
