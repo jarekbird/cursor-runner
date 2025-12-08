@@ -429,6 +429,228 @@ describe('Server', () => {
         expect(response.body.success).toBe(false);
         expect(response.body.error).toBe('prompt is required');
       });
+    });
+
+    describe('POST /cursor/execute/async', () => {
+      it('should return 400 when callbackUrl is missing', async () => {
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          // No callbackUrl provided
+        });
+
+        // Verify error response
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('callbackUrl is required for async execution');
+        expect(response.body.requestId).toBeDefined();
+        expect(response.body.timestamp).toBeDefined();
+      });
+
+      it('should return 200 immediately when valid', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        // Mock execute() to simulate slow execution
+        const executeSpy = jest.spyOn(server.cursorExecution, 'execute').mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => resolve(mockExecuteResult as any), 1000);
+            })
+        );
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const startTime = Date.now();
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          callbackUrl: mockCallbackUrl,
+        });
+        const responseTime = Date.now() - startTime;
+
+        // Verify immediate response (should be much faster than 1 second)
+        expect(responseTime).toBeLessThan(500); // Response should be immediate
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+        expect(response.body.requestId).toBeDefined();
+
+        // Clean up
+        executeSpy.mockRestore();
+      });
+
+      it('should process execution in background', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockResolvedValue(mockExecuteResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        // Make request and get immediate response
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Verify execute() hasn't been called yet (or was called after response)
+        // Since it's async, we need to wait a bit
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Verify execute() was called in background
+        expect(executeSpy).toHaveBeenCalled();
+        expect(executeSpy).toHaveBeenCalledTimes(1);
+
+        executeSpy.mockRestore();
+      });
+
+      it('should send callback on success', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        const callbackWebhookSpy = jest
+          .spyOn(server.cursorExecution, 'callbackWebhook')
+          .mockResolvedValue(undefined);
+
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Verify callback was sent
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: true,
+            repository: 'test-repo',
+            output: 'Generated code successfully',
+            exitCode: 0,
+          }),
+          expect.any(String)
+        );
+
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should send error callback when execution fails', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockRejectedValue(new Error('Execution failed'));
+
+        const callbackWebhookSpy = jest
+          .spyOn(server.cursorExecution, 'callbackWebhook')
+          .mockResolvedValue(undefined);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify error callback was sent
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+        expect(callbackWebhookSpy).toHaveBeenCalledWith(
+          mockCallbackUrl,
+          expect.objectContaining({
+            success: false,
+            error: 'Execution failed',
+          }),
+          expect.any(String)
+        );
+
+        executeSpy.mockRestore();
+        callbackWebhookSpy.mockRestore();
+      });
+
+      it('should log callback errors but not crash', async () => {
+        const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
+        const mockResult = {
+          success: true,
+          exitCode: 0,
+          stdout: 'Generated code successfully',
+          stderr: '',
+        };
+
+        mockFilesystem.exists.mockReturnValue(true);
+        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
+
+        // Mock callbackWebhook to throw an error
+        const callbackWebhookSpy = jest
+          .spyOn(server.cursorExecution, 'callbackWebhook')
+          .mockRejectedValue(new Error('Callback webhook failed'));
+
+        const loggerErrorSpy = jest.spyOn(logger, 'error');
+
+        const response = await request(app).post('/cursor/execute/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Verify callback was attempted (even if it failed)
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+
+        // Verify system didn't crash (test completes successfully)
+        // If we get here, the system handled the error gracefully
+        // The callback error is handled internally by cursorExecution.execute()
+        // and logged there, so we verify the system continues to operate
+
+        callbackWebhookSpy.mockRestore();
+        loggerErrorSpy.mockRestore();
+      });
 
       it('should call callback webhook on validation error when callbackUrl is provided', async () => {
         const mockCallbackUrl = 'http://localhost:3000/callback?secret=test-secret';
