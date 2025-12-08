@@ -198,16 +198,27 @@ describe('Server', () => {
 
   describe('Cursor Execution Endpoints', () => {
     describe('POST /cursor/execute', () => {
-      it('should execute cursor command successfully', async () => {
-        const mockResult = {
-          success: true,
-          exitCode: 0,
-          stdout: 'Generated code successfully',
-          stderr: '',
+      it('should execute cursor command successfully (happy path)', async () => {
+        // Mock cursorExecution.execute() to return success result
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            repository: 'test-repo',
+            branchName: 'main',
+            output: 'Generated code successfully',
+            exitCode: 0,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
         };
 
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockResolvedValue(mockExecuteResult as any);
+
         mockFilesystem.exists.mockReturnValue(true);
-        mockCursorCLI.executeCommand.mockResolvedValue(mockResult);
 
         const response = await request(app).post('/cursor/execute').send({
           repository: 'test-repo',
@@ -215,12 +226,141 @@ describe('Server', () => {
           prompt: 'Create user service',
         });
 
+        // Verify response matches execute() return value
         expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.repository).toBe('test-repo');
-        expect(response.body.branchName).toBe('main');
-        expect(response.body.output).toBe('Generated code successfully');
-        expect(mockCursorCLI.executeCommand).toHaveBeenCalled();
+        expect(response.body).toEqual(mockExecuteResult.body);
+
+        // Verify execute() was called
+        expect(executeSpy).toHaveBeenCalled();
+        expect(executeSpy).toHaveBeenCalledTimes(1);
+
+        executeSpy.mockRestore();
+      });
+
+      it('should use queueType from request body', async () => {
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockResolvedValue(mockExecuteResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/execute').send({
+          prompt: 'test prompt',
+          queueType: 'api',
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify execute() was called with queueType from body
+        expect(executeSpy).toHaveBeenCalled();
+        const executeCall = executeSpy.mock.calls[0][0];
+        expect(executeCall.queueType).toBe('api');
+
+        executeSpy.mockRestore();
+      });
+
+      it('should detect queueType from requestId when telegram- prefix is present', async () => {
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'telegram-12345',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockResolvedValue(mockExecuteResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/execute').send({
+          prompt: 'test prompt',
+          id: 'telegram-12345',
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify execute() was called with queueType: 'telegram' (detected from requestId)
+        expect(executeSpy).toHaveBeenCalled();
+        const executeCall = executeSpy.mock.calls[0][0];
+        expect(executeCall.queueType).toBe('telegram');
+        expect(executeCall.requestId).toBe('telegram-12345');
+
+        executeSpy.mockRestore();
+      });
+
+      it('should generate requestId when not provided', async () => {
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'generated-id',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockResolvedValue(mockExecuteResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/execute').send({
+          prompt: 'test prompt',
+          // No id/requestId provided
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify execute() was called with a generated requestId
+        expect(executeSpy).toHaveBeenCalled();
+        const executeCall = executeSpy.mock.calls[0][0];
+        expect(executeCall.requestId).toBeDefined();
+        expect(typeof executeCall.requestId).toBe('string');
+        // Verify requestId format: req-{timestamp}-{random}
+        expect(executeCall.requestId).toMatch(/^req-\d+-[a-z0-9]+$/);
+
+        executeSpy.mockRestore();
+      });
+
+      it('should return 500 when execute() throws', async () => {
+        const executeSpy = jest
+          .spyOn(server.cursorExecution, 'execute')
+          .mockRejectedValue(new Error('Execution failed'));
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/execute').send({
+          prompt: 'test prompt',
+        });
+
+        // Verify error response
+        expect(response.status).toBe(500);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Execution failed');
+        expect(response.body.requestId).toBeDefined();
+
+        // Verify execute() was called
+        expect(executeSpy).toHaveBeenCalled();
+
+        executeSpy.mockRestore();
       });
 
       it('should return 400 if prompt is missing', async () => {
