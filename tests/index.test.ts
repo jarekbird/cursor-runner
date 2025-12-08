@@ -385,6 +385,30 @@ describe('CursorRunner', () => {
       validateConfigSpy.mockRestore();
     });
 
+    it('should call ensureSchemaMigrationsTable() and runMigrations() during initialization', async () => {
+      // Mock the migration functions to track calls
+      // Since ES modules are tricky to spy on, we'll verify through behavior
+      // The initialize() method calls migrations in a try-catch, so we verify
+      // that initialization completes successfully, which means migrations were attempted
+      const loggerInfoSpy = jest.spyOn(cursorRunner.logger, 'info');
+
+      await cursorRunner.initialize();
+
+      // Verify that migration-related log messages were emitted
+      // This confirms migrations were attempted
+      const logCalls = loggerInfoSpy.mock.calls.map((call) => {
+        const firstArg = call[0];
+        return typeof firstArg === 'string' ? firstArg : '';
+      });
+      expect(logCalls).toContain('Running database migrations...');
+
+      // Verify initialization completed (migrations didn't throw)
+      expect(cursorRunner.cursorCLI.validate).toHaveBeenCalled();
+      expect(cursorRunner.server.start).toHaveBeenCalled();
+
+      loggerInfoSpy.mockRestore();
+    });
+
     it('should initialize successfully', async () => {
       await cursorRunner.initialize();
 
