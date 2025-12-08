@@ -223,3 +223,97 @@ describe('GET /api/tasks', () => {
     expect(response.body.error).toContain('Invalid status parameter');
   });
 });
+
+describe('GET /api/tasks/:id', () => {
+  let tempDb: TempSqliteDb;
+  let originalSharedDbPath: string | undefined;
+  let server: Server;
+  let cleanup: () => Promise<void>;
+  let taskId: number;
+
+  beforeAll(async () => {
+    // Save original SHARED_DB_PATH
+    originalSharedDbPath = process.env.SHARED_DB_PATH;
+
+    // Create temp SQLite DB and run migrations
+    tempDb = await createTempSqliteDb();
+
+    // Set SHARED_DB_PATH to temp DB path
+    process.env.SHARED_DB_PATH = tempDb.dbPath;
+
+    // Dynamically import createMockServer after setting env var
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const { createMockServer } = await import('./test-utils.js');
+
+    // Create mock server
+    const mockServerResult = createMockServer();
+    server = mockServerResult.server;
+    cleanup = mockServerResult.cleanup;
+
+    // Start server
+    await server.start();
+  });
+
+  afterAll(async () => {
+    // Stop server
+    if (cleanup) {
+      await cleanup();
+    }
+
+    // Restore original SHARED_DB_PATH
+    if (originalSharedDbPath !== undefined) {
+      process.env.SHARED_DB_PATH = originalSharedDbPath;
+    } else {
+      delete process.env.SHARED_DB_PATH;
+    }
+
+    // Clean up temp DB
+    if (tempDb) {
+      await tempDb.cleanup();
+    }
+  });
+
+  /**
+   * Helper to create a test task
+   */
+  beforeEach(async () => {
+    // Clear all tasks from the database
+    const db = tempDb.db;
+    db.prepare('DELETE FROM tasks').run();
+
+    // Create a test task
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        'INSERT INTO tasks (prompt, "order", status, createdat, updatedat) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Test Task', 0, 0, now, now);
+    taskId = result.lastInsertRowid as number;
+  });
+
+  it('should return 400 when id is not numeric', async () => {
+    const response = await request(server.app).get('/api/tasks/abc').expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Invalid task ID');
+  });
+
+  it('should return 404 when task not found', async () => {
+    const response = await request(server.app).get('/api/tasks/99999').expect(404);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe('Task not found');
+  });
+
+  it('should return task with status_label when found', async () => {
+    const response = await request(server.app).get(`/api/tasks/${taskId}`).expect(200);
+
+    expect(response.body.id).toBe(taskId);
+    expect(response.body.prompt).toBe('Test Task');
+    expect(response.body.status).toBe(0);
+    expect(response.body.status_label).toBe('ready');
+    expect(response.body.order).toBe(0);
+    expect(response.body.createdat).toBeDefined();
+    expect(response.body.updatedat).toBeDefined();
+  });
+});
