@@ -1,6 +1,7 @@
 // eslint-disable-next-line node/no-unpublished-import
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { AgentConversationService } from '../src/agent-conversation-service.js';
+import type Redis from 'ioredis';
 
 describe('AgentConversationService', () => {
   let service: AgentConversationService;
@@ -304,6 +305,150 @@ describe('AgentConversationService', () => {
       // agent-2 has later lastAccessedAt, so should be first in descending order
       expect(result.conversations[0].conversationId).toBe('agent-2');
       expect(result.conversations[1].conversationId).toBe('agent-1');
+    });
+
+    it('should support sorting by createdAt descending', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
+      const conversations = [
+        {
+          conversationId: 'agent-1',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [],
+          createdAt: '2025-01-03T00:00:00Z',
+          lastAccessedAt: '2025-01-03T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-3',
+          messages: [],
+          createdAt: '2025-01-02T00:00:00Z',
+          lastAccessedAt: '2025-01-02T00:00:00Z',
+        },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find((c) => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({ sortBy: 'createdAt', sortOrder: 'desc' });
+
+      expect(result.conversations).toHaveLength(3);
+      expect(result.conversations[0].conversationId).toBe('agent-2'); // Newest
+      expect(result.conversations[1].conversationId).toBe('agent-3');
+      expect(result.conversations[2].conversationId).toBe('agent-1'); // Oldest
+    });
+
+    it('should support sorting by lastAccessedAt ascending', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
+      const conversations = [
+        {
+          conversationId: 'agent-1',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-03T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-3',
+          messages: [],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-02T00:00:00Z',
+        },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find((c) => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({
+        sortBy: 'lastAccessedAt',
+        sortOrder: 'asc',
+      });
+
+      expect(result.conversations).toHaveLength(3);
+      expect(result.conversations[0].conversationId).toBe('agent-2'); // Oldest lastAccessedAt
+      expect(result.conversations[1].conversationId).toBe('agent-3');
+      expect(result.conversations[2].conversationId).toBe('agent-1'); // Newest lastAccessedAt
+    });
+
+    it('should support sorting by messageCount ascending', async () => {
+      const conversationIds = ['agent-1', 'agent-2', 'agent-3'];
+      const conversations = [
+        {
+          conversationId: 'agent-1',
+          messages: [
+            { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'user', content: 'msg3', timestamp: '2025-01-01T00:00:00Z' },
+          ],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-2',
+          messages: [{ role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' }],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+        {
+          conversationId: 'agent-3',
+          messages: [
+            { role: 'user', content: 'msg1', timestamp: '2025-01-01T00:00:00Z' },
+            { role: 'assistant', content: 'msg2', timestamp: '2025-01-01T00:00:00Z' },
+          ],
+          createdAt: '2025-01-01T00:00:00Z',
+          lastAccessedAt: '2025-01-01T00:00:00Z',
+        },
+      ];
+
+      mockRedis.smembers.mockResolvedValue(conversationIds);
+      mockRedis.get.mockImplementation((key: string) => {
+        const id = key.replace('agent:conversation:', '');
+        const conv = conversations.find((c) => c.conversationId === id);
+        return Promise.resolve(conv ? JSON.stringify(conv) : null);
+      });
+      mockRedis.setex.mockResolvedValue('OK');
+
+      const result = await service.listConversations({ sortBy: 'messageCount', sortOrder: 'asc' });
+
+      expect(result.conversations).toHaveLength(3);
+      expect(result.conversations[0].conversationId).toBe('agent-2'); // 1 message
+      expect(result.conversations[1].conversationId).toBe('agent-3'); // 2 messages
+      expect(result.conversations[2].conversationId).toBe('agent-1'); // 3 messages
+    });
+
+    it('should return empty when Redis unavailable', async () => {
+      // Create service with unavailable Redis
+      const unavailableRedis = {
+        get: (jest.fn() as any).mockRejectedValue(new Error('Redis unavailable')),
+        smembers: (jest.fn() as any).mockRejectedValue(new Error('Redis unavailable')),
+      } as unknown as Redis;
+
+      const serviceWithoutRedis = new AgentConversationService(unavailableRedis);
+      // Manually set redisAvailable to false to simulate unavailable state
+      (serviceWithoutRedis as any).redisAvailable = false;
+
+      const result = await serviceWithoutRedis.listConversations();
+
+      expect(result.conversations).toEqual([]);
+      expect(result.total).toBe(0);
     });
   });
 
