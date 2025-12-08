@@ -161,6 +161,68 @@ describe('Agent Conversation API Integration', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.conversationId).toBeDefined();
     });
+
+    it('should create conversation with optional agentId', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      const response = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'optional-agent-id' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.conversationId).toBeDefined();
+
+      // Verify agentId was saved by getting the conversation
+      const getResponse = await request(app)
+        .get(`/api/agent/${response.body.conversationId}`)
+        .expect(200);
+
+      expect(getResponse.body.agentId).toBe('optional-agent-id');
+    });
+
+    it('should save metadata when provided', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      const metadata = {
+        source: 'test',
+        userId: 'user-123',
+        customField: 'custom-value',
+      };
+
+      const response = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'test-agent', metadata })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.conversationId).toBeDefined();
+
+      // Verify metadata was saved by getting the conversation
+      const getResponse = await request(app)
+        .get(`/api/agent/${response.body.conversationId}`)
+        .expect(200);
+
+      expect(getResponse.body.metadata).toBeDefined();
+      expect(getResponse.body.metadata.source).toBe('test');
+      expect(getResponse.body.metadata.userId).toBe('user-123');
+      expect(getResponse.body.metadata.customField).toBe('custom-value');
+    });
+
+    it('should return conversation ID', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      const response = await request(app).post('/api/agent/new').send({}).expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body).toHaveProperty('conversationId');
+      expect(response.body.conversationId).toBeTruthy();
+      expect(typeof response.body.conversationId).toBe('string');
+      expect(response.body.conversationId).toMatch(/^agent-\d+-[a-z0-9]+$/);
+    });
   });
 
   describe('GET /api/agent/list', () => {
