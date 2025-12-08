@@ -2,7 +2,7 @@
  * Tests for test utility helpers
  */
 import { describe, it, expect, afterEach } from '@jest/globals';
-import { createMockRedisClient, createTempSqliteDb } from './test-utils.js';
+import { createMockRedisClient, createTempSqliteDb, createMockCursorCLI } from './test-utils.js';
 import { existsSync } from 'fs';
 
 describe('createMockRedisClient', () => {
@@ -489,5 +489,157 @@ describeSqlite('createTempSqliteDb', () => {
 
     const journalMode = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
     expect(journalMode.journal_mode.toLowerCase()).toBe('wal');
+  });
+});
+
+describe('createMockCursorCLI', () => {
+  it('should return a mock with all required methods', () => {
+    const mockCLI = createMockCursorCLI();
+
+    expect(mockCLI).toBeDefined();
+    expect(typeof mockCLI.executeCommand).toBe('function');
+    expect(typeof mockCLI.validate).toBe('function');
+    expect(typeof mockCLI.getQueueStatus).toBe('function');
+    expect(typeof mockCLI.extractFilesFromOutput).toBe('function');
+    expect(mockCLI.calls).toBeDefined();
+    expect(typeof mockCLI.setExecuteResult).toBe('function');
+    expect(typeof mockCLI.setValidateResult).toBe('function');
+    expect(typeof mockCLI.setQueueStatus).toBe('function');
+    expect(typeof mockCLI.reset).toBe('function');
+  });
+
+  it('should return default execute result', async () => {
+    const mockCLI = createMockCursorCLI();
+    const result = await mockCLI.executeCommand(['--version']);
+
+    expect(result.success).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+  });
+
+  it('should return custom execute result', async () => {
+    const customResult = {
+      success: true,
+      exitCode: 0,
+      stdout: 'cursor-cli version 1.0.0',
+      stderr: '',
+    };
+    const mockCLI = createMockCursorCLI({ defaultExecuteResult: customResult });
+    const result = await mockCLI.executeCommand(['--version']);
+
+    expect(result).toEqual(customResult);
+  });
+
+  it('should track executeCommand calls', async () => {
+    const mockCLI = createMockCursorCLI();
+    await mockCLI.executeCommand(['--version']);
+    await mockCLI.executeCommand(['--help'], { cwd: '/test' });
+
+    expect(mockCLI.calls.executeCommand).toHaveLength(2);
+    expect(mockCLI.calls.executeCommand[0]).toEqual({ args: ['--version'], options: undefined });
+    expect(mockCLI.calls.executeCommand[1]).toEqual({
+      args: ['--help'],
+      options: { cwd: '/test' },
+    });
+  });
+
+  it('should return default validate result', async () => {
+    const mockCLI = createMockCursorCLI();
+    const result = await mockCLI.validate();
+
+    expect(result).toBe(true);
+    expect(mockCLI.calls.validate).toBe(1);
+  });
+
+  it('should return custom validate result', async () => {
+    const mockCLI = createMockCursorCLI({ defaultValidateResult: false });
+    const result = await mockCLI.validate();
+
+    expect(result).toBe(false);
+  });
+
+  it('should simulate validation failure', async () => {
+    const mockCLI = createMockCursorCLI({ simulateValidationFailure: true });
+
+    await expect(mockCLI.validate()).rejects.toThrow('cursor-cli not available');
+  });
+
+  it('should return default queue status', () => {
+    const mockCLI = createMockCursorCLI();
+    const status = mockCLI.getQueueStatus();
+
+    expect(status).toEqual({ available: 5, waiting: 0, maxConcurrent: 5 });
+    expect(mockCLI.calls.getQueueStatus).toBe(1);
+  });
+
+  it('should return custom queue status', () => {
+    const customStatus = { available: 2, waiting: 3, maxConcurrent: 5 };
+    const mockCLI = createMockCursorCLI({ defaultQueueStatus: customStatus });
+    const status = mockCLI.getQueueStatus();
+
+    expect(status).toEqual(customStatus);
+  });
+
+  it('should extract files from output', () => {
+    const mockCLI = createMockCursorCLI();
+    const output = `
+      file: src/test.ts
+      Created: tests/test.test.ts
+      modified: README.md
+    `;
+    const files = mockCLI.extractFilesFromOutput(output);
+
+    expect(files.length).toBeGreaterThan(0);
+    expect(mockCLI.calls.extractFilesFromOutput).toHaveLength(1);
+    expect(mockCLI.calls.extractFilesFromOutput[0].output).toBe(output);
+  });
+
+  it('should allow setting execute result dynamically', async () => {
+    const mockCLI = createMockCursorCLI();
+    const newResult = {
+      success: false,
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Error occurred',
+    };
+
+    mockCLI.setExecuteResult(newResult);
+    const result = await mockCLI.executeCommand(['test']);
+
+    expect(result).toEqual(newResult);
+  });
+
+  it('should allow setting validate result dynamically', async () => {
+    const mockCLI = createMockCursorCLI();
+    mockCLI.setValidateResult(false);
+    const result = await mockCLI.validate();
+
+    expect(result).toBe(false);
+  });
+
+  it('should allow setting queue status dynamically', () => {
+    const mockCLI = createMockCursorCLI();
+    const newStatus = { available: 1, waiting: 4, maxConcurrent: 5 };
+
+    mockCLI.setQueueStatus(newStatus);
+    const status = mockCLI.getQueueStatus();
+
+    expect(status).toEqual(newStatus);
+  });
+
+  it('should reset call tracking and state', async () => {
+    const mockCLI = createMockCursorCLI();
+    await mockCLI.executeCommand(['test']);
+    await mockCLI.validate();
+    mockCLI.getQueueStatus();
+    mockCLI.extractFilesFromOutput('test');
+
+    mockCLI.reset();
+
+    expect(mockCLI.calls.executeCommand).toHaveLength(0);
+    expect(mockCLI.calls.validate).toBe(0);
+    expect(mockCLI.calls.getQueueStatus).toBe(0);
+    expect(mockCLI.calls.extractFilesFromOutput).toHaveLength(0);
   });
 });

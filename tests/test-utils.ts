@@ -324,6 +324,66 @@ export interface TempSqliteDb {
 }
 
 /**
+ * Command result from CursorCLI
+ */
+export interface CommandResult {
+  success: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Options for creating a mock CursorCLI
+ */
+export interface MockCursorCLIOptions {
+  /**
+   * Default return value for executeCommand()
+   */
+  defaultExecuteResult?: CommandResult;
+  /**
+   * Default return value for validate()
+   */
+  defaultValidateResult?: boolean;
+  /**
+   * Default return value for getQueueStatus()
+   */
+  defaultQueueStatus?: { available: number; waiting: number; maxConcurrent: number };
+  /**
+   * Simulate validation failure
+   */
+  simulateValidationFailure?: boolean;
+}
+
+/**
+ * Call tracking for mock CursorCLI
+ */
+export interface CursorCLICallTracker {
+  executeCommand: Array<{ args: string[]; options?: { cwd?: string; timeout?: number } }>;
+  validate: number;
+  getQueueStatus: number;
+  extractFilesFromOutput: Array<{ output: string }>;
+}
+
+/**
+ * Mock CursorCLI instance with call tracking
+ */
+export interface MockCursorCLI {
+  executeCommand: (
+    args: string[],
+    options?: { cwd?: string; timeout?: number }
+  ) => Promise<CommandResult>;
+  validate: () => Promise<boolean>;
+  getQueueStatus: () => { available: number; waiting: number; maxConcurrent: number };
+  extractFilesFromOutput: (output: string) => readonly string[];
+  calls: CursorCLICallTracker;
+  setExecuteResult: (result: CommandResult) => void;
+  setValidateResult: (result: boolean) => void;
+  setQueueStatus: (status: { available: number; waiting: number; maxConcurrent: number }) => void;
+  reset: () => void;
+}
+
+/**
  * Creates a temporary SQLite database, runs all migrations, and returns the database instance with a cleanup function.
  * This helper is used in integration tests that need database access without affecting the main database.
  *
@@ -489,4 +549,105 @@ export async function createTempSqliteDb(): Promise<TempSqliteDb> {
     dbPath,
     cleanup,
   };
+}
+
+/**
+ * Creates a fully mocked CursorCLI instance with all methods stubbed.
+ * This helper is used in tests that need to verify CursorCLI interactions without actually spawning cursor-cli processes.
+ *
+ * @param options - Configuration options for the mock
+ * @returns A mock CursorCLI instance with call tracking and configurable behavior
+ *
+ * @example
+ * ```typescript
+ * const mockCLI = createMockCursorCLI({
+ *   defaultExecuteResult: { success: true, exitCode: 0, stdout: 'output', stderr: '' }
+ * });
+ * const result = await mockCLI.executeCommand(['--version']);
+ * expect(mockCLI.calls.executeCommand).toHaveLength(1);
+ * ```
+ */
+export function createMockCursorCLI(options: MockCursorCLIOptions = {}): MockCursorCLI {
+  const {
+    defaultExecuteResult = { success: true, exitCode: 0, stdout: '', stderr: '' },
+    defaultValidateResult = true,
+    defaultQueueStatus = { available: 5, waiting: 0, maxConcurrent: 5 },
+    simulateValidationFailure = false,
+  } = options;
+
+  // Mutable state for configuration
+  let executeResult = defaultExecuteResult;
+  let validateResult = defaultValidateResult;
+  let queueStatus = defaultQueueStatus;
+
+  // Call tracking
+  const calls: CursorCLICallTracker = {
+    executeCommand: [],
+    validate: 0,
+    getQueueStatus: 0,
+    extractFilesFromOutput: [],
+  };
+
+  const mockCLI: MockCursorCLI = {
+    async executeCommand(
+      args: string[],
+      options?: { cwd?: string; timeout?: number }
+    ): Promise<CommandResult> {
+      calls.executeCommand.push({ args, options });
+      return Promise.resolve(executeResult);
+    },
+
+    async validate(): Promise<boolean> {
+      calls.validate++;
+      if (simulateValidationFailure) {
+        throw new Error('cursor-cli not available: validation failed');
+      }
+      return Promise.resolve(validateResult);
+    },
+
+    getQueueStatus(): { available: number; waiting: number; maxConcurrent: number } {
+      calls.getQueueStatus++;
+      return { ...queueStatus };
+    },
+
+    extractFilesFromOutput(output: string): readonly string[] {
+      calls.extractFilesFromOutput.push({ output });
+      // Simple implementation: extract file paths from output
+      // Matches patterns like "file: path/to/file.ts" or "Created: path/to/file.ts"
+      const filePattern =
+        /(?:file|created|modified|updated):\s*([^\s]+\.(ts|js|tsx|jsx|json|md|txt|py|java|go|rs|cpp|h|hpp|yaml|yml))/gi;
+      const matches: string[] = [];
+      let match;
+      while ((match = filePattern.exec(output)) !== null) {
+        matches.push(match[1]);
+      }
+      return matches;
+    },
+
+    calls,
+
+    setExecuteResult(result: CommandResult): void {
+      executeResult = result;
+    },
+
+    setValidateResult(result: boolean): void {
+      validateResult = result;
+    },
+
+    setQueueStatus(status: { available: number; waiting: number; maxConcurrent: number }): void {
+      queueStatus = status;
+    },
+
+    reset(): void {
+      executeResult = defaultExecuteResult;
+      validateResult = defaultValidateResult;
+      queueStatus = defaultQueueStatus;
+      calls.executeCommand = [];
+      calls.validate = 0;
+      calls.getQueueStatus = 0;
+      calls.extractFilesFromOutput = [];
+    },
+  };
+
+  return mockCLI;
 }
