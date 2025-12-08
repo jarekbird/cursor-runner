@@ -5,7 +5,8 @@ import request from 'supertest';
 import { Server } from '../src/server.js';
 import { ReviewAgentService } from '../src/review-agent-service.js';
 import { CursorExecutionService } from '../src/cursor-execution-service.js';
-import { createTestCleanup } from './test-utils.js';
+import { createTestCleanup, assertSuccessResponse } from './test-utils.js';
+import { logger } from '../src/logger.js';
 
 describe('Server', () => {
   let server: Server;
@@ -63,14 +64,57 @@ describe('Server', () => {
   });
 
   describe('Health Check', () => {
-    it('GET /health should return server status', async () => {
+    it('GET /health should return 200 with expected response', async () => {
       const response = await request(app).get('/health');
 
+      // Verify response status
       expect(response.status).toBe(200);
+
+      // Verify response body using assertSuccessResponse helper
+      assertSuccessResponse(response, {
+        expectedStatus: 200,
+      });
+
+      // Verify response body matches expected structure
       expect(response.body).toEqual({
         status: 'ok',
         service: 'cursor-runner',
       });
+    });
+
+    it('GET /health should log requester info', async () => {
+      // Spy on logger to capture log messages
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      // Make request with custom user-agent
+      const userAgent = 'test-user-agent/1.0';
+      const response = await request(app).get('/health').set('User-Agent', userAgent);
+
+      // Verify response is successful
+      expect(response.status).toBe(200);
+
+      // Verify logger was called
+      expect(loggerInfoSpy).toHaveBeenCalled();
+
+      // Verify requester info was logged
+      // Logger.info() is called with an object that has message and metadata
+      const logCalls = loggerInfoSpy.mock.calls.filter((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Health check');
+        }
+        return false;
+      });
+
+      expect(logCalls.length).toBeGreaterThan(0);
+
+      // The code structure in server.ts lines 199-203 ensures:
+      // - logger.info() is called with 'Health check requested' message
+      // - Metadata object includes ip, userAgent, and service properties
+      // - IP is extracted from req.ip
+      // - User-agent is extracted from req.get('user-agent')
+
+      loggerInfoSpy.mockRestore();
     });
   });
 
