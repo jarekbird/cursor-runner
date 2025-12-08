@@ -2478,4 +2478,167 @@ describe('Server', () => {
       buildFileTreeSpy.mockRestore();
     });
   });
+
+  describe('POST /telegram/webhook', () => {
+    it('should handle message update type', async () => {
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      const update = {
+        message: {
+          message_id: 1,
+          from: { id: 123, first_name: 'Test' },
+          chat: { id: 456, type: 'private' },
+          text: 'Hello',
+        },
+      };
+
+      const response = await request(app).post('/telegram/webhook').send(update).expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.received).toBe(true);
+      expect(response.body.updateType).toBe('message');
+      expect(response.body.timestamp).toBeDefined();
+
+      // Verify update type was logged
+      const updateTypeLog = loggerInfoSpy.mock.calls.find((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Telegram update type');
+        }
+        if (typeof firstArg === 'object' && firstArg !== null) {
+          return 'updateType' in firstArg;
+        }
+        return false;
+      });
+      expect(updateTypeLog).toBeDefined();
+
+      loggerInfoSpy.mockRestore();
+    });
+
+    it('should handle edited_message update type', async () => {
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      const update = {
+        edited_message: {
+          message_id: 1,
+          from: { id: 123, first_name: 'Test' },
+          chat: { id: 456, type: 'private' },
+          text: 'Edited message',
+        },
+      };
+
+      const response = await request(app).post('/telegram/webhook').send(update).expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.updateType).toBe('edited_message');
+
+      // Verify update type was logged
+      const updateTypeLog = loggerInfoSpy.mock.calls.find((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Telegram update type');
+        }
+        if (typeof firstArg === 'object' && firstArg !== null) {
+          return 'updateType' in firstArg;
+        }
+        return false;
+      });
+      expect(updateTypeLog).toBeDefined();
+
+      loggerInfoSpy.mockRestore();
+    });
+
+    it('should handle callback_query update type', async () => {
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      const update = {
+        callback_query: {
+          id: '123',
+          from: { id: 456, first_name: 'Test' },
+          message: {
+            message_id: 1,
+            chat: { id: 789, type: 'private' },
+          },
+          data: 'callback_data',
+        },
+      };
+
+      const response = await request(app).post('/telegram/webhook').send(update).expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.updateType).toBe('callback_query');
+
+      // Verify update type was logged
+      const updateTypeLog = loggerInfoSpy.mock.calls.find((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Telegram update type');
+        }
+        if (typeof firstArg === 'object' && firstArg !== null) {
+          return 'updateType' in firstArg;
+        }
+        return false;
+      });
+      expect(updateTypeLog).toBeDefined();
+
+      loggerInfoSpy.mockRestore();
+    });
+
+    it('should handle unknown update type', async () => {
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      const update = {
+        poll: {
+          id: 'poll123',
+          question: 'Test poll',
+        },
+      };
+
+      const response = await request(app).post('/telegram/webhook').send(update).expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.updateType).toBe('unknown');
+
+      // Verify update type was logged
+      const updateTypeLog = loggerInfoSpy.mock.calls.find((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Telegram update type');
+        }
+        if (typeof firstArg === 'object' && firstArg !== null) {
+          return 'updateType' in firstArg;
+        }
+        return false;
+      });
+      expect(updateTypeLog).toBeDefined();
+
+      loggerInfoSpy.mockRestore();
+    });
+
+    it('should return 200 even when internal error occurs (with success: false)', async () => {
+      // Create an update that will cause an error in processing
+      // We'll spy on logger.info and make it throw an error
+      const loggerInfoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
+        throw new Error('Processing error');
+      });
+
+      const update = {
+        message: {
+          message_id: 1,
+          text: 'Test',
+        },
+      };
+
+      const response = await request(app).post('/telegram/webhook').send(update).expect(200);
+
+      // Should still return 200 to avoid retries
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBeDefined();
+      expect(response.body.timestamp).toBeDefined();
+
+      // Restore original logger
+      loggerInfoSpy.mockRestore();
+    });
+  });
 });
