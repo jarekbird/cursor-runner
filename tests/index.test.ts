@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { CursorRunner } from '../src/index.js';
 import type { FormattedRequest } from '../src/request-formatter.js';
+import { GitHubAuthService } from '../src/github-auth.js';
 
 describe('CursorRunner', () => {
   let cursorRunner: CursorRunner;
@@ -409,11 +410,61 @@ describe('CursorRunner', () => {
       loggerInfoSpy.mockRestore();
     });
 
+    it('should call GitHubAuthService.initialize() during initialization', async () => {
+      // Spy on GitHubAuthService.initialize
+      const githubAuthInitializeSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockResolvedValue(undefined);
+
+      await cursorRunner.initialize();
+
+      // Verify GitHubAuthService.initialize was called
+      expect(githubAuthInitializeSpy).toHaveBeenCalled();
+      expect(githubAuthInitializeSpy).toHaveBeenCalledTimes(1);
+
+      githubAuthInitializeSpy.mockRestore();
+    });
+
+    it('should call GitHubAuthService.initialize() after migrations', async () => {
+      // Spy on methods to verify call order
+      const loggerInfoSpy = jest.spyOn(cursorRunner.logger, 'info');
+      const githubAuthInitializeSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockResolvedValue(undefined);
+      const cursorCLIValidateSpy = jest.spyOn(cursorRunner.cursorCLI, 'validate');
+
+      await cursorRunner.initialize();
+
+      // Verify GitHubAuthService.initialize was called
+      expect(githubAuthInitializeSpy).toHaveBeenCalled();
+
+      // Verify call order: GitHubAuthService.initialize should be called
+      // after migrations and before cursorCLI.validate
+      const githubAuthCallOrder = (githubAuthInitializeSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+      const cursorCLIValidateCallOrder = (cursorCLIValidateSpy as jest.Mock).mock
+        .invocationCallOrder[0];
+
+      // GitHubAuthService.initialize should be called before cursorCLI.validate
+      expect(githubAuthCallOrder).toBeLessThan(cursorCLIValidateCallOrder);
+
+      loggerInfoSpy.mockRestore();
+      githubAuthInitializeSpy.mockRestore();
+      cursorCLIValidateSpy.mockRestore();
+    });
+
     it('should initialize successfully', async () => {
+      // Mock GitHubAuthService.initialize to prevent actual git operations
+      const githubAuthSpy = jest
+        .spyOn(GitHubAuthService.prototype, 'initialize')
+        .mockResolvedValue(undefined);
+
       await cursorRunner.initialize();
 
       expect(cursorRunner.cursorCLI.validate).toHaveBeenCalled();
       expect(cursorRunner.server.start).toHaveBeenCalled();
+
+      githubAuthSpy.mockRestore();
     });
 
     it('should throw error when cursor CLI validation fails', async () => {
