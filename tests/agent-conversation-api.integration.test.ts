@@ -484,6 +484,120 @@ describe('Agent Conversation API Integration', () => {
         })
         .expect(500);
     });
+
+    it('should return 400 when role is missing', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create a conversation
+      const createResponse = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'test-agent' });
+
+      const conversationId = createResponse.body.conversationId;
+
+      // Try to add message without role
+      const response = await request(app)
+        .post(`/api/agent/${conversationId}/message`)
+        .send({
+          content: 'Hello, agent!',
+        })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('should return 400 when content is missing', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create a conversation
+      const createResponse = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'test-agent' });
+
+      const conversationId = createResponse.body.conversationId;
+
+      // Try to add message without content
+      const response = await request(app)
+        .post(`/api/agent/${conversationId}/message`)
+        .send({
+          role: 'user',
+        })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBeDefined();
+    });
+
+    it('should add message and return success', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create a conversation
+      const createResponse = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'test-agent' });
+
+      const conversationId = createResponse.body.conversationId;
+
+      // Add a message
+      const messageResponse = await request(app)
+        .post(`/api/agent/${conversationId}/message`)
+        .send({
+          role: 'user',
+          content: 'Test message content',
+        })
+        .expect(200);
+
+      expect(messageResponse.body.success).toBe(true);
+      expect(messageResponse.body.conversationId).toBe(conversationId);
+
+      // Verify message was added by getting the conversation
+      const getResponse = await request(app).get(`/api/agent/${conversationId}`).expect(200);
+
+      expect(getResponse.body.messages).toBeDefined();
+      expect(Array.isArray(getResponse.body.messages)).toBe(true);
+      expect(getResponse.body.messages.length).toBeGreaterThan(0);
+      const lastMessage = getResponse.body.messages[getResponse.body.messages.length - 1];
+      expect(lastMessage.role).toBe('user');
+      expect(lastMessage.content).toBe('Test message content');
+    });
+
+    it('should set default source=text when not provided', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create a conversation
+      const createResponse = await request(app)
+        .post('/api/agent/new')
+        .send({ agentId: 'test-agent' });
+
+      const conversationId = createResponse.body.conversationId;
+
+      // Add a message without source
+      const messageResponse = await request(app)
+        .post(`/api/agent/${conversationId}/message`)
+        .send({
+          role: 'user',
+          content: 'Test message without source',
+        })
+        .expect(200);
+
+      expect(messageResponse.body.success).toBe(true);
+
+      // Verify message was added with default source
+      const getResponse = await request(app).get(`/api/agent/${conversationId}`).expect(200);
+
+      expect(getResponse.body.messages).toBeDefined();
+      expect(Array.isArray(getResponse.body.messages)).toBe(true);
+      expect(getResponse.body.messages.length).toBeGreaterThan(0);
+      const lastMessage = getResponse.body.messages[getResponse.body.messages.length - 1];
+      expect(lastMessage.role).toBe('user');
+      expect(lastMessage.content).toBe('Test message without source');
+      expect(lastMessage.source).toBe('text');
+    });
   });
 
   describe('Full Conversation Flow', () => {
