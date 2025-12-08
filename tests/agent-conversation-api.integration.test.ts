@@ -198,6 +198,134 @@ describe('Agent Conversation API Integration', () => {
       expect(Array.isArray(response.body.conversations)).toBe(true);
       // Note: May not be empty if other tests created conversations
     });
+
+    it('should return 400 when limit is invalid', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Test negative limit
+      const response1 = await request(app).get('/api/agent/list?limit=-1').expect(400);
+      expect(response1.body.success).toBe(false);
+      expect(response1.body.error).toContain('limit must be a positive integer');
+
+      // Test zero limit
+      const response2 = await request(app).get('/api/agent/list?limit=0').expect(400);
+      expect(response2.body.success).toBe(false);
+      expect(response2.body.error).toContain('limit must be a positive integer');
+
+      // Test non-numeric limit
+      const response3 = await request(app).get('/api/agent/list?limit=abc').expect(400);
+      expect(response3.body.success).toBe(false);
+      expect(response3.body.error).toContain('limit must be a positive integer');
+    });
+
+    it('should return 400 when offset is invalid', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Test negative offset
+      const response1 = await request(app).get('/api/agent/list?offset=-1').expect(400);
+      expect(response1.body.success).toBe(false);
+      expect(response1.body.error).toContain('offset must be a non-negative integer');
+
+      // Test non-numeric offset
+      const response2 = await request(app).get('/api/agent/list?offset=abc').expect(400);
+      expect(response2.body.success).toBe(false);
+      expect(response2.body.error).toContain('offset must be a non-negative integer');
+    });
+
+    it('should return 400 when sortBy is invalid', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      const response = await request(app).get('/api/agent/list?sortBy=invalidField').expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain(
+        'sortBy must be one of: createdAt, lastAccessedAt, messageCount'
+      );
+    });
+
+    it('should return 400 when sortOrder is invalid', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      const response = await request(app).get('/api/agent/list?sortOrder=invalid').expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('sortOrder must be one of: asc, desc');
+    });
+
+    it('should return conversations with pagination metadata', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create some conversations
+      await request(app).post('/api/agent/new').send({ agentId: 'agent-1' });
+      await request(app).post('/api/agent/new').send({ agentId: 'agent-2' });
+      await request(app).post('/api/agent/new').send({ agentId: 'agent-3' });
+
+      const response = await request(app).get('/api/agent/list?limit=2&offset=0').expect(200);
+
+      expect(response.body).toHaveProperty('conversations');
+      expect(response.body).toHaveProperty('pagination');
+      expect(Array.isArray(response.body.conversations)).toBe(true);
+      expect(response.body.conversations.length).toBeLessThanOrEqual(2);
+
+      // Verify pagination metadata structure
+      expect(response.body.pagination).toHaveProperty('total');
+      expect(response.body.pagination).toHaveProperty('limit');
+      expect(response.body.pagination).toHaveProperty('offset');
+      expect(typeof response.body.pagination.total).toBe('number');
+      expect(response.body.pagination.limit).toBe(2);
+      expect(response.body.pagination.offset).toBe(0);
+    });
+
+    it('should apply sorting correctly', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((global as any).__SKIP_INTEGRATION_TESTS__) return;
+
+      // Create conversations with delays to ensure different timestamps
+      const conv1 = await request(app).post('/api/agent/new').send({ agentId: 'agent-1' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const conv2 = await request(app).post('/api/agent/new').send({ agentId: 'agent-2' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const conv3 = await request(app).post('/api/agent/new').send({ agentId: 'agent-3' });
+
+      // Test sorting by createdAt descending (newest first)
+      const responseDesc = await request(app)
+        .get('/api/agent/list?sortBy=createdAt&sortOrder=desc')
+        .expect(200);
+
+      expect(responseDesc.body.conversations.length).toBeGreaterThanOrEqual(3);
+      const conversationIdsDesc = responseDesc.body.conversations.map((c: any) => c.conversationId);
+      // Newest should be first (or at least in the list)
+      expect(conversationIdsDesc).toContain(conv3.body.conversationId);
+      expect(conversationIdsDesc).toContain(conv2.body.conversationId);
+      expect(conversationIdsDesc).toContain(conv1.body.conversationId);
+
+      // Verify sorting order: newest first
+      const conv3Index = conversationIdsDesc.indexOf(conv3.body.conversationId);
+      const conv1Index = conversationIdsDesc.indexOf(conv1.body.conversationId);
+      expect(conv3Index).toBeLessThan(conv1Index);
+
+      // Test sorting by createdAt ascending (oldest first)
+      const responseAsc = await request(app)
+        .get('/api/agent/list?sortBy=createdAt&sortOrder=asc')
+        .expect(200);
+
+      expect(responseAsc.body.conversations.length).toBeGreaterThanOrEqual(3);
+      const conversationIdsAsc = responseAsc.body.conversations.map((c: any) => c.conversationId);
+      // All conversations should be in the list
+      expect(conversationIdsAsc).toContain(conv1.body.conversationId);
+      expect(conversationIdsAsc).toContain(conv2.body.conversationId);
+      expect(conversationIdsAsc).toContain(conv3.body.conversationId);
+
+      // Verify sorting order: oldest first
+      const conv1IndexAsc = conversationIdsAsc.indexOf(conv1.body.conversationId);
+      const conv3IndexAsc = conversationIdsAsc.indexOf(conv3.body.conversationId);
+      expect(conv1IndexAsc).toBeLessThan(conv3IndexAsc);
+    });
   });
 
   describe('GET /api/agent/:id', () => {
