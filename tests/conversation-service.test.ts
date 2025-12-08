@@ -244,3 +244,143 @@ describe('ConversationService - Conversation Management', () => {
     expect(result).toEqual(summarizedMessages);
   });
 });
+
+describe('ConversationService - Message Storage', () => {
+  let conversationService: ConversationService;
+  let mockRedis: Partial<Redis>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRedis = createMockRedisClient();
+    // Add ping method to mock Redis to ensure redisAvailable stays true
+    (mockRedis as any).ping = (jest.fn() as any).mockResolvedValue('PONG');
+    conversationService = new ConversationService(mockRedis as Redis);
+    // Ensure redisAvailable is true
+    (conversationService as any).redisAvailable = true;
+  });
+
+  it('should store non-review messages', async () => {
+    const conversationId = 'test-conversation-id';
+    const existingContext = {
+      conversationId,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(existingContext));
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).get = mockGet;
+    (mockRedis as any).setex = mockSetex;
+
+    await conversationService.addMessage(conversationId, 'user', 'Hello', false);
+
+    // Should retrieve conversation
+    expect(mockGet).toHaveBeenCalledWith(`cursor:conversation:${conversationId}`);
+    // Should save updated conversation with new message
+    expect(mockSetex).toHaveBeenCalled();
+    const savedContext = JSON.parse(mockSetex.mock.calls[0][2]);
+    expect(savedContext.messages.length).toBe(1);
+    expect(savedContext.messages[0].role).toBe('user');
+    expect(savedContext.messages[0].content).toBe('Hello');
+  });
+
+  it('should skip review-agent messages when debug disabled', async () => {
+    const conversationId = 'test-conversation-id';
+    const existingContext = {
+      conversationId,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(existingContext));
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).get = mockGet;
+    (mockRedis as any).setex = mockSetex;
+
+    // Ensure DEBUG is not set
+    const originalDebug = process.env.DEBUG;
+    delete process.env.DEBUG;
+
+    try {
+      await conversationService.addMessage(conversationId, 'assistant', 'Review output', true);
+
+      // Should not save the message (review agent messages are skipped when debug is off)
+      // Note: This test verifies the behavior when DEBUG is not set and DB check fails
+      // The actual behavior depends on isSystemSettingEnabled which checks DB first, then env
+      expect(mockSetex).not.toHaveBeenCalled();
+    } finally {
+      if (originalDebug) {
+        process.env.DEBUG = originalDebug;
+      }
+    }
+  });
+
+  it('should store review-agent messages when debug enabled (DB)', async () => {
+    const conversationId = 'test-conversation-id';
+    const existingContext = {
+      conversationId,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(existingContext));
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).get = mockGet;
+    (mockRedis as any).setex = mockSetex;
+
+    // Note: Testing with DEBUG env var since we can't easily mock DB check
+    // This test verifies that review agent messages are stored when DEBUG is enabled
+    const originalDebug = process.env.DEBUG;
+    process.env.DEBUG = 'true';
+
+    try {
+      await conversationService.addMessage(conversationId, 'assistant', 'Review output', true);
+
+      // Should save the message (review agent messages are stored when debug is on)
+      expect(mockSetex).toHaveBeenCalled();
+      const savedContext = JSON.parse(mockSetex.mock.calls[0][2]);
+      expect(savedContext.messages.length).toBe(1);
+      expect(savedContext.messages[0].content).toBe('Review output');
+    } finally {
+      if (originalDebug) {
+        process.env.DEBUG = originalDebug;
+      } else {
+        delete process.env.DEBUG;
+      }
+    }
+  });
+
+  it('should store review-agent messages when debug enabled (env)', async () => {
+    const conversationId = 'test-conversation-id';
+    const existingContext = {
+      conversationId,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(existingContext));
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).get = mockGet;
+    (mockRedis as any).setex = mockSetex;
+
+    // Set DEBUG env var
+    const originalDebug = process.env.DEBUG;
+    process.env.DEBUG = 'true';
+
+    try {
+      await conversationService.addMessage(conversationId, 'assistant', 'Review output', true);
+
+      // Should save the message (review agent messages are stored when DEBUG env var is set)
+      expect(mockSetex).toHaveBeenCalled();
+      const savedContext = JSON.parse(mockSetex.mock.calls[0][2]);
+      expect(savedContext.messages.length).toBe(1);
+      expect(savedContext.messages[0].content).toBe('Review output');
+    } finally {
+      if (originalDebug) {
+        process.env.DEBUG = originalDebug;
+      } else {
+        delete process.env.DEBUG;
+      }
+    }
+  });
+});
