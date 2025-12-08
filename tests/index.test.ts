@@ -260,6 +260,45 @@ describe('CursorRunner', () => {
         runner.validateConfig();
       }).not.toThrow();
     });
+
+    it('should succeed when CURSOR_CLI_PATH is set to absolute path', () => {
+      process.env.CURSOR_CLI_PATH = '/usr/bin/cursor';
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).not.toThrow();
+    });
+
+    it('should succeed when CURSOR_CLI_PATH is set to relative path', () => {
+      process.env.CURSOR_CLI_PATH = './cursor';
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).not.toThrow();
+    });
+
+    it('should succeed when CURSOR_CLI_PATH is set to command name', () => {
+      process.env.CURSOR_CLI_PATH = 'cursor';
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).not.toThrow();
+    });
   });
 
   describe('initialize', () => {
