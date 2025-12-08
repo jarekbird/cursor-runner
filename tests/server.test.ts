@@ -1865,6 +1865,64 @@ describe('Server', () => {
     });
   });
 
+  describe('Conversation API', () => {
+    describe('GET /api/list', () => {
+      it('should return conversations from conversationService', async () => {
+        const mockConversations = [
+          {
+            conversationId: 'conv-1',
+            queueType: 'default',
+            messages: [],
+            createdAt: '2024-01-01T00:00:00Z',
+            lastAccessedAt: '2024-01-01T00:00:00Z',
+          },
+          {
+            conversationId: 'conv-2',
+            queueType: 'telegram',
+            messages: [],
+            createdAt: '2024-01-02T00:00:00Z',
+            lastAccessedAt: '2024-01-02T00:00:00Z',
+          },
+        ];
+
+        const listConversationsSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'listConversations')
+          .mockResolvedValue(mockConversations);
+
+        const response = await request(app).get('/api/list');
+
+        // Verify response
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(mockConversations);
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body.length).toBe(2);
+
+        // Verify listConversations was called
+        expect(listConversationsSpy).toHaveBeenCalledTimes(1);
+
+        listConversationsSpy.mockRestore();
+      });
+
+      it('should return 500 when service throws', async () => {
+        const listConversationsSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'listConversations')
+          .mockRejectedValue(new Error('Database connection failed'));
+
+        const response = await request(app).get('/api/list');
+
+        // Verify error response
+        expect(response.status).toBe(500);
+        expect(response.body).toHaveProperty('error');
+        expect(response.body.error).toContain('Database connection failed');
+
+        // Verify listConversations was called
+        expect(listConversationsSpy).toHaveBeenCalledTimes(1);
+
+        listConversationsSpy.mockRestore();
+      });
+    });
+  });
+
   describe('Telegram Webhook Endpoints', () => {
     describe('POST /telegram/webhook', () => {
       it('should receive and acknowledge message update', async () => {
