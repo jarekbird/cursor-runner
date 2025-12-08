@@ -1,5 +1,5 @@
 // eslint-disable-next-line node/no-unpublished-import
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { CursorCLI } from '../src/cursor-cli.js';
 
 describe('CursorCLI', () => {
@@ -32,5 +32,94 @@ describe('CursorCLI', () => {
 
       expect(files).toEqual([]);
     });
+  });
+
+  describe('Semaphore & Queue Status', () => {
+    let testCursorCLI: CursorCLI;
+
+    beforeEach(() => {
+      // Set max concurrent to 2 for testing
+      process.env.CURSOR_CLI_MAX_CONCURRENT = '2';
+      // Create new instance to pick up the env var
+      testCursorCLI = new CursorCLI();
+    });
+
+    afterEach(() => {
+      delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+    });
+
+    it('should return correct queue status', () => {
+      const status = testCursorCLI.getQueueStatus();
+
+      expect(status).toHaveProperty('available');
+      expect(status).toHaveProperty('waiting');
+      expect(status).toHaveProperty('maxConcurrent');
+      expect(typeof status.available).toBe('number');
+      expect(typeof status.waiting).toBe('number');
+      expect(typeof status.maxConcurrent).toBe('number');
+      expect(status.maxConcurrent).toBe(2);
+    });
+
+    it('should return correct available and waiting counts', () => {
+      // Initially, all slots should be available
+      const initialStatus = testCursorCLI.getQueueStatus();
+      expect(initialStatus.available).toBe(2);
+      expect(initialStatus.waiting).toBe(0);
+      expect(initialStatus.maxConcurrent).toBe(2);
+    });
+
+    it('should log waiting when all slots are busy', async () => {
+      // eslint-disable-next-line node/no-unsupported-features/es-syntax
+      const { logger } = await import('../src/logger.js');
+      const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+      // Set max concurrent to 1 for this test
+      const originalMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+      process.env.CURSOR_CLI_MAX_CONCURRENT = '1';
+      const singleSlotCLI = new CursorCLI();
+
+      // Start a command that will take some time
+      // We'll use a command that will fail quickly to avoid long waits
+      const promise = singleSlotCLI.executeCommand(['--invalid-flag']).catch(() => {
+        // Expected to fail
+      });
+
+      // Wait a bit for semaphore to be acquired
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Start another command (should wait and log)
+      const promise2 = singleSlotCLI.executeCommand(['--invalid-flag']).catch(() => {
+        // Expected to fail
+      });
+
+      // Wait a bit more
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Check if "waiting" was logged
+      const waitingLog = loggerInfoSpy.mock.calls.find((call) => {
+        const firstArg = call[0] as unknown;
+        if (typeof firstArg === 'string') {
+          return firstArg.includes('Waiting for cursor-cli execution slot');
+        }
+        if (typeof firstArg === 'object' && firstArg !== null) {
+          const obj = firstArg as Record<string, unknown>;
+          return 'available' in obj && 'waiting' in obj;
+        }
+        return false;
+      });
+      expect(waitingLog).toBeDefined();
+
+      // Wait for both to complete
+      await Promise.all([promise, promise2]);
+
+      // Restore
+      if (originalMaxConcurrent) {
+        process.env.CURSOR_CLI_MAX_CONCURRENT = originalMaxConcurrent;
+      } else {
+        delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+      }
+
+      loggerInfoSpy.mockRestore();
+    }, 15000);
   });
 });
