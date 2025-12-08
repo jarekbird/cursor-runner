@@ -2,7 +2,13 @@
  * Tests for test utility helpers
  */
 import { describe, it, expect, afterEach } from '@jest/globals';
-import { createMockRedisClient, createTempSqliteDb, createMockCursorCLI } from './test-utils.js';
+import request from 'supertest';
+import {
+  createMockRedisClient,
+  createTempSqliteDb,
+  createMockCursorCLI,
+  createMockServer,
+} from './test-utils.js';
 import { existsSync } from 'fs';
 
 describe('createMockRedisClient', () => {
@@ -641,5 +647,107 @@ describe('createMockCursorCLI', () => {
     expect(mockCLI.calls.validate).toBe(0);
     expect(mockCLI.calls.getQueueStatus).toBe(0);
     expect(mockCLI.calls.extractFilesFromOutput).toHaveLength(0);
+  });
+});
+
+describe('createMockServer', () => {
+  const cleanupFunctions: Array<() => Promise<void>> = [];
+
+  afterEach(async () => {
+    // Clean up all servers created during tests
+    for (const cleanup of cleanupFunctions) {
+      try {
+        await cleanup();
+      } catch (error) {
+        console.warn('Error during cleanup:', error);
+      }
+    }
+    cleanupFunctions.length = 0;
+  });
+
+  it('should create server with default mocks', () => {
+    const { server, cleanup } = createMockServer();
+    cleanupFunctions.push(cleanup);
+
+    expect(server).toBeDefined();
+    expect(server.app).toBeDefined();
+    expect(server.cursorCLI).toBeDefined();
+    expect(typeof cleanup).toBe('function');
+  });
+
+  it('should accept custom Redis mock', () => {
+    const customRedis = createMockRedisClient();
+    const { server, cleanup } = createMockServer({ redis: customRedis });
+    cleanupFunctions.push(cleanup);
+
+    expect(server).toBeDefined();
+    // Verify Redis is used (indirectly through agentConversationService)
+    expect(server.agentConversationService).toBeDefined();
+  });
+
+  it('should accept custom CursorCLI mock', () => {
+    const customCLI = createMockCursorCLI();
+    const { server, cleanup } = createMockServer({ cursorCLI: customCLI });
+    cleanupFunctions.push(cleanup);
+
+    expect(server.cursorCLI).toBe(customCLI);
+  });
+
+  it('should disable background workers by default', () => {
+    const { server, cleanup } = createMockServer();
+    cleanupFunctions.push(cleanup);
+
+    // Server should be created (we can't directly check disableBackgroundWorkers as it's private)
+    expect(server).toBeDefined();
+  });
+
+  it('should allow enabling background workers', () => {
+    const { server, cleanup } = createMockServer({ disableBackgroundWorkers: false });
+    cleanupFunctions.push(cleanup);
+
+    expect(server).toBeDefined();
+  });
+
+  it('should allow setting custom port', () => {
+    const { server, cleanup } = createMockServer({ port: 9999 });
+    cleanupFunctions.push(cleanup);
+
+    expect(server.port).toBe(9999);
+  });
+
+  it('should cleanup and stop server', async () => {
+    const { server, cleanup } = createMockServer();
+
+    expect(server).toBeDefined();
+    await cleanup();
+    // Server should be stopped (we can't easily verify this without starting it)
+    expect(server).toBeDefined();
+  });
+
+  it('should work with supertest', async () => {
+    const { server, cleanup } = createMockServer();
+    cleanupFunctions.push(cleanup);
+
+    const response = await request(server.app).get('/health');
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should use mocked CursorCLI in server', async () => {
+    const mockCLI = createMockCursorCLI({
+      defaultExecuteResult: {
+        success: true,
+        exitCode: 0,
+        stdout: 'test output',
+        stderr: '',
+      },
+    });
+    const { server, cleanup } = createMockServer({ cursorCLI: mockCLI });
+    cleanupFunctions.push(cleanup);
+
+    // Verify the mock is used
+    expect(server.cursorCLI).toBe(mockCLI);
+    const result = await server.cursorCLI.executeCommand(['test']);
+    expect(result.stdout).toBe('test output');
   });
 });

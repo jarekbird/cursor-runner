@@ -3,6 +3,7 @@
  * Ensures all tests properly clean up resources to prevent hanging
  */
 import type { Server } from '../src/server.js';
+import { Server as ServerClass } from '../src/server.js';
 import type Redis from 'ioredis';
 import Database from 'better-sqlite3';
 import { tmpdir } from 'os';
@@ -12,6 +13,8 @@ import { Umzug } from 'umzug';
 import { readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ReviewAgentService } from '../src/review-agent-service.js';
+import { CursorExecutionService } from '../src/cursor-execution-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -650,4 +653,96 @@ export function createMockCursorCLI(options: MockCursorCLIOptions = {}): MockCur
   };
 
   return mockCLI;
+}
+
+/**
+ * Options for creating a mock Server
+ */
+export interface MockServerOptions {
+  /**
+   * Optional Redis client (uses createMockRedisClient() if not provided)
+   */
+  redis?: Partial<Redis>;
+  /**
+   * Optional CursorCLI mock (uses createMockCursorCLI() if not provided)
+   */
+  cursorCLI?: MockCursorCLI;
+  /**
+   * Disable background workers (default: true for tests)
+   */
+  disableBackgroundWorkers?: boolean;
+  /**
+   * Custom port (default: uses process.env.PORT or 3001)
+   */
+  port?: number;
+}
+
+/**
+ * Result from createMockServer()
+ */
+export interface MockServerResult {
+  server: Server;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Creates a Server instance with injected mocks for dependencies.
+ * This allows tests to control all server dependencies (Redis, CursorCLI, etc.) without relying on real implementations.
+ *
+ * @param options - Configuration options for the mock server
+ * @returns Server instance and cleanup function
+ *
+ * @example
+ * ```typescript
+ * const { server, cleanup } = createMockServer();
+ * try {
+ *   const response = await request(server.app).get('/health');
+ *   expect(response.status).toBe(200);
+ * } finally {
+ *   await cleanup();
+ * }
+ * ```
+ */
+export function createMockServer(options: MockServerOptions = {}): MockServerResult {
+  const { redis, cursorCLI, disableBackgroundWorkers = true, port } = options;
+
+  // Use provided mocks or create defaults
+  const mockRedis = redis || createMockRedisClient();
+  const mockCLI = cursorCLI || createMockCursorCLI();
+
+  // Create server with mocked Redis
+  const server = new ServerClass(mockRedis as Redis, { disableBackgroundWorkers });
+
+  // Override CursorCLI with mock
+  server.cursorCLI = mockCLI as any;
+  // Recreate reviewAgent with mocked CursorCLI
+  server.reviewAgent = new ReviewAgentService(mockCLI as any);
+  // Recreate cursorExecution with mocked CursorCLI
+  server.cursorExecution = new CursorExecutionService(
+    server.gitService,
+    mockCLI as any,
+    server.commandParser,
+    server.reviewAgent,
+    server.filesystem,
+    mockRedis as Redis
+  );
+
+  // Set custom port if provided
+  if (port !== undefined) {
+    server.port = port;
+  }
+
+  // Cleanup function
+  const cleanup = async (): Promise<void> => {
+    try {
+      await server.stop();
+    } catch (error) {
+      console.warn('Error stopping server during cleanup:', error);
+    }
+  };
+
+  return {
+    server,
+    cleanup,
+  };
 }
