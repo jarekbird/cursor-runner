@@ -118,6 +118,84 @@ describe('Server', () => {
     });
   });
 
+  describe('Health Queue', () => {
+    it('GET /health/queue should return queue status', async () => {
+      // Mock getQueueStatus to return test data
+      const mockQueueStatus = {
+        available: 5,
+        waiting: 0,
+        maxConcurrent: 5,
+      };
+      mockCursorCLI.getQueueStatus = jest.fn().mockReturnValue(mockQueueStatus);
+
+      const response = await request(app).get('/health/queue');
+
+      // Verify response status
+      expect(response.status).toBe(200);
+
+      // Verify response body using assertSuccessResponse helper
+      assertSuccessResponse(response, {
+        expectedStatus: 200,
+      });
+
+      // Verify response contains queue status
+      expect(response.body).toHaveProperty('queue');
+      expect(response.body.queue).toEqual(mockQueueStatus);
+      expect(response.body.status).toBe('ok');
+      expect(response.body.service).toBe('cursor-runner');
+
+      // Verify getQueueStatus was called
+      expect(mockCursorCLI.getQueueStatus).toHaveBeenCalled();
+    });
+
+    it('GET /health/queue should include warning when queue is full', async () => {
+      // Mock getQueueStatus to return full queue state
+      const mockQueueStatus = {
+        available: 0,
+        waiting: 3,
+        maxConcurrent: 5,
+      };
+      mockCursorCLI.getQueueStatus = jest.fn().mockReturnValue(mockQueueStatus);
+
+      const response = await request(app).get('/health/queue');
+
+      // Verify response status
+      expect(response.status).toBe(200);
+
+      // Verify response includes warning field
+      expect(response.body).toHaveProperty('warning');
+      expect(response.body.warning).toBeDefined();
+      expect(typeof response.body.warning).toBe('string');
+      expect(response.body.warning).toContain('All execution slots are occupied');
+
+      // Verify queue status is still present
+      expect(response.body.queue).toEqual(mockQueueStatus);
+    });
+
+    it('GET /health/queue should have no warning when queue is healthy', async () => {
+      // Mock getQueueStatus to return healthy queue state
+      const mockQueueStatus = {
+        available: 3,
+        waiting: 0,
+        maxConcurrent: 5,
+      };
+      mockCursorCLI.getQueueStatus = jest.fn().mockReturnValue(mockQueueStatus);
+
+      const response = await request(app).get('/health/queue');
+
+      // Verify response status
+      expect(response.status).toBe(200);
+
+      // Verify response does NOT include warning field (or it's null)
+      expect(response.body.warning).toBeNull();
+
+      // Verify queue status is present
+      expect(response.body.queue).toEqual(mockQueueStatus);
+      expect(response.body.status).toBe('ok');
+      expect(response.body.service).toBe('cursor-runner');
+    });
+  });
+
   describe('Cursor Execution Endpoints', () => {
     describe('POST /cursor/execute', () => {
       it('should execute cursor command successfully', async () => {
