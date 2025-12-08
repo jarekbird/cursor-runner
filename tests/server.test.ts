@@ -1921,6 +1921,78 @@ describe('Server', () => {
         listConversationsSpy.mockRestore();
       });
     });
+
+    describe('POST /api/new', () => {
+      it('should create conversation with queueType=api by default', async () => {
+        const mockConversationId = 'test-conversation-id-api-123';
+        const forceNewConversationSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'forceNewConversation')
+          .mockResolvedValue(mockConversationId);
+
+        const response = await request(app).post('/api/new').send({});
+
+        // Verify response
+        expect(response.status).toBe(200);
+        assertSuccessResponse(response, { expectedStatus: 200 });
+        expect(response.body.conversationId).toBe(mockConversationId);
+        expect(response.body.message).toBe('New conversation created');
+        expect(response.body.queueType).toBe('api');
+
+        // Verify forceNewConversation was called with default queue type 'api'
+        expect(forceNewConversationSpy).toHaveBeenCalledTimes(1);
+        expect(forceNewConversationSpy).toHaveBeenCalledWith('api');
+
+        forceNewConversationSpy.mockRestore();
+      });
+
+      it('should use provided queueType from body', async () => {
+        const mockConversationId = 'test-conversation-id-api-456';
+        const forceNewConversationSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'forceNewConversation')
+          .mockResolvedValue(mockConversationId);
+
+        const response = await request(app).post('/api/new').send({
+          queueType: 'telegram',
+        });
+
+        // Verify response
+        expect(response.status).toBe(200);
+        assertSuccessResponse(response, { expectedStatus: 200 });
+        expect(response.body.conversationId).toBe(mockConversationId);
+        expect(response.body.queueType).toBe('telegram');
+
+        // Verify forceNewConversation was called with provided queueType
+        expect(forceNewConversationSpy).toHaveBeenCalledTimes(1);
+        expect(forceNewConversationSpy).toHaveBeenCalledWith('telegram');
+
+        forceNewConversationSpy.mockRestore();
+      });
+
+      it('should return conversation ID', async () => {
+        const mockConversationId = 'test-conversation-id-api-789';
+        const forceNewConversationSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'forceNewConversation')
+          .mockResolvedValue(mockConversationId);
+
+        const response = await request(app).post('/api/new').send({
+          queueType: 'default',
+        });
+
+        // Verify response structure
+        expect(response.status).toBe(200);
+        assertSuccessResponse(response, { expectedStatus: 200 });
+        expect(response.body).toHaveProperty('conversationId');
+        expect(response.body.conversationId).toBe(mockConversationId);
+        expect(response.body.conversationId).toBeTruthy();
+        expect(typeof response.body.conversationId).toBe('string');
+
+        // Verify conversation ID matches mocked return value
+        expect(forceNewConversationSpy).toHaveBeenCalledTimes(1);
+        expect(forceNewConversationSpy).toHaveReturnedWith(Promise.resolve(mockConversationId));
+
+        forceNewConversationSpy.mockRestore();
+      });
+    });
   });
 
   describe('Telegram Webhook Endpoints', () => {
