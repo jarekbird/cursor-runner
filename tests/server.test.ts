@@ -967,6 +967,248 @@ describe('Server', () => {
     describe('POST /cursor/iterate/async', () => {
       const mockCallbackUrl = 'http://localhost:3000/cursor-runner/callback?secret=test-secret';
 
+      it('should auto-construct callbackUrl when missing', async () => {
+        // Mock buildCallbackUrl to return a test URL
+        const originalJarekVaUrl = process.env.JAREK_VA_URL;
+        process.env.JAREK_VA_URL = 'http://app:3000';
+        process.env.WEBHOOK_SECRET = 'test-secret';
+
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 2,
+            maxIterations: 5,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          // No callbackUrl provided - should be auto-constructed
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify iterate() was called with auto-constructed callbackUrl
+        expect(iterateSpy).toHaveBeenCalled();
+        const iterateCall = iterateSpy.mock.calls[0][0];
+        expect(iterateCall.callbackUrl).toBeDefined();
+        expect(iterateCall.callbackUrl).toContain('http://app:3000/cursor-runner/callback');
+        expect(iterateCall.callbackUrl).toContain('secret=test-secret');
+
+        // Restore environment
+        if (originalJarekVaUrl) {
+          process.env.JAREK_VA_URL = originalJarekVaUrl;
+        } else {
+          delete process.env.JAREK_VA_URL;
+        }
+
+        iterateSpy.mockRestore();
+      });
+
+      it('should log callback URL source', async () => {
+        const originalJarekVaUrl = process.env.JAREK_VA_URL;
+        process.env.JAREK_VA_URL = 'http://app:3000';
+        process.env.WEBHOOK_SECRET = 'test-secret';
+
+        const loggerInfoSpy = jest.spyOn(logger, 'info');
+
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 2,
+            maxIterations: 5,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          // No callbackUrl provided
+        });
+
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify callback URL source was logged
+        expect(loggerInfoSpy).toHaveBeenCalled();
+        const infoCalls = loggerInfoSpy.mock.calls.map((call) => {
+          const firstArg = call[0] as unknown;
+          return typeof firstArg === 'string' ? firstArg : '';
+        });
+        expect(infoCalls.some((msg) => msg.includes('Auto-constructed callback URL'))).toBe(true);
+
+        // Restore environment
+        if (originalJarekVaUrl) {
+          process.env.JAREK_VA_URL = originalJarekVaUrl;
+        } else {
+          delete process.env.JAREK_VA_URL;
+        }
+
+        iterateSpy.mockRestore();
+        loggerInfoSpy.mockRestore();
+      });
+
+      it('should return 200 immediately', async () => {
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 2,
+            maxIterations: 5,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        // Mock iterate() to simulate slow execution
+        const iterateSpy = jest.spyOn(server.cursorExecution, 'iterate').mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => resolve(mockIterateResult as any), 1000);
+            })
+        );
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const startTime = Date.now();
+        const response = await request(app).post('/cursor/iterate/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          callbackUrl: mockCallbackUrl,
+        });
+        const responseTime = Date.now() - startTime;
+
+        // Verify immediate response (should be much faster than 1 second)
+        expect(responseTime).toBeLessThan(500); // Response should be immediate
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
+        expect(response.body.requestId).toBeDefined();
+
+        // Clean up
+        iterateSpy.mockRestore();
+      });
+
+      it('should process iteration in background', async () => {
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 2,
+            maxIterations: 5,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        // Make request and get immediate response
+        const response = await request(app).post('/cursor/iterate/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          callbackUrl: mockCallbackUrl,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Verify iterate() hasn't been called yet (or was called after response)
+        // Since it's async, we need to wait a bit
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Verify iterate() was called in background
+        expect(iterateSpy).toHaveBeenCalled();
+        expect(iterateSpy).toHaveBeenCalledTimes(1);
+
+        iterateSpy.mockRestore();
+      });
+
+      it('should send error callback with ErrorCallbackResponse structure', async () => {
+        // Mock iterate() to throw an error with stdout/stderr
+        const errorWithOutput = new Error('Iteration failed') as any;
+        errorWithOutput.stdout = 'Partial output before error';
+        errorWithOutput.stderr = 'Error occurred';
+        errorWithOutput.exitCode = 1;
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockRejectedValue(errorWithOutput);
+
+        const callbackWebhookSpy = jest
+          .spyOn(server.cursorExecution, 'callbackWebhook')
+          .mockResolvedValue(undefined);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate/async').send({
+          prompt: 'test prompt',
+          repository: 'test-repo',
+          callbackUrl: mockCallbackUrl,
+          maxIterations: 10,
+        });
+
+        // Verify immediate response
+        expect(response.status).toBe(200);
+
+        // Wait for background processing
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Verify error callback was sent with ErrorCallbackResponse structure
+        expect(callbackWebhookSpy).toHaveBeenCalled();
+        const callbackCall = callbackWebhookSpy.mock.calls[0];
+        const callbackPayload = callbackCall[1] as any;
+
+        // Verify ErrorCallbackResponse structure includes all required fields
+        expect(callbackPayload.success).toBe(false);
+        expect(callbackPayload.requestId).toBeDefined();
+        expect(callbackPayload.error).toBeDefined();
+        expect(callbackPayload.iterations).toBe(0); // No iterations completed
+        expect(callbackPayload.maxIterations).toBe(10);
+        expect(callbackPayload.output).toBe('Partial output before error'); // stdout
+        expect(callbackPayload.timestamp).toBeDefined();
+
+        iterateSpy.mockRestore();
+        callbackWebhookSpy.mockRestore();
+      });
+
       it('should call callback webhook on validation error when callbackUrl is provided', async () => {
         const callbackWebhookSpy = jest.spyOn(server.cursorExecution, 'callbackWebhook');
 
