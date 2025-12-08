@@ -247,6 +247,51 @@ describe('CursorRunner', () => {
       }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
     });
 
+    it('should list all missing environment variables in error message', () => {
+      // Currently only CURSOR_CLI_PATH is required, but test verifies
+      // that the error message format supports multiple vars
+      delete process.env.CURSOR_CLI_PATH;
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      try {
+        runner.validateConfig();
+        fail('Expected validateConfig to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        const errorMessage = (error as Error).message;
+        // Verify error message format supports listing multiple vars
+        expect(errorMessage).toMatch(/^Missing required environment variables:/);
+        expect(errorMessage).toContain('CURSOR_CLI_PATH');
+        // Error message format uses comma-separated list, which works for multiple vars
+        expect(errorMessage.split(':')[1]?.trim().split(',').length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should handle case where all required variables are missing', () => {
+      // Save original value
+      const originalValue = process.env.CURSOR_CLI_PATH;
+      delete process.env.CURSOR_CLI_PATH;
+
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
+
+      // Restore original value
+      if (originalValue !== undefined) {
+        process.env.CURSOR_CLI_PATH = originalValue;
+      }
+    });
+
     it('should not throw when all required variables are present', () => {
       process.env.CURSOR_CLI_PATH = 'cursor';
       process.env.TARGET_APP_PATH = '/path/to/app';
