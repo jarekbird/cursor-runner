@@ -172,6 +172,53 @@ describe('CursorRunner', () => {
       }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
     });
 
+    it('should throw error with descriptive message when CURSOR_CLI_PATH is missing', () => {
+      delete process.env.CURSOR_CLI_PATH;
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      try {
+        runner.validateConfig();
+        fail('Expected validateConfig to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        const errorMessage = (error as Error).message;
+        expect(errorMessage).toContain('Missing required environment variables');
+        expect(errorMessage).toContain('CURSOR_CLI_PATH');
+        // Verify error message is actionable
+        expect(errorMessage.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should throw error when CURSOR_CLI_PATH is empty string', () => {
+      process.env.CURSOR_CLI_PATH = '';
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
+    });
+
+    it('should throw error when CURSOR_CLI_PATH is undefined', () => {
+      process.env.CURSOR_CLI_PATH = undefined as any;
+      const runner = new CursorRunner({
+        cursorCLI: mockCursorCLI as any,
+        targetAppRunner: mockTargetAppRunner as any,
+        server: mockServer as any,
+      });
+
+      expect(() => {
+        runner.validateConfig();
+      }).toThrow('Missing required environment variables: CURSOR_CLI_PATH');
+    });
+
     it('should throw error when TARGET_APP_PATH is missing', () => {
       delete process.env.TARGET_APP_PATH;
       const runner = new CursorRunner({
