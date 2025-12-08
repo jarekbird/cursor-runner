@@ -830,6 +830,140 @@ describe('Server', () => {
       });
     });
 
+    describe('POST /cursor/iterate', () => {
+      it('should iterate cursor command successfully (happy path)', async () => {
+        // Mock cursorExecution.iterate() to return success result
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            repository: 'test-repo',
+            output: 'Iteration completed successfully',
+            iterations: 3,
+            maxIterations: 5,
+            exitCode: 0,
+            duration: '2.5s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate').send({
+          repository: 'test-repo',
+          prompt: 'Create user service',
+        });
+
+        // Verify response matches iterate() return value
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(mockIterateResult.body);
+
+        // Verify iterate() was called
+        expect(iterateSpy).toHaveBeenCalled();
+        expect(iterateSpy).toHaveBeenCalledTimes(1);
+
+        iterateSpy.mockRestore();
+      });
+
+      it('should use default maxIterations of 5 when not provided', async () => {
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 2,
+            maxIterations: 5,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate').send({
+          prompt: 'test prompt',
+          // No maxIterations provided
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify iterate() was called with default maxIterations: 5
+        expect(iterateSpy).toHaveBeenCalled();
+        const iterateCall = iterateSpy.mock.calls[0][0];
+        expect(iterateCall.maxIterations).toBe(5);
+
+        iterateSpy.mockRestore();
+      });
+
+      it('should use provided maxIterations value', async () => {
+        const mockIterateResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            iterations: 7,
+            maxIterations: 10,
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockResolvedValue(mockIterateResult as any);
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate').send({
+          prompt: 'test prompt',
+          maxIterations: 10,
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify iterate() was called with provided maxIterations: 10 (not default 5)
+        expect(iterateSpy).toHaveBeenCalled();
+        const iterateCall = iterateSpy.mock.calls[0][0];
+        expect(iterateCall.maxIterations).toBe(10);
+
+        iterateSpy.mockRestore();
+      });
+
+      it('should return 500 when iterate() throws', async () => {
+        const iterateSpy = jest
+          .spyOn(server.cursorExecution, 'iterate')
+          .mockRejectedValue(new Error('Iteration failed'));
+
+        mockFilesystem.exists.mockReturnValue(true);
+
+        const response = await request(app).post('/cursor/iterate').send({
+          prompt: 'test prompt',
+        });
+
+        // Verify error response
+        expect(response.status).toBe(500);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Iteration failed');
+        expect(response.body.requestId).toBeDefined();
+
+        // Verify iterate() was called
+        expect(iterateSpy).toHaveBeenCalled();
+
+        iterateSpy.mockRestore();
+      });
+    });
+
     describe('POST /cursor/iterate/async', () => {
       const mockCallbackUrl = 'http://localhost:3000/cursor-runner/callback?secret=test-secret';
 
