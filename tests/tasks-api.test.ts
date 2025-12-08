@@ -317,3 +317,125 @@ describe('GET /api/tasks/:id', () => {
     expect(response.body.updatedat).toBeDefined();
   });
 });
+
+describe('POST /api/tasks', () => {
+  let tempDb: TempSqliteDb;
+  let originalSharedDbPath: string | undefined;
+  let server: Server;
+  let cleanup: () => Promise<void>;
+
+  beforeAll(async () => {
+    // Save original SHARED_DB_PATH
+    originalSharedDbPath = process.env.SHARED_DB_PATH;
+
+    // Create temp SQLite DB and run migrations
+    tempDb = await createTempSqliteDb();
+
+    // Set SHARED_DB_PATH to temp DB path
+    process.env.SHARED_DB_PATH = tempDb.dbPath;
+
+    // Dynamically import createMockServer after setting env var
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const { createMockServer } = await import('./test-utils.js');
+
+    // Create mock server
+    const mockServerResult = createMockServer();
+    server = mockServerResult.server;
+    cleanup = mockServerResult.cleanup;
+
+    // Start server
+    await server.start();
+  });
+
+  afterAll(async () => {
+    // Stop server
+    if (cleanup) {
+      await cleanup();
+    }
+
+    // Restore original SHARED_DB_PATH
+    if (originalSharedDbPath !== undefined) {
+      process.env.SHARED_DB_PATH = originalSharedDbPath;
+    } else {
+      delete process.env.SHARED_DB_PATH;
+    }
+
+    // Clean up temp DB
+    if (tempDb) {
+      await tempDb.cleanup();
+    }
+  });
+
+  /**
+   * Helper to reset DB state between tests
+   */
+  beforeEach(async () => {
+    // Clear all tasks from the database
+    const db = tempDb.db;
+    db.prepare('DELETE FROM tasks').run();
+  });
+
+  it('should return 400 when prompt is missing', async () => {
+    const response = await request(server.app).post('/api/tasks').send({}).expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Prompt is required');
+  });
+
+  it('should return 400 when prompt is empty string', async () => {
+    const response = await request(server.app).post('/api/tasks').send({ prompt: '' }).expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Prompt is required');
+  });
+
+  it('should return 400 when prompt is not a string', async () => {
+    const response = await request(server.app).post('/api/tasks').send({ prompt: 123 }).expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('Prompt is required');
+  });
+
+  it('should create task with default order=0 and status=0', async () => {
+    const response = await request(server.app)
+      .post('/api/tasks')
+      .send({ prompt: 'Test Task' })
+      .expect(201);
+
+    expect(response.body.id).toBeDefined();
+    expect(response.body.prompt).toBe('Test Task');
+    expect(response.body.order).toBe(0);
+    expect(response.body.status).toBe(0);
+    expect(response.body.status_label).toBe('ready');
+    expect(response.body.createdat).toBeDefined();
+    expect(response.body.updatedat).toBeDefined();
+  });
+
+  it('should create task with provided order and status', async () => {
+    const response = await request(server.app)
+      .post('/api/tasks')
+      .send({ prompt: 'Test Task', order: 5, status: 1 })
+      .expect(201);
+
+    expect(response.body.id).toBeDefined();
+    expect(response.body.prompt).toBe('Test Task');
+    expect(response.body.order).toBe(5);
+    expect(response.body.status).toBe(1);
+    expect(response.body.status_label).toBe('complete');
+    expect(response.body.createdat).toBeDefined();
+    expect(response.body.updatedat).toBeDefined();
+  });
+
+  it('should return 201 with created task including status_label', async () => {
+    const response = await request(server.app)
+      .post('/api/tasks')
+      .send({ prompt: 'Test Task with Status', status: 4 })
+      .expect(201);
+
+    expect(response.status).toBe(201);
+    expect(response.body.id).toBeDefined();
+    expect(response.body.prompt).toBe('Test Task with Status');
+    expect(response.body.status_label).toBe('in_progress');
+    expect(response.body.status).toBe(4);
+  });
+});
