@@ -13,10 +13,7 @@ import type { CommandParserService } from './command-parser-service.js';
 import type { ReviewAgentService, ReviewOutputResult } from './review-agent-service.js';
 import type Redis from 'ioredis';
 import { MCPSelectionService } from './mcp-selection-service.js';
-import {
-  getScriptsPath,
-  getCursorAgentsToolsPath,
-} from './utils/path-resolver.js';
+import { getScriptsPath, getCursorAgentsToolsPath } from './utils/path-resolver.js';
 
 /**
  * Parameters for execute method

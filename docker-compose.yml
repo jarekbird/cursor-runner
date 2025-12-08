@@ -166,8 +166,9 @@ services:
       # Path-based routing - only route /conversations/api/* to cursor-runner (API endpoints)
       # Higher priority ensures API routes are matched before jarek-va-ui routes
       # HTTPS router (for production domains only - exclude localhost)
+      # Only create HTTPS router when DOMAIN_NAME is set and contains a dot (real domain, not localhost)
       - "traefik.http.routers.cursor-runner-conversations-api.priority=20"
-      - "traefik.http.routers.cursor-runner-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`) && !Host(`localhost`)"
+      - "traefik.http.routers.cursor-runner-conversations-api.rule=HostRegexp(`.*\\..*`) && Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`)"
       - "traefik.http.routers.cursor-runner-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-conversations-api.service=cursor-runner-api"
@@ -193,8 +194,9 @@ services:
       # Path-based routing for agent conversation API endpoints
       # Higher priority (25) ensures agent routes are matched before regular conversation routes
       # HTTPS router (for production domains only - exclude localhost)
+      # Only create HTTPS router when DOMAIN_NAME is set and contains a dot (real domain, not localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=25"
-      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`) && !Host(`localhost`)"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=HostRegexp(`.*\\..*`) && Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.service=cursor-runner-api"

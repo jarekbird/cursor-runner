@@ -44,11 +44,7 @@ export function resolvePathRelativeToTargetApp(
  * Explicit SCRIPTS_PATH env var takes precedence, otherwise resolves to TARGET_APP_PATH/scripts
  */
 export function getScriptsPath(): string {
-  return resolvePathRelativeToTargetApp(
-    'SCRIPTS_PATH',
-    'scripts',
-    '/cursor/scripts'
-  );
+  return resolvePathRelativeToTargetApp('SCRIPTS_PATH', 'scripts', '/cursor/scripts');
 }
 
 /**

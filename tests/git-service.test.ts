@@ -20,7 +20,7 @@ describe('GitService', () => {
     it('should resolve REPOSITORIES_PATH relative to TARGET_APP_PATH when TARGET_APP_PATH is set', () => {
       const originalTargetAppPath = process.env.TARGET_APP_PATH;
       const originalRepositoriesPath = process.env.REPOSITORIES_PATH;
-      
+
       const tempTargetAppPath = `${os.tmpdir()}/test-target-app-${Date.now()}`;
       process.env.TARGET_APP_PATH = tempTargetAppPath;
       delete process.env.REPOSITORIES_PATH; // Clear explicit REPOSITORIES_PATH to test relative resolution

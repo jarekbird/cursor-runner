@@ -199,6 +199,30 @@ This document breaks down the testing master plan into granular, actionable step
 
 ---
 
+### Step 2.7: CursorRunner Process & Signal Handling (Optional)
+**Objective**: Test Node process main entrypoint and signal-driven shutdown.
+
+**Tasks**:
+1. Create `tests/process-signals.e2e.test.ts` (or extend an existing integration/E2E-lite file):
+   - Build or import the compiled entrypoint so that the `import.meta.url` main guard is active.
+   - Spawn the built artifact as a child process with a test configuration (mocked Redis/SQLite where needed).
+   - Send `SIGTERM` and `SIGINT` to the child process in separate tests.
+   - Verify that the process exits with code `0` for both signals.
+   - Verify that `shutdown()` is invoked (e.g., via log output or a lightweight test hook).
+   - Verify that any keep-alive interval or timers are cleared (no hanging process; child exits within a reasonable timeout).
+
+**Tests**:
+- Use `child_process.spawn` to start the built runner.
+- Use `process.kill(child.pid, 'SIGTERM')` / `'SIGINT'` and wait for `exit` events.
+- Assert exit codes and, where feasible, assert on log output indicating shutdown was triggered.
+
+**Verification**:
+- Tests pass consistently on local and CI environments.
+- No hanging child processes after tests complete.
+- Behavior matches the master plan’s signal-handling expectations.
+
+---
+
 ## Phase 3: HTTP Server - Health & Diagnostics
 
 ### Step 3.1: GET /health Endpoint
@@ -1291,7 +1315,7 @@ This document breaks down the testing master plan into granular, actionable step
 **Tasks**:
 1. Create `tests/e2e/async-iteration.test.ts`:
    - Add test: Full flow from `/cursor/iterate/async` request to callback webhook
-   - Mock `CursorExecutionService` to simulate successful iteration
+   - Mock `CursorExecutionService` and/or `CursorCLI` to simulate successful iteration (no real `cursor-cli` process should be spawned)
    - Use in-process HTTP server to receive callback
    - Verify callback payload structure matches expected format
    - Verify callback includes all required fields (duration, timestamp, iterations, etc.)

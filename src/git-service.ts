@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync } from 'fs';
-import path from 'path';
 import { logger } from './logger.js';
 import { getRepositoriesPath } from './utils/path-resolver.js';
 

@@ -1,6 +1,6 @@
 /**
  * Baseline Verification Tests
- * 
+ *
  * These tests verify that the baseline commit SHA and repository state
  * are correctly recorded and can be used as a reference point for the Python port.
  */
@@ -51,21 +51,16 @@ describe('Baseline Verification', () => {
       const shaMatch = content.match(/Commit SHA.*?`([a-f0-9]{40})`/);
       const recordedSha = shaMatch![1];
 
-      const currentSha = execSync('git rev-parse HEAD', {
-        cwd: repoPath,
-        encoding: 'utf-8',
-      }).trim();
-
       // The recorded SHA should match the current HEAD or be a valid commit
       expect(recordedSha).toMatch(/^[a-f0-9]{40}$/);
-      
+
       // Verify the SHA can be checked out (it exists in the repository)
       try {
         execSync(`git cat-file -e ${recordedSha}`, {
           cwd: repoPath,
           stdio: 'ignore',
         });
-      } catch (error) {
+      } catch {
         throw new Error(`Recorded commit SHA ${recordedSha} does not exist in repository`);
       }
     });
@@ -100,4 +95,3 @@ describe('Baseline Verification', () => {
     });
   });
 });
-

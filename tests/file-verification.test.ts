@@ -1,6 +1,6 @@
 /**
  * File Verification Tests
- * 
+ *
  * These tests verify that key source files exist and have the expected structure
  * as documented in the master plan.
  */
@@ -51,26 +51,17 @@ describe('File Verification (TASK-PY-001.03)', () => {
 
   describe('cursor-execution-service.ts structure', () => {
     it('should have execute method', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'cursor-execution-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'cursor-execution-service.ts'), 'utf-8');
       expect(content).toMatch(/execute\s*\(/i);
     });
 
     it('should have iterate method', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'cursor-execution-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'cursor-execution-service.ts'), 'utf-8');
       expect(content).toMatch(/iterate\s*\(/i);
     });
 
     it('should have CursorExecutionService class', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'cursor-execution-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'cursor-execution-service.ts'), 'utf-8');
       expect(content).toMatch(/class CursorExecutionService/i);
     });
   });
@@ -94,54 +85,35 @@ describe('File Verification (TASK-PY-001.03)', () => {
 
   describe('conversation-service.ts structure', () => {
     it('should have ConversationService class', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'conversation-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'conversation-service.ts'), 'utf-8');
       expect(content).toMatch(/class ConversationService/i);
     });
 
     it('should have Redis integration', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'conversation-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'conversation-service.ts'), 'utf-8');
       expect(content).toMatch(/ioredis|Redis/i);
     });
 
     it('should have getConversationId method', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'conversation-service.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'conversation-service.ts'), 'utf-8');
       expect(content).toMatch(/getConversationId/i);
     });
   });
 
   describe('system-settings.ts structure', () => {
     it('should have isSystemSettingEnabled function', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'system-settings.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'system-settings.ts'), 'utf-8');
       expect(content).toMatch(/isSystemSettingEnabled/i);
     });
 
     it('should have database connection logic', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'system-settings.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'system-settings.ts'), 'utf-8');
       expect(content).toMatch(/better-sqlite3|Database/i);
     });
 
     it('should have Gmail configuration functions', () => {
-      const content = fs.readFileSync(
-        path.join(srcDir, 'system-settings.ts'),
-        'utf-8'
-      );
+      const content = fs.readFileSync(path.join(srcDir, 'system-settings.ts'), 'utf-8');
       expect(content).toMatch(/getGmail/i);
     });
   });
 });
-
