@@ -1,8 +1,9 @@
 /**
  * Tests for test utility helpers
  */
-import { describe, it, expect } from '@jest/globals';
-import { createMockRedisClient } from './test-utils.js';
+import { describe, it, expect, afterEach } from '@jest/globals';
+import { createMockRedisClient, createTempSqliteDb } from './test-utils.js';
+import { existsSync } from 'fs';
 
 describe('createMockRedisClient', () => {
   describe('basic operations', () => {
@@ -359,5 +360,134 @@ describe('createMockRedisClient', () => {
       expect(value1).toBe('value1');
       expect(value2).toBe('value2');
     });
+  });
+});
+
+// Check if better-sqlite3 is available (native module may not be built)
+let sqliteAvailable = false;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('better-sqlite3');
+  sqliteAvailable = true;
+} catch {
+  // Native module not available - tests will be skipped
+}
+
+const describeSqlite = sqliteAvailable ? describe : describe.skip;
+
+describeSqlite('createTempSqliteDb', () => {
+  const cleanupFunctions: Array<() => Promise<void>> = [];
+
+  afterEach(async () => {
+    // Clean up all databases created during tests
+    for (const cleanup of cleanupFunctions) {
+      try {
+        await cleanup();
+      } catch (error) {
+        console.warn('Error during cleanup:', error);
+      }
+    }
+    cleanupFunctions.length = 0;
+  });
+
+  it('should create temp database file', async () => {
+    const { db, dbPath, cleanup } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup);
+
+    expect(db).toBeDefined();
+    expect(dbPath).toBeDefined();
+    expect(existsSync(dbPath)).toBe(true);
+    expect(typeof cleanup).toBe('function');
+  });
+
+  it('should run all migrations successfully', async () => {
+    const { db, cleanup } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup);
+
+    // Check that schema_migrations table exists
+    const migrations = db
+      .prepare('SELECT name FROM schema_migrations ORDER BY name')
+      .all() as Array<{ name: string }>;
+    expect(migrations.length).toBeGreaterThan(0);
+
+    // Check that system_settings table exists (from migration)
+    const tables = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      )
+      .all() as Array<{ name: string }>;
+    const tableNames = tables.map((t) => t.name);
+    expect(tableNames).toContain('schema_migrations');
+    expect(tableNames).toContain('system_settings');
+  });
+
+  it('should return database instance and cleanup function', async () => {
+    const { db, cleanup } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup);
+
+    expect(db).toBeDefined();
+    expect(typeof db.prepare).toBe('function');
+    expect(typeof db.exec).toBe('function');
+    expect(typeof cleanup).toBe('function');
+  });
+
+  it('should cleanup and delete temp file', async () => {
+    const { dbPath, cleanup } = await createTempSqliteDb();
+
+    expect(existsSync(dbPath)).toBe(true);
+    await cleanup();
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it('should create separate files for multiple instances', async () => {
+    const { db: db1, dbPath: path1, cleanup: cleanup1 } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup1);
+    const { db: db2, dbPath: path2, cleanup: cleanup2 } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup2);
+
+    expect(path1).not.toBe(path2);
+    expect(existsSync(path1)).toBe(true);
+    expect(existsSync(path2)).toBe(true);
+
+    // Each database should be independent
+    db1.prepare("INSERT INTO system_settings (name, value) VALUES ('test1', 1)").run();
+    db2.prepare("INSERT INTO system_settings (name, value) VALUES ('test2', 1)").run();
+
+    const result1 = db1.prepare('SELECT value FROM system_settings WHERE name = ?').get('test1') as
+      | { value: number }
+      | undefined;
+    const result2 = db2.prepare('SELECT value FROM system_settings WHERE name = ?').get('test2') as
+      | { value: number }
+      | undefined;
+
+    expect(result1?.value).toBe(1);
+    expect(result2?.value).toBe(1);
+
+    // test1 should not exist in db2
+    const result1InDb2 = db2
+      .prepare('SELECT value FROM system_settings WHERE name = ?')
+      .get('test1') as { value: number } | undefined;
+    expect(result1InDb2).toBeUndefined();
+  });
+
+  it('should handle cleanup errors gracefully', async () => {
+    const { db: testDb, dbPath, cleanup } = await createTempSqliteDb();
+
+    // Close database manually
+    testDb.close();
+
+    // Cleanup should not throw even if file is already closed
+    await expect(cleanup()).resolves.toBeUndefined();
+
+    // File should still be deleted
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it('should have WAL mode enabled', async () => {
+    const { db, cleanup } = await createTempSqliteDb();
+    cleanupFunctions.push(cleanup);
+
+    const journalMode = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+    expect(journalMode.journal_mode.toLowerCase()).toBe('wal');
   });
 });

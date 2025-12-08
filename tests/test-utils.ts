@@ -4,6 +4,17 @@
  */
 import type { Server } from '../src/server.js';
 import type Redis from 'ioredis';
+import Database from 'better-sqlite3';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { unlinkSync, existsSync } from 'fs';
+import { Umzug } from 'umzug';
+import { readdirSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface TestCleanup {
   server?: Server;
@@ -301,4 +312,181 @@ export async function executeAllCleanups(): Promise<void> {
 
   // Clear the array
   jestGlobals.__testCleanupFunctions = [];
+}
+
+/**
+ * Interface for temporary SQLite database result
+ */
+export interface TempSqliteDb {
+  db: Database.Database;
+  dbPath: string;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Creates a temporary SQLite database, runs all migrations, and returns the database instance with a cleanup function.
+ * This helper is used in integration tests that need database access without affecting the main database.
+ *
+ * @returns Promise resolving to database instance, path, and cleanup function
+ *
+ * @example
+ * ```typescript
+ * const { db, cleanup } = await createTempSqliteDb();
+ * try {
+ *   // Use db for tests
+ *   const result = db.prepare('SELECT * FROM system_settings').all();
+ * } finally {
+ *   await cleanup(); // Always cleanup!
+ * }
+ * ```
+ */
+export async function createTempSqliteDb(): Promise<TempSqliteDb> {
+  // Create unique temp file path
+  const tempDir = tmpdir();
+  const dbPath = join(
+    tempDir,
+    `test-db-${Date.now()}-${Math.random().toString(36).substring(7)}.sqlite`
+  );
+
+  // Create database connection
+  const db = new Database(dbPath);
+  // Enable WAL mode for better concurrency
+  db.pragma('journal_mode = WAL');
+
+  // Get migrations path (same logic as migration-runner)
+  const MIGRATIONS_PATH = path.join(__dirname, '../src/migrations/files');
+
+  // Create Umzug instance for this specific database
+  const migrator = new Umzug<Database.Database>({
+    migrations: async () => {
+      const files = readdirSync(MIGRATIONS_PATH);
+      const hasJsFiles = files.some((f) => f.endsWith('.js') && !f.endsWith('.d.ts'));
+      const migrationFiles = files
+        .filter((file) => {
+          if (file.endsWith('.d.ts') || file.endsWith('.map')) {
+            return false;
+          }
+          if (hasJsFiles) {
+            return file.endsWith('.js');
+          }
+          return file.endsWith('.ts');
+        })
+        .map((file) => {
+          const migrationPath = path.join(MIGRATIONS_PATH, file);
+          return {
+            name: file,
+            path: migrationPath,
+            up: async () => {
+              // eslint-disable-next-line node/no-unsupported-features/es-syntax
+              const migration = await import(migrationPath);
+              if (typeof migration.up === 'function') {
+                return migration.up({ context: db });
+              }
+              throw new Error(`Migration ${file} does not export an 'up' function`);
+            },
+            down: async () => {
+              // eslint-disable-next-line node/no-unsupported-features/es-syntax
+              const migration = await import(migrationPath);
+              if (typeof migration.down === 'function') {
+                return migration.down({ context: db });
+              }
+              throw new Error(`Migration ${file} does not export a 'down' function`);
+            },
+          };
+        });
+
+      return migrationFiles;
+    },
+    context: db,
+    logger: {
+      info: () => {
+        // Silent in tests
+      },
+      warn: () => {
+        // Silent in tests
+      },
+      error: (msg: string | Record<string, unknown>) => {
+        const message = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        console.error(`[Migration] ${message}`);
+      },
+      debug: () => {
+        // Silent in tests
+      },
+    },
+    storage: {
+      async executed() {
+        try {
+          const rows = db
+            .prepare('SELECT name FROM schema_migrations ORDER BY name')
+            .all() as Array<{ name: string }>;
+          return rows.map((row) => row.name);
+        } catch {
+          return [];
+        }
+      },
+      async logMigration({ name }) {
+        db.prepare('INSERT INTO schema_migrations (name, executed_at) VALUES (?, ?)').run(
+          name,
+          new Date().toISOString()
+        );
+      },
+      async unlogMigration({ name }) {
+        db.prepare('DELETE FROM schema_migrations WHERE name = ?').run(name);
+      },
+    },
+  });
+
+  // Ensure schema_migrations table exists
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name TEXT PRIMARY KEY,
+        executed_at TEXT NOT NULL
+      )
+    `);
+  } catch (error) {
+    db.close();
+    if (existsSync(dbPath)) {
+      unlinkSync(dbPath);
+    }
+    throw new Error(
+      `Failed to create schema_migrations table: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  // Run all migrations
+  try {
+    await migrator.up();
+  } catch (error) {
+    db.close();
+    if (existsSync(dbPath)) {
+      unlinkSync(dbPath);
+    }
+    throw new Error(
+      `Failed to run migrations: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  // Cleanup function
+  const cleanup = async (): Promise<void> => {
+    try {
+      db.close();
+    } catch (error) {
+      console.warn('Error closing database during cleanup:', error);
+    }
+
+    try {
+      if (existsSync(dbPath)) {
+        unlinkSync(dbPath);
+      }
+    } catch (error) {
+      console.warn('Error deleting temp database file during cleanup:', error);
+    }
+  };
+
+  return {
+    db,
+    dbPath,
+    cleanup,
+  };
 }
