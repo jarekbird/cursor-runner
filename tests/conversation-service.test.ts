@@ -117,3 +117,130 @@ describe('ConversationService - getConversationId', () => {
     expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 });
+
+describe('ConversationService - Conversation Management', () => {
+  let conversationService: ConversationService;
+  let mockRedis: Partial<Redis>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRedis = createMockRedisClient();
+    conversationService = new ConversationService(mockRedis as Redis);
+  });
+
+  it('should set TTL and last-conversation key per queue when creating conversation', async () => {
+    const conversationId = 'test-conversation-id';
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    const mockSet = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).setex = mockSetex;
+    (mockRedis as any).set = mockSet;
+
+    await conversationService.createConversation(conversationId, 'default');
+
+    // Should set conversation with TTL
+    expect(mockSetex).toHaveBeenCalledWith(
+      `cursor:conversation:${conversationId}`,
+      3600, // TTL in seconds
+      expect.any(String)
+    );
+    // Should set last-conversation key
+    expect(mockSet).toHaveBeenCalledWith('cursor:last_conversation_id', conversationId);
+  });
+
+  it('should set telegram last-conversation key for telegram queue type', async () => {
+    const conversationId = 'test-conversation-id';
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    const mockSet = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).setex = mockSetex;
+    (mockRedis as any).set = mockSet;
+
+    await conversationService.createConversation(conversationId, 'telegram');
+
+    expect(mockSet).toHaveBeenCalledWith('cursor:telegram:last_conversation_id', conversationId);
+  });
+
+  it('should set api last-conversation key for api queue type', async () => {
+    const conversationId = 'test-conversation-id';
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    const mockSet = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).setex = mockSetex;
+    (mockRedis as any).set = mockSet;
+
+    await conversationService.createConversation(conversationId, 'api');
+
+    expect(mockSet).toHaveBeenCalledWith('cursor:api:last_conversation_id', conversationId);
+  });
+
+  it('should clear last-conversation key and create new conversation when forcing new conversation', async () => {
+    const mockSetex = (jest.fn() as any).mockResolvedValue('OK');
+    const mockSet = (jest.fn() as any).mockResolvedValue('OK');
+    (mockRedis as any).setex = mockSetex;
+    (mockRedis as any).set = mockSet;
+
+    const result = await conversationService.forceNewConversation('default');
+
+    // Should return a new conversation ID
+    expect(result).toBeDefined();
+    expect(result.length).toBeGreaterThan(0);
+    // Should set last-conversation key to new ID (effectively clearing old one)
+    expect(mockSet).toHaveBeenCalledWith('cursor:last_conversation_id', result);
+    // Should create new conversation
+    expect(mockSetex).toHaveBeenCalled();
+  });
+
+  it('should return messages from getConversationContext', async () => {
+    const conversationId = 'test-conversation-id';
+    const messages = [
+      { role: 'user' as const, content: 'Hello', timestamp: new Date().toISOString() },
+      { role: 'assistant' as const, content: 'Hi there', timestamp: new Date().toISOString() },
+    ];
+    const context = {
+      conversationId,
+      messages,
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(context));
+    (mockRedis as any).get = mockGet;
+
+    const result = await conversationService.getConversationContext(conversationId);
+
+    expect(result).toBeDefined();
+    expect(result.length).toBe(2);
+    expect(result[0].role).toBe('user');
+    expect(result[0].content).toBe('Hello');
+    expect(result[1].role).toBe('assistant');
+    expect(result[1].content).toBe('Hi there');
+  });
+
+  it('should prefer summarized messages when available in getConversationContext', async () => {
+    const conversationId = 'test-conversation-id';
+    const messages = [
+      { role: 'user' as const, content: 'Hello', timestamp: new Date().toISOString() },
+    ];
+    const summarizedMessages = [
+      {
+        role: 'assistant' as const,
+        content: '[Conversation Summary] Previous conversation',
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    const context = {
+      conversationId,
+      messages,
+      summarizedMessages,
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    };
+    const mockGet = (jest.fn() as any).mockResolvedValue(JSON.stringify(context));
+    (mockRedis as any).get = mockGet;
+
+    const result = await conversationService.getConversationContext(conversationId);
+
+    expect(result).toBeDefined();
+    expect(result.length).toBe(1);
+    expect(result[0].content).toBe('[Conversation Summary] Previous conversation');
+    // Should use summarized messages, not regular messages
+    expect(result).toEqual(summarizedMessages);
+  });
+});
