@@ -2,9 +2,12 @@ import Database from 'better-sqlite3';
 import { logger } from './logger.js';
 
 /**
- * Path to the shared SQLite database
+ * Get the path to the shared SQLite database
+ * Reads from process.env dynamically to support testing with different DB paths
  */
-const SHARED_DB_PATH = process.env.SHARED_DB_PATH || '/app/shared_db/shared.sqlite3';
+function getSharedDbPath(): string {
+  return process.env.SHARED_DB_PATH || '/app/shared_db/shared.sqlite3';
+}
 
 /**
  * Task status enum values
@@ -84,13 +87,15 @@ export class TaskService {
   private getDatabase(): Database.Database {
     if (!this.db) {
       try {
-        this.db = new Database(SHARED_DB_PATH);
+        const dbPath = getSharedDbPath();
+        this.db = new Database(dbPath);
         // Enable WAL mode for better concurrency
         this.db.pragma('journal_mode = WAL');
-        logger.debug('Database connection established for tasks', { path: SHARED_DB_PATH });
+        logger.debug('Database connection established for tasks', { path: dbPath });
       } catch (error) {
+        const dbPath = getSharedDbPath();
         logger.error('Failed to connect to database for tasks', {
-          path: SHARED_DB_PATH,
+          path: dbPath,
           error: error instanceof Error ? error.message : String(error),
         });
         throw error;
