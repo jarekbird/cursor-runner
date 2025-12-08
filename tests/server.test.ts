@@ -2072,6 +2072,102 @@ describe('Server', () => {
         // We verify it's an array (FileNode[] structure)
       });
     });
+
+    describe('GET /api/:conversationId', () => {
+      it('should return 404 when conversation not found', async () => {
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(null);
+
+        const response = await request(app).get('/api/non-existent-conversation-id');
+
+        // Verify error response
+        expect(response.status).toBe(404);
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Conversation not found');
+
+        // Verify getConversationById was called
+        expect(getConversationByIdSpy).toHaveBeenCalledTimes(1);
+        expect(getConversationByIdSpy).toHaveBeenCalledWith('non-existent-conversation-id');
+
+        getConversationByIdSpy.mockRestore();
+      });
+
+      it('should return conversation when found', async () => {
+        const mockConversation = {
+          conversationId: 'test-conversation-id',
+          messages: [],
+          createdAt: '2024-01-01T00:00:00Z',
+          lastAccessedAt: '2024-01-01T00:00:00Z',
+        };
+
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(mockConversation);
+
+        const response = await request(app).get('/api/test-conversation-id');
+
+        // Verify success response
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(mockConversation);
+        expect(response.body.conversationId).toBe('test-conversation-id');
+
+        // Verify getConversationById was called
+        expect(getConversationByIdSpy).toHaveBeenCalledTimes(1);
+        expect(getConversationByIdSpy).toHaveBeenCalledWith('test-conversation-id');
+
+        getConversationByIdSpy.mockRestore();
+      });
+
+      it('should pass through /api/tasks to tasks router', async () => {
+        // The /api/tasks route is handled by a separate router
+        // This test verifies that /api/tasks doesn't match the /api/:conversationId route
+        // We can verify this by checking that it doesn't call getConversationById
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(null);
+
+        // The /api/tasks route should be handled by tasks router, not conversation router
+        // If it falls through, it would call getConversationById, but it shouldn't
+        // We'll verify that getConversationById is NOT called for reserved paths
+        await request(app).get('/api/tasks');
+
+        // The tasks router should handle this, so getConversationById should not be called
+        // If the route is properly reserved, it won't match /api/:conversationId
+        // We verify this by checking getConversationById was not called with 'tasks'
+        expect(getConversationByIdSpy).not.toHaveBeenCalledWith('tasks');
+
+        getConversationByIdSpy.mockRestore();
+      });
+
+      it('should pass through /api/agent to agent router', async () => {
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(null);
+
+        // The /api/agent route should be handled by agent router
+        await request(app).get('/api/agent/list');
+
+        // Verify getConversationById was not called with 'agent'
+        expect(getConversationByIdSpy).not.toHaveBeenCalledWith('agent');
+
+        getConversationByIdSpy.mockRestore();
+      });
+
+      it('should pass through /api/working-directory to working-directory router', async () => {
+        const getConversationByIdSpy = jest
+          .spyOn(server.cursorExecution.conversationService, 'getConversationById')
+          .mockResolvedValue(null);
+
+        // The /api/working-directory route should be handled by working-directory router
+        await request(app).get('/api/working-directory/files');
+
+        // Verify getConversationById was not called with 'working-directory'
+        expect(getConversationByIdSpy).not.toHaveBeenCalledWith('working-directory');
+
+        getConversationByIdSpy.mockRestore();
+      });
+    });
   });
 
   describe('Telegram Webhook Endpoints', () => {
