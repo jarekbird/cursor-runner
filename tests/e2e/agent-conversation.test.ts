@@ -94,10 +94,7 @@ describe('E2E: Agent Conversation Flow', () => {
 
   it('should verify conversation creation with optional fields', async () => {
     // Create a new agent conversation without optional fields
-    const newConversationResponse = await request(app)
-      .post('/api/agent/new')
-      .send({})
-      .expect(200);
+    const newConversationResponse = await request(app).post('/api/agent/new').send({}).expect(200);
 
     expect(newConversationResponse.body).toMatchObject({
       success: true,
@@ -157,9 +154,7 @@ describe('E2E: Agent Conversation Flow', () => {
   it('should return 404 for non-existent conversation', async () => {
     const nonExistentId = 'non-existent-agent-conversation-id-12345';
 
-    const response = await request(app)
-      .get(`/api/agent/${nonExistentId}`)
-      .expect(404);
+    const response = await request(app).get(`/api/agent/${nonExistentId}`).expect(404);
 
     expect(response.body).toMatchObject({
       success: false,
@@ -254,4 +249,3 @@ describe('E2E: Agent Conversation Flow', () => {
     expect(messages[messages.length - 1].content).toContain('Second message');
   });
 });
-
