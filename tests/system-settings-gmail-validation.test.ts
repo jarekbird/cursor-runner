@@ -180,7 +180,7 @@ describe('system-settings Gmail validation', () => {
         return typeof arg === 'string' && arg.includes('Gmail MCP is disabled');
       });
       expect(hasGmailDisabledMessage).toBe(true);
-      
+
       // Check that info/warn were not called with Gmail-related messages
       const infoCalls = loggerInfoSpy.mock.calls;
       const hasGmailInfoMessage = infoCalls.some((call) => {
@@ -188,7 +188,7 @@ describe('system-settings Gmail validation', () => {
         return typeof arg === 'string' && arg.includes('Gmail MCP');
       });
       expect(hasGmailInfoMessage).toBe(false);
-      
+
       const warnCalls = loggerWarnSpy.mock.calls;
       const hasGmailWarnMessage = warnCalls.some((call) => {
         const arg = call[0] as unknown;
@@ -215,7 +215,7 @@ describe('system-settings Gmail validation', () => {
         return typeof arg === 'string' && arg.includes('Gmail MCP configuration is complete');
       });
       expect(hasGmailConfigMessage).toBe(true);
-      
+
       // Check that warn was not called with Gmail-related messages
       const warnCalls = loggerWarnSpy.mock.calls;
       const hasGmailWarnMessage = warnCalls.some((call) => {
@@ -238,10 +238,13 @@ describe('system-settings Gmail validation', () => {
       const warnCalls = loggerWarnSpy.mock.calls;
       const hasGmailConfigWarning = warnCalls.some((call) => {
         const arg = call[0] as unknown;
-        return typeof arg === 'string' && arg.includes('Gmail MCP is enabled but configuration is incomplete');
+        return (
+          typeof arg === 'string' &&
+          arg.includes('Gmail MCP is enabled but configuration is incomplete')
+        );
       });
       expect(hasGmailConfigWarning).toBe(true);
-      
+
       // Check that info was not called with Gmail-related messages
       const infoCalls = loggerInfoSpy.mock.calls;
       const hasGmailInfoMessage = infoCalls.some((call) => {
@@ -264,7 +267,10 @@ describe('system-settings Gmail validation', () => {
       const warnCalls = loggerWarnSpy.mock.calls;
       const hasGmailConfigWarning = warnCalls.some((call) => {
         const arg = call[0] as unknown;
-        return typeof arg === 'string' && arg.includes('Gmail MCP is enabled but configuration is incomplete');
+        return (
+          typeof arg === 'string' &&
+          arg.includes('Gmail MCP is enabled but configuration is incomplete')
+        );
       });
       expect(hasGmailConfigWarning).toBe(true);
     });
