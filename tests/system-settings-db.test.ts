@@ -19,14 +19,14 @@ describe('system-settings - isSystemSettingEnabled', () => {
     // Set SHARED_DB_PATH to temp DB path BEFORE importing system-settings
     // This is critical because system-settings reads SHARED_DB_PATH at module load time
     process.env.SHARED_DB_PATH = tempDb.dbPath;
-    
+
     // Verify the env var is set correctly
     expect(process.env.SHARED_DB_PATH).toBe(tempDb.dbPath);
 
     // Dynamically import system-settings after setting env var
     // eslint-disable-next-line node/no-unsupported-features/es-syntax
     systemSettings = await import('../src/system-settings.js');
-    
+
     // Verify the import worked
     expect(systemSettings).toBeDefined();
     expect(systemSettings.isSystemSettingEnabled).toBeDefined();
@@ -71,13 +71,13 @@ describe('system-settings - isSystemSettingEnabled', () => {
   it('should read from DB when available', async () => {
     // Verify the env var is set correctly before testing
     expect(process.env.SHARED_DB_PATH).toBe(tempDb.dbPath);
-    
+
     // Insert test setting in database BEFORE opening any readonly connection
     // This ensures the data exists before the readonly connection is opened
     const db = new Database(tempDb.dbPath);
     db.prepare('INSERT INTO system_settings (name, value) VALUES (?, ?)').run('debug', 1);
     db.prepare('INSERT INTO system_settings (name, value) VALUES (?, ?)').run('test_setting', 0);
-    
+
     // Verify data was inserted
     const inserted = db.prepare('SELECT * FROM system_settings').all();
     expect(inserted.length).toBe(2);
@@ -97,17 +97,20 @@ describe('system-settings - isSystemSettingEnabled', () => {
     // In that case, the test will fail, but we've verified the data exists in the temp DB
     const debugResult = systemSettings.isSystemSettingEnabled('debug');
     const testSettingResult = systemSettings.isSystemSettingEnabled('test_setting');
-    
+
     // If the results are false, it means the connection is using a different database
     // This can happen if the module was already loaded before we set the env var
     // We'll verify the data exists in our temp DB to confirm the test setup is correct
     if (!debugResult) {
       const verifyDb = new Database(tempDb.dbPath);
-      const verifySettings = verifyDb.prepare('SELECT * FROM system_settings').all() as Array<{ name: string; value: number }>;
+      const verifySettings = verifyDb.prepare('SELECT * FROM system_settings').all() as Array<{
+        name: string;
+        value: number;
+      }>;
       expect(verifySettings.length).toBe(2);
       expect(verifySettings.find((s) => s.name === 'debug')?.value).toBe(1);
       verifyDb.close();
-      
+
       // The module is using a different database path, likely the default
       // This is a limitation of module-level constants in ES modules
       // For now, we'll skip this assertion but note that the data exists in the temp DB
@@ -115,7 +118,7 @@ describe('system-settings - isSystemSettingEnabled', () => {
       console.warn('Module is using default database path instead of temp DB path');
       return;
     }
-    
+
     expect(debugResult).toBe(true);
     expect(testSettingResult).toBe(false);
   });
@@ -175,4 +178,3 @@ describe('system-settings - isSystemSettingEnabled', () => {
     }).not.toThrow();
   });
 });
-
