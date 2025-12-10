@@ -126,7 +126,10 @@ describe('GitService', () => {
       // So we verify behavior: directory gets created
       // Make mkdirSync actually create the directory so behavior verification works
       mockMkdirSync.mockImplementation(
-        (path: Parameters<typeof fs.mkdirSync>[0], options?: Parameters<typeof fs.mkdirSync>[1]) => {
+        (
+          path: Parameters<typeof fs.mkdirSync>[0],
+          options?: Parameters<typeof fs.mkdirSync>[1]
+        ) => {
           return fs.mkdirSync(path, options);
         }
       );
