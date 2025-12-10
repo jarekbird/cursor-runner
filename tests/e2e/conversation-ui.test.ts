@@ -92,7 +92,9 @@ describe('E2E: Conversation UI Flow', () => {
     // Verify conversation state
     expect(getConversationResponse.body).toBeDefined();
     // Conversation response has conversationId and messages
-    expect(getConversationResponse.body.conversationId || getConversationResponse.body.id).toBeDefined();
+    expect(
+      getConversationResponse.body.conversationId || getConversationResponse.body.id
+    ).toBeDefined();
     expect(getConversationResponse.body.messages).toBeDefined();
     expect(Array.isArray(getConversationResponse.body.messages)).toBe(true);
 
@@ -123,13 +125,9 @@ describe('E2E: Conversation UI Flow', () => {
     const conversationId = newConversationResponse.body.conversationId;
 
     // Get the conversation multiple times
-    const getResponse1 = await request(app)
-      .get(`/conversations/api/${conversationId}`)
-      .expect(200);
+    const getResponse1 = await request(app).get(`/conversations/api/${conversationId}`).expect(200);
 
-    const getResponse2 = await request(app)
-      .get(`/conversations/api/${conversationId}`)
-      .expect(200);
+    const getResponse2 = await request(app).get(`/conversations/api/${conversationId}`).expect(200);
 
     // Verify conversation ID is consistent
     // The conversation object may not have an 'id' field directly
@@ -163,9 +161,7 @@ describe('E2E: Conversation UI Flow', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Get conversation after first message
-    const getResponse1 = await request(app)
-      .get(`/conversations/api/${conversationId}`)
-      .expect(200);
+    const getResponse1 = await request(app).get(`/conversations/api/${conversationId}`).expect(200);
 
     const messageCount1 = getResponse1.body.messages?.length || 0;
 
@@ -181,9 +177,7 @@ describe('E2E: Conversation UI Flow', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Get conversation after second message
-    const getResponse2 = await request(app)
-      .get(`/conversations/api/${conversationId}`)
-      .expect(200);
+    const getResponse2 = await request(app).get(`/conversations/api/${conversationId}`).expect(200);
 
     const messageCount2 = getResponse2.body.messages?.length || 0;
 
@@ -196,15 +190,14 @@ describe('E2E: Conversation UI Flow', () => {
     const nonExistentId = 'non-existent-conversation-id-12345';
 
     // Mock getConversationById to return null for non-existent conversations
-    const originalGetConversationById = server.cursorExecution.conversationService.getConversationById;
+    const originalGetConversationById =
+      server.cursorExecution.conversationService.getConversationById;
     jest
       .spyOn(server.cursorExecution.conversationService, 'getConversationById')
       .mockResolvedValue(null);
 
     try {
-      const response = await request(app)
-        .get(`/conversations/api/${nonExistentId}`)
-        .expect(404);
+      const response = await request(app).get(`/conversations/api/${nonExistentId}`).expect(404);
 
       expect(response.body).toMatchObject({
         success: false,
@@ -256,4 +249,3 @@ describe('E2E: Conversation UI Flow', () => {
     }
   });
 });
-
