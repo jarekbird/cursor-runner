@@ -61,7 +61,8 @@ describe('TerminalService', () => {
       // On Unix, we can use sh -c to redirect to stderr
       // On Windows, we'll use a command that might produce stderr
       const command = process.platform === 'win32' ? 'cmd' : 'sh';
-      const args = process.platform === 'win32' ? ['/c', 'echo error >&2'] : ['-c', 'echo error >&2'];
+      const args =
+        process.platform === 'win32' ? ['/c', 'echo error >&2'] : ['-c', 'echo error >&2'];
 
       const result = await service.executeCommand(command, args);
 
