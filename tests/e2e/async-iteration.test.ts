@@ -44,36 +44,44 @@ describe('E2E: Async Iteration Flow', () => {
     cursorExecutionRef = cursorExecution;
 
     // Mock the iterate method to simulate successful iteration
-    mockIterate = jest.spyOn(cursorExecution, 'iterate').mockImplementation(async (params: IterateParams) => {
-      // Simulate a successful iteration
-      const responseBody = {
-        success: true as const,
-        requestId: params.requestId || 'test-request-id',
-        repository: params.repository || null,
-        branchName: params.branchName,
-        command: ['cursor', '--prompt', params.prompt],
-        output: 'Task completed successfully',
-        error: null,
-        exitCode: 0,
-        duration: '1500ms',
-        timestamp: new Date().toISOString(),
-        iterations: 2,
-        maxIterations: params.maxIterations || 5,
-      };
+    mockIterate = jest
+      .spyOn(cursorExecution, 'iterate')
+      .mockImplementation(async (params: IterateParams) => {
+        // Simulate a successful iteration
+        const responseBody = {
+          success: true as const,
+          requestId: params.requestId || 'test-request-id',
+          repository: params.repository || null,
+          branchName: params.branchName,
+          command: ['cursor', '--prompt', params.prompt],
+          output: 'Task completed successfully',
+          error: null,
+          exitCode: 0,
+          duration: '1500ms',
+          timestamp: new Date().toISOString(),
+          iterations: 2,
+          maxIterations: params.maxIterations || 5,
+        };
 
-      // Call the callback webhook if provided
-      if (params.callbackUrl) {
-        // Call it asynchronously to match real behavior
-        cursorExecutionRef.callbackWebhook(params.callbackUrl, responseBody, params.requestId || 'test-request-id').catch(() => {
-          // Ignore errors in test
-        });
-      }
+        // Call the callback webhook if provided
+        if (params.callbackUrl) {
+          // Call it asynchronously to match real behavior
+          cursorExecutionRef
+            .callbackWebhook(
+              params.callbackUrl,
+              responseBody,
+              params.requestId || 'test-request-id'
+            )
+            .catch(() => {
+              // Ignore errors in test
+            });
+        }
 
-      return {
-        status: 200,
-        body: responseBody,
-      };
-    });
+        return {
+          status: 200,
+          body: responseBody,
+        };
+      });
 
     // Create server
     server = new Server();
@@ -190,9 +198,15 @@ describe('E2E: Async Iteration Flow', () => {
 
       // Call the callback webhook if provided
       if (params.callbackUrl) {
-        cursorExecutionRef.callbackWebhook(params.callbackUrl, errorResponseBody, params.requestId || 'test-request-id').catch(() => {
-          // Ignore errors in test
-        });
+        cursorExecutionRef
+          .callbackWebhook(
+            params.callbackUrl,
+            errorResponseBody,
+            params.requestId || 'test-request-id'
+          )
+          .catch(() => {
+            // Ignore errors in test
+          });
       }
 
       return {
@@ -270,4 +284,3 @@ describe('E2E: Async Iteration Flow', () => {
     expect(callArgs.callbackUrl).toBeDefined();
   });
 });
-
