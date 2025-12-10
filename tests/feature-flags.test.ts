@@ -74,7 +74,9 @@ describe('Feature Flags', () => {
       const warnCalls = loggerWarnSpy.mock.calls;
       const hasInvalidValueWarning = warnCalls.some((call) => {
         const arg = call[0] as unknown;
-        return typeof arg === 'string' && arg.includes('ELEVENLABS_AGENT_ENABLED has unexpected value');
+        return (
+          typeof arg === 'string' && arg.includes('ELEVENLABS_AGENT_ENABLED has unexpected value')
+        );
       });
       expect(hasInvalidValueWarning).toBe(true);
     });
@@ -153,7 +155,10 @@ describe('Feature Flags', () => {
       const infoCalls = loggerInfoSpy.mock.calls;
       const hasSkippingMessage = infoCalls.some((call) => {
         const arg = call[0] as unknown;
-        return typeof arg === 'string' && arg.includes('ElevenLabs agent feature is disabled, skipping callback');
+        return (
+          typeof arg === 'string' &&
+          arg.includes('ElevenLabs agent feature is disabled, skipping callback')
+        );
       });
       expect(hasSkippingMessage).toBe(true);
     });
