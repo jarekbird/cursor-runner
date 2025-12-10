@@ -1,5 +1,5 @@
 // eslint-disable-next-line node/no-unpublished-import
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   mkdirSync,
   writeFileSync,
@@ -9,7 +9,6 @@ import {
   readdirSync,
   statSync,
 } from 'fs';
-import * as fs from 'fs';
 import { join } from 'path';
 import { FileTreeService, FileNode } from '../src/file-tree-service.js';
 
