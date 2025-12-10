@@ -20,7 +20,6 @@ describe('E2E: Async Iteration Flow', () => {
   let callbackPort: number;
   let receivedCallbacks: any[];
   let mockIterate: ReturnType<typeof jest.spyOn>;
-  let cursorExecution: CursorExecutionService;
   let cursorExecutionRef: CursorExecutionService;
 
   beforeEach(async () => {
