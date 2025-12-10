@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { WorkspaceTrustService } from '../src/workspace-trust-service.js';
 import { FilesystemService } from '../src/filesystem-service.js';
-import { mkdir, writeFile, readFile, rm } from 'fs/promises';
+import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import os from 'os';
