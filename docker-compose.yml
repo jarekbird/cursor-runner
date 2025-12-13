@@ -196,7 +196,7 @@ services:
       # HTTPS router (for production domains only - exclude localhost)
       # Only create HTTPS router when DOMAIN_NAME is set and contains a dot (real domain, not localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=25"
-      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=HostRegexp(`.*\\..*`) && Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
+      - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.service=cursor-runner-api"
@@ -210,7 +210,8 @@ services:
       # Step 1: Strip /agent-conversations/api → /list
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-stripprefix.stripprefix.prefixes=/agent-conversations/api"
       # Step 2: Rewrite /list to /api/agent/list
-      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.regex=^(.*)"
+      # Note: After strip prefix, path is /list, so we need to capture without the leading slash
+      - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.regex=^/(.*)"
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.replacement=/api/agent/$$1"
       # Apply strip prefix, rewrite, and security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite,cursor-runner-conversations-api-headers"
