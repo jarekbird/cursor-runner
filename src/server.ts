@@ -389,7 +389,7 @@ export class Server {
      * Body: { repository?: string, branchName?: string, prompt: string, callbackUrl?: string }
      * If repository is not provided, uses the repositories directory as working directory
      * Prompt is required and will be used to construct the cursor command internally.
-     * callbackUrl is required for async processing.
+     * callbackUrl is optional - if provided, results will be sent to the callback URL when complete.
      *
      * Authentication: Requires WEBHOOK_SECRET in header (X-Webhook-Secret or X-Cursor-Runner-Secret)
      * or query parameter (?secret=...) if WEBHOOK_SECRET environment variable is set.
@@ -409,17 +409,8 @@ export class Server {
             userAgent: req.get('user-agent'),
           });
 
-          // Check if callbackUrl is provided for async processing
+          // Get callbackUrl if provided (optional)
           const callbackUrl = body.callbackUrl || body.callback_url;
-          if (!callbackUrl) {
-            res.status(400).json({
-              success: false,
-              error: 'callbackUrl is required for async execution',
-              requestId,
-              timestamp: new Date().toISOString(),
-            });
-            return;
-          }
 
           // Return 200 OK immediately and process asynchronously
           res.status(200).json({

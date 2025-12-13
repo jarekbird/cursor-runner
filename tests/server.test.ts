@@ -432,16 +432,31 @@ describe('Server', () => {
     });
 
     describe('POST /cursor/execute/async', () => {
-      it('should return 400 when callbackUrl is missing', async () => {
+      it('should return 200 when callbackUrl is missing (optional)', async () => {
+        const mockExecuteResult = {
+          status: 200,
+          body: {
+            success: true,
+            requestId: 'test-request-id',
+            output: 'Success',
+            duration: '1.2s',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        // Mock execute() to simulate execution
+        jest.spyOn(server.cursorExecution, 'execute').mockResolvedValue(mockExecuteResult as any);
+        mockFilesystem.exists.mockReturnValue(true);
+
         const response = await request(app).post('/cursor/execute/async').send({
           prompt: 'test prompt',
-          // No callbackUrl provided
+          // No callbackUrl provided - should still work
         });
 
-        // Verify error response
-        expect(response.status).toBe(400);
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('callbackUrl is required for async execution');
+        // Verify success response (callbackUrl is now optional)
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Request accepted, processing asynchronously');
         expect(response.body.requestId).toBeDefined();
         expect(response.body.timestamp).toBeDefined();
       });
