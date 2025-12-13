@@ -14,7 +14,7 @@ import { CommandParserService } from './command-parser-service.js';
 import { ReviewAgentService } from './review-agent-service.js';
 import { CursorExecutionService } from './cursor-execution-service.js';
 import { FilesystemService } from './filesystem-service.js';
-import { buildCallbackUrl } from './callback-url-builder.js';
+import { buildCallbackUrl, getWebhookSecret } from './callback-url-builder.js';
 import { FileTreeService } from './file-tree-service.js';
 import { AgentConversationService } from './agent-conversation-service.js';
 import { TaskService } from './task-service.js';
@@ -290,6 +290,43 @@ export class Server {
     const router: Router = express.Router();
 
     /**
+     * Authentication middleware for public cursor execution endpoints
+     * Validates WEBHOOK_SECRET if configured
+     */
+    const authenticateWebhook = (req: Request, res: Response, next: NextFunction): void => {
+      const expectedSecret = getWebhookSecret();
+
+      // If WEBHOOK_SECRET is not configured, allow access (for development)
+      if (!expectedSecret) {
+        next();
+        return;
+      }
+
+      // Check for secret in headers or query parameter
+      const providedSecret =
+        req.headers['x-webhook-secret'] ||
+        req.headers['x-cursor-runner-secret'] ||
+        (req.query as { secret?: string }).secret;
+
+      if (providedSecret !== expectedSecret) {
+        const secretStatus = providedSecret ? '[present]' : '[missing]';
+        logger.warn('Unauthorized cursor execution request - invalid secret', {
+          providedSecret: secretStatus,
+          ip: req.ip,
+          path: req.path,
+        });
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized - invalid or missing webhook secret',
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      next();
+    };
+
+    /**
      * POST /cursor/execute
      * Execute cursor-cli command synchronously - waits for completion before responding
      * Body: { repository?: string, branchName?: string, prompt: string }
@@ -353,9 +390,13 @@ export class Server {
      * If repository is not provided, uses the repositories directory as working directory
      * Prompt is required and will be used to construct the cursor command internally.
      * callbackUrl is required for async processing.
+     *
+     * Authentication: Requires WEBHOOK_SECRET in header (X-Webhook-Secret or X-Cursor-Runner-Secret)
+     * or query parameter (?secret=...) if WEBHOOK_SECRET environment variable is set.
      */
     router.post(
       '/execute/async',
+      authenticateWebhook,
       async (req: Request<unknown, unknown, CursorExecuteRequest>, res: Response) => {
         const body = req.body as CursorExecuteRequest;
         const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

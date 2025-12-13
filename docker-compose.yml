@@ -217,6 +217,21 @@ services:
       - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite,cursor-runner-conversations-api-headers"
       # Apply strip prefix and rewrite to HTTP router (no security headers for localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite"
+      # Path-based routing for cursor execution endpoints (for external ElevenLabs agent access)
+      # Higher priority (30) ensures cursor routes are matched before other routes
+      # HTTPS router (for production domains only - exclude localhost)
+      - "traefik.http.routers.cursor-runner-cursor-execute.priority=30"
+      - "traefik.http.routers.cursor-runner-cursor-execute.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/cursor/execute`)"
+      - "traefik.http.routers.cursor-runner-cursor-execute.entrypoints=websecure"
+      - "traefik.http.routers.cursor-runner-cursor-execute.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.cursor-runner-cursor-execute.service=cursor-runner-api"
+      # HTTP router for localhost (no TLS required)
+      - "traefik.http.routers.cursor-runner-cursor-execute-http.priority=30"
+      - "traefik.http.routers.cursor-runner-cursor-execute-http.rule=Host(`localhost`) && PathPrefix(`/cursor/execute`)"
+      - "traefik.http.routers.cursor-runner-cursor-execute-http.entrypoints=web"
+      - "traefik.http.routers.cursor-runner-cursor-execute-http.service=cursor-runner-api"
+      # Apply security headers to HTTPS router
+      - "traefik.http.routers.cursor-runner-cursor-execute.middlewares=cursor-runner-conversations-api-headers"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
