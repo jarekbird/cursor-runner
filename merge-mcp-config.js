@@ -114,6 +114,30 @@ try {
   process.exit(1);
 }
 
+// Function to resolve environment variable placeholders in config
+function resolveEnvVars(obj) {
+  if (typeof obj === 'string') {
+    // Match ${VAR_NAME} pattern
+    return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      const value = process.env[varName];
+      if (value === undefined) {
+        console.warn(`Warning: Environment variable ${varName} is not set, keeping placeholder`);
+        return match; // Keep original placeholder if env var not set
+      }
+      return value;
+    });
+  } else if (Array.isArray(obj)) {
+    return obj.map(item => resolveEnvVars(item));
+  } else if (obj !== null && typeof obj === 'object') {
+    const resolved = {};
+    for (const [key, value] of Object.entries(obj)) {
+      resolved[key] = resolveEnvVars(value);
+    }
+    return resolved;
+  }
+  return obj;
+}
+
 // Read cursor-runner config
 let cursorRunner;
 try {
@@ -172,6 +196,10 @@ if (cursorRunner.mcpServers) {
     ...serversToMerge,
   };
 }
+
+// Resolve environment variable placeholders in the merged config
+console.log('Resolving environment variable placeholders...');
+existing = resolveEnvVars(existing);
 
 // Write merged config
 try {
