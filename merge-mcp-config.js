@@ -165,24 +165,26 @@ if (!existing.mcpServers) {
   existing.mcpServers = {};
 }
 
-if (cursorRunner.mcpServers) {
-  // Check if Gmail MCP is enabled via feature flag
-  const enableGmailMcp = process.env.ENABLE_GMAIL_MCP;
-  const gmailMcpEnabled =
-    enableGmailMcp &&
-    (enableGmailMcp.toLowerCase().trim() === 'true' ||
-      enableGmailMcp.toLowerCase().trim() === '1' ||
-      enableGmailMcp.toLowerCase().trim() === 'yes' ||
-      enableGmailMcp.toLowerCase().trim() === 'on');
+// Check feature flags outside the if block so they're available for verification later
+// Check if Gmail MCP is enabled via feature flag
+const enableGmailMcp = process.env.ENABLE_GMAIL_MCP;
+const gmailMcpEnabled =
+  enableGmailMcp &&
+  (enableGmailMcp.toLowerCase().trim() === 'true' ||
+    enableGmailMcp.toLowerCase().trim() === '1' ||
+    enableGmailMcp.toLowerCase().trim() === 'yes' ||
+    enableGmailMcp.toLowerCase().trim() === 'on');
 
-  // Check if Atlassian MCP is enabled via feature flag
-  const enableAtlassianMcp = process.env.ENABLE_ATLASSIAN_MCP;
-  const atlassianMcpEnabled =
-    enableAtlassianMcp &&
-    (enableAtlassianMcp.toLowerCase().trim() === 'true' ||
-      enableAtlassianMcp.toLowerCase().trim() === '1' ||
-      enableAtlassianMcp.toLowerCase().trim() === 'yes' ||
-      enableAtlassianMcp.toLowerCase().trim() === 'on');
+// Check if Atlassian MCP is enabled via feature flag
+const enableAtlassianMcp = process.env.ENABLE_ATLASSIAN_MCP;
+const atlassianMcpEnabled =
+  enableAtlassianMcp &&
+  (enableAtlassianMcp.toLowerCase().trim() === 'true' ||
+    enableAtlassianMcp.toLowerCase().trim() === '1' ||
+    enableAtlassianMcp.toLowerCase().trim() === 'yes' ||
+    enableAtlassianMcp.toLowerCase().trim() === 'on');
+
+if (cursorRunner.mcpServers) {
 
   // Merge servers, cursor-runner config takes precedence for conflicts
   const serversToMerge = { ...cursorRunner.mcpServers };
