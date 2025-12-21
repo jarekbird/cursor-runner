@@ -115,23 +115,35 @@ try {
 }
 
 // Function to resolve environment variable placeholders in config
-function resolveEnvVars(obj) {
+// This function recursively processes the config object and replaces ${VAR_NAME} with actual env var values
+function resolveEnvVars(obj, path = '') {
   if (typeof obj === 'string') {
     // Match ${VAR_NAME} pattern
     return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
       const value = process.env[varName];
-      if (value === undefined) {
-        console.warn(`Warning: Environment variable ${varName} is not set, keeping placeholder`);
+      if (value === undefined || value === '') {
+        // In production, if env var is not set, keep the placeholder
+        // This allows the MCP server to potentially resolve it at runtime, or fail gracefully
+        if (IS_DOCKER) {
+          // Only warn in Docker (production) if it's a critical variable
+          const criticalVars = ['ATLASSIAN_API_TOKEN', 'ATLASSIAN_EMAIL', 'ATLASSIAN_CLOUD_ID'];
+          if (criticalVars.includes(varName)) {
+            console.warn(`Warning: Environment variable ${varName} is not set${path ? ` at ${path}` : ''}`);
+            console.warn(`  The MCP server may not be able to authenticate properly`);
+            console.warn(`  Ensure ${varName} is set in your docker-compose.yml or .env file`);
+          }
+        }
         return match; // Keep original placeholder if env var not set
       }
       return value;
     });
   } else if (Array.isArray(obj)) {
-    return obj.map(item => resolveEnvVars(item));
+    return obj.map((item, index) => resolveEnvVars(item, `${path}[${index}]`));
   } else if (obj !== null && typeof obj === 'object') {
     const resolved = {};
     for (const [key, value] of Object.entries(obj)) {
-      resolved[key] = resolveEnvVars(value);
+      const newPath = path ? `${path}.${key}` : key;
+      resolved[key] = resolveEnvVars(value, newPath);
     }
     return resolved;
   }
@@ -198,8 +210,38 @@ if (cursorRunner.mcpServers) {
 }
 
 // Resolve environment variable placeholders in the merged config
+// This step is critical for production where env vars must be resolved from the container environment
 console.log('Resolving environment variable placeholders...');
+const envVarCount = Object.keys(process.env).length;
+console.log(`  Environment variables available: ${envVarCount}`);
+if (IS_DOCKER) {
+  // In Docker/production, verify critical env vars are available
+  const requiredVars = ['ATLASSIAN_EMAIL', 'ATLASSIAN_API_TOKEN', 'ATLASSIAN_CLOUD_ID'];
+  const missingVars = requiredVars.filter(v => !process.env[v] || process.env[v] === '');
+  if (missingVars.length > 0 && atlassianMcpEnabled) {
+    console.warn(`  ⚠ Warning: Some Atlassian MCP environment variables are not set: ${missingVars.join(', ')}`);
+    console.warn(`  The MCP server may fail to authenticate. Check your docker-compose.yml or .env file.`);
+  }
+}
 existing = resolveEnvVars(existing);
+
+// Verify critical environment variables were resolved (only in Docker/production)
+if (IS_DOCKER && atlassianMcpEnabled && existing.mcpServers?.atlassian) {
+  const atlassianConfig = existing.mcpServers.atlassian;
+  const env = atlassianConfig.env || {};
+  const hasPlaceholders = Object.values(env).some(value => 
+    typeof value === 'string' && value.includes('${')
+  );
+  
+  if (hasPlaceholders) {
+    console.warn('  ⚠ Warning: Some Atlassian MCP environment variables were not resolved');
+    console.warn('  The MCP config still contains placeholders, which may cause authentication failures');
+    console.warn('  Verify that ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN, and ATLASSIAN_CLOUD_ID are set');
+    console.warn('  in your docker-compose.yml environment section or .env file');
+  } else {
+    console.log('  ✓ All Atlassian MCP environment variables resolved successfully');
+  }
+}
 
 // Write merged config
 try {
