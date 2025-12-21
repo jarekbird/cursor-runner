@@ -730,10 +730,18 @@ export class CursorExecutionService {
       await this.conversationService.getConversationContext(actualConversationId);
     const contextString = this.conversationService.buildContextString(conversationMessages);
 
-    // Build prompt with conversation context prepended
-    let fullPrompt = prompt;
+    // Build structured prompt that clearly separates context from current query
+    // This format helps the interpreting AI agent distinguish between historical context
+    // and the current request
+    let fullPrompt: string;
     if (contextString) {
-      fullPrompt = `${contextString}\n\n[Current Request]: ${prompt}`;
+      fullPrompt = `=== CONVERSATION CONTEXT ===
+${contextString}
+
+=== CURRENT REQUEST ===
+${prompt}`;
+    } else {
+      fullPrompt = prompt;
     }
 
     // Select relevant MCP connections based on prompt analysis
@@ -968,10 +976,16 @@ export class CursorExecutionService {
       initialConversationMessages
     );
 
-    // Build initial prompt with conversation context prepended
-    let initialFullPrompt = prompt;
+    // Build initial prompt with conversation context separated from current query
+    let initialFullPrompt: string;
     if (initialContextString) {
-      initialFullPrompt = `${initialContextString}\n\n[Current Request]: ${prompt}`;
+      initialFullPrompt = `=== CONVERSATION CONTEXT ===
+${initialContextString}
+
+=== CURRENT REQUEST ===
+${prompt}`;
+    } else {
+      initialFullPrompt = prompt;
     }
 
     // Select relevant MCP connections based on prompt analysis
@@ -1275,11 +1289,17 @@ export class CursorExecutionService {
       // This is what we actually send to the worker agent, so it should always be stored
       await this.conversationService.addMessage(actualConversationId, 'user', resumePrompt, false);
 
-      // Build full prompt with conversation context
+      // Build full prompt with conversation context separated from current query
       // System settings MCP instructions will be appended by prepareCommandArgsWithMcps
-      let fullResumePrompt = resumePrompt;
+      let fullResumePrompt: string;
       if (contextString) {
-        fullResumePrompt = `${contextString}\n\n[Current Request]: ${resumePrompt}`;
+        fullResumePrompt = `=== CONVERSATION CONTEXT ===
+${contextString}
+
+=== CURRENT REQUEST ===
+${resumePrompt}`;
+      } else {
+        fullResumePrompt = resumePrompt;
       }
 
       // Re-select MCPs for resume prompt (may need different MCPs for continuation)
@@ -1641,9 +1661,15 @@ When you respond, explain briefly:
       diagnosticConversationMessages
     );
 
-    let fullDiagnosticPrompt = diagnosticPrompt;
+    let fullDiagnosticPrompt: string;
     if (diagnosticContextString) {
-      fullDiagnosticPrompt = `${diagnosticContextString}\n\n[Current Request]: ${diagnosticPrompt}`;
+      fullDiagnosticPrompt = `=== CONVERSATION CONTEXT ===
+${diagnosticContextString}
+
+=== CURRENT REQUEST ===
+${diagnosticPrompt}`;
+    } else {
+      fullDiagnosticPrompt = diagnosticPrompt;
     }
 
     // Select MCPs for diagnostic iteration (may need different MCPs)
