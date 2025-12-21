@@ -187,9 +187,6 @@ const CURSOR_AGENTS_TOOLS_PATH = getCursorAgentsToolsPath();
  */
 const BASE_SYSTEM_INSTRUCTIONS = `\n\nIMPORTANT: Before beginning any prompt, you MUST clear all git changes (staged and unstaged) in the repository and pull the latest changes from origin. Use \`git reset --hard HEAD\` to discard all local changes, \`git clean -fd\` to remove untracked files, and then \`git pull\` to fetch and merge the latest changes from the remote repository. This ensures a clean, up-to-date working state before starting any task.
 
-IMPORTANT: If you push any code to origin during this task, you MUST explicitly report this in your output. State clearly: "Code pushed to origin" or "No code pushed to origin" at the end of your response. This information is critical for task completion tracking.
-
-IMPORTANT: When a task file is referenced (e.g., "task at path/to/file.md"), you MUST output all sections labeled as definition of done from that task file in your response if it has one. Include the definition of done section from the task file in your output, in addition to any other work you perform. This helps verify that the task requirements are being met.
 
 IMPORTANT: When working with cursor-agents (creating, listing, getting status, or deleting agents), use the Python scripts in ${CURSOR_AGENTS_TOOLS_PATH}/ directory. These scripts communicate with the cursor-agents service over HTTP:
 

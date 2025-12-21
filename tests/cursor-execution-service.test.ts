@@ -253,7 +253,8 @@ describe('CursorExecutionService - System Instructions', () => {
 
     // Verify instructions contain base system instructions
     expect(instructions).toContain('IMPORTANT: Before beginning any prompt');
-    expect(instructions).toContain('IMPORTANT: If you push any code to origin');
+    // Ensure we include the cursor-agents tooling guidance (part of BASE_SYSTEM_INSTRUCTIONS)
+    expect(instructions).toContain('IMPORTANT: When working with cursor-agents');
   });
 
   it('should not duplicate system instructions across iterations', async () => {
