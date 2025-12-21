@@ -11,10 +11,9 @@ import { logger } from './logger.js';
 import { GitService } from './git-service.js';
 import { CursorCLI } from './cursor-cli.js';
 import { CommandParserService } from './command-parser-service.js';
-import { ReviewAgentService } from './review-agent-service.js';
 import { CursorExecutionService } from './cursor-execution-service.js';
 import { FilesystemService } from './filesystem-service.js';
-import { buildCallbackUrl, getWebhookSecret } from './callback-url-builder.js';
+import { getWebhookSecret } from './callback-url-builder.js';
 import { FileTreeService } from './file-tree-service.js';
 import { AgentConversationService } from './agent-conversation-service.js';
 import { TaskService } from './task-service.js';
@@ -57,31 +56,6 @@ interface HttpError extends Error {
 }
 
 /**
- * Command error with output properties (for cursor execution errors)
- */
-interface CommandErrorWithOutput extends Error {
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number | null;
-}
-
-/**
- * Error response for callback webhooks
- * Note: This interface is kept for reference but the actual error callbacks
- * now use a more complete structure matching CallbackWebhookPayload
- */
-interface ErrorCallbackResponse {
-  success: false;
-  requestId: string;
-  error: string;
-  timestamp: string;
-  output?: string;
-  iterations?: number;
-  maxIterations?: number;
-  exitCode?: number;
-}
-
-/**
  * Options for Server constructor
  */
 export interface ServerOptions {
@@ -103,7 +77,6 @@ export class Server {
   public gitService: GitService;
   public cursorCLI: CursorCLI;
   public commandParser: CommandParserService;
-  public reviewAgent: ReviewAgentService;
   public filesystem: FilesystemService;
   public cursorExecution: CursorExecutionService;
   public agentConversationService: AgentConversationService;
@@ -118,8 +91,6 @@ export class Server {
     this.gitService = new GitService();
     this.cursorCLI = new CursorCLI();
     this.commandParser = new CommandParserService();
-    // CursorCLI implements the CursorCLIInterface required by ReviewAgentService
-    this.reviewAgent = new ReviewAgentService(this.cursorCLI);
     this.filesystem = new FilesystemService();
     // Pass Redis client to CursorExecutionService so ConversationService can use it
     // This ensures all services share the same Redis connection for proper cleanup
@@ -127,7 +98,6 @@ export class Server {
       this.gitService,
       this.cursorCLI,
       this.commandParser,
-      this.reviewAgent,
       this.filesystem,
       redisClient
     );
@@ -465,189 +435,6 @@ export class Server {
         } catch (error) {
           const err = error as Error;
           logger.error('Cursor execution request setup failed', {
-            requestId: requestId || 'unknown',
-            error: err.message,
-            stack: err.stack,
-            body: req.body,
-          });
-
-          // If we haven't sent a response yet, send error
-          if (!res.headersSent) {
-            res.status(500).json({
-              success: false,
-              error: err.message,
-              requestId: requestId || 'unknown',
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }
-      }
-    );
-
-    /**
-     * POST /cursor/iterate
-     * Execute cursor-cli command iteratively until completion - waits for completion before responding
-     * Body: { repository?: string, branchName?: string, prompt: string, maxIterations?: number }
-     * If repository is not provided, uses the repositories directory as working directory
-     * Prompt is required and will be used to construct the cursor command internally.
-     */
-    router.post(
-      '/iterate',
-      async (req: Request<unknown, unknown, CursorExecuteRequest>, res: Response) => {
-        const body = req.body as CursorExecuteRequest;
-        const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-        try {
-          logger.info('Cursor iterate request received (synchronous)', {
-            requestId,
-            body: req.body,
-            ip: req.ip,
-            userAgent: req.get('user-agent'),
-          });
-
-          // Use queueType from request body if provided, otherwise detect from requestId pattern
-          const queueType = body.queueType || this.detectQueueType(requestId);
-
-          // Process iteration synchronously - wait for completion
-          const result = await this.cursorExecution.iterate({
-            repository: body.repository,
-            branchName: body.branchName,
-            prompt: body.prompt,
-            requestId,
-            maxIterations: body.maxIterations || 5,
-            conversationId: body.conversationId || body.conversation_id,
-            queueType,
-          });
-
-          // Convert IterationResult to HTTP response
-          // Both ErrorResponse and SuccessResponse have status and body fields
-          res.status(result.status).json(result.body);
-        } catch (error) {
-          const err = error as Error;
-          logger.error('Cursor iterate request failed', {
-            requestId: requestId || 'unknown',
-            error: err.message,
-            stack: err.stack,
-            body: req.body,
-          });
-
-          // If we haven't sent a response yet, send error
-          if (!res.headersSent) {
-            res.status(500).json({
-              success: false,
-              error: err.message,
-              requestId: requestId || 'unknown',
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }
-      }
-    );
-
-    /**
-     * POST /cursor/iterate/async
-     * Execute cursor-cli command iteratively until completion - returns immediately and processes in background
-     * Body: { repository?: string, branchName?: string, prompt: string, maxIterations?: number, callbackUrl?: string }
-     * If repository is not provided, uses the repositories directory as working directory
-     * Prompt is required and will be used to construct the cursor command internally.
-     * If callbackUrl is not provided, will auto-construct one.
-     */
-    router.post(
-      '/iterate/async',
-      async (req: Request<unknown, unknown, CursorExecuteRequest>, res: Response) => {
-        const body = req.body as CursorExecuteRequest;
-        const requestId = body.id || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-        try {
-          logger.info('Cursor iterate request received (async)', {
-            requestId,
-            conversationId: body.conversationId || body.conversation_id || 'none',
-            body: req.body,
-            ip: req.ip,
-            userAgent: req.get('user-agent'),
-          });
-
-          // Auto-construct callback URL if not provided
-          // Will use Docker network default (http://app:3000) if JAREK_VA_URL not set
-          let callbackUrl = body.callbackUrl || body.callback_url;
-          if (!callbackUrl) {
-            callbackUrl = buildCallbackUrl();
-            logger.info('Auto-constructed callback URL for iterate request', {
-              requestId,
-              callbackUrl,
-              source: process.env.JAREK_VA_URL ? 'JAREK_VA_URL env var' : 'Docker network default',
-            });
-          }
-
-          // Return 200 OK immediately
-          res.status(200).json({
-            success: true,
-            message: 'Request accepted, processing asynchronously',
-            requestId,
-            timestamp: new Date().toISOString(),
-          });
-
-          // Use queueType from request body if provided, otherwise detect from requestId pattern
-          const queueType = body.queueType || this.detectQueueType(requestId);
-
-          // Process iteration asynchronously (fire and forget)
-          // The callback webhook will be called when complete
-          this.cursorExecution
-            .iterate({
-              repository: body.repository,
-              branchName: body.branchName,
-              prompt: body.prompt,
-              requestId,
-              maxIterations: body.maxIterations || 5,
-              callbackUrl,
-              conversationId: body.conversationId || body.conversation_id,
-              queueType,
-            })
-            .catch((error: CommandErrorWithOutput) => {
-              logger.error('Cursor iterate processing failed', {
-                requestId: requestId || 'unknown',
-                error: error.message,
-                stack: error.stack,
-                body: req.body,
-                hasPartialOutput: !!(error.stdout || error.stderr),
-              });
-              // If callback URL exists, try to notify about the error
-              if (callbackUrl) {
-                // Use the same structure as iterate() method for consistency
-                // This ensures cursor-agents receives consistent callback format
-                const errorResponse: ErrorCallbackResponse = {
-                  success: false,
-                  requestId,
-                  error: error.message,
-                  timestamp: new Date().toISOString(),
-                  iterations: 0, // No iterations completed if error occurred before/during iterate
-                  maxIterations: body.maxIterations || 5,
-                };
-
-                // Include partial output if available (e.g., from timeout)
-                if (error.stdout) {
-                  errorResponse.output = error.stdout;
-                }
-                if (error.stderr) {
-                  errorResponse.error = error.stderr || error.message;
-                }
-                if (error.exitCode !== undefined && error.exitCode !== null) {
-                  errorResponse.exitCode = error.exitCode;
-                }
-
-                this.cursorExecution
-                  .callbackWebhook(callbackUrl, errorResponse, requestId)
-                  .catch((webhookError: Error) => {
-                    logger.error('Failed to send error callback', {
-                      requestId,
-                      error: webhookError.message,
-                    });
-                  });
-              }
-            });
-        } catch (error) {
-          const err = error as Error;
-          logger.error('Cursor iterate request setup failed', {
             requestId: requestId || 'unknown',
             error: err.message,
             stack: err.stack,
@@ -1037,12 +824,11 @@ export class Server {
 
         // Process message asynchronously (fire and forget)
         this.cursorExecution
-          .iterate({
+          .execute({
             repository,
             branchName,
             prompt: message,
             requestId,
-            maxIterations: 5,
             conversationId,
             queueType: 'api',
           })

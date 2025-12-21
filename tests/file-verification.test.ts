@@ -45,7 +45,6 @@ describe('File Verification (TASK-PY-001.03)', () => {
     it('should have cursor execution endpoints', () => {
       const content = fs.readFileSync(path.join(srcDir, 'server.ts'), 'utf-8');
       expect(content).toMatch(/\/cursor\/execute/i);
-      expect(content).toMatch(/\/cursor\/iterate/i);
     });
   });
 
@@ -53,11 +52,6 @@ describe('File Verification (TASK-PY-001.03)', () => {
     it('should have execute method', () => {
       const content = fs.readFileSync(path.join(srcDir, 'cursor-execution-service.ts'), 'utf-8');
       expect(content).toMatch(/execute\s*\(/i);
-    });
-
-    it('should have iterate method', () => {
-      const content = fs.readFileSync(path.join(srcDir, 'cursor-execution-service.ts'), 'utf-8');
-      expect(content).toMatch(/iterate\s*\(/i);
     });
 
     it('should have CursorExecutionService class', () => {

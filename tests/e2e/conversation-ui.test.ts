@@ -20,8 +20,8 @@ describe('E2E: Conversation UI Flow', () => {
     server = new Server(redisClient as Redis);
     app = server.app;
 
-    // Mock iterate to prevent actual cursor-cli execution
-    mockIterate = jest.spyOn(server.cursorExecution, 'iterate').mockResolvedValue({
+    // Mock execute to prevent actual cursor-cli execution
+    mockIterate = jest.spyOn(server.cursorExecution, 'execute').mockResolvedValue({
       status: 200,
       body: {
         success: true,

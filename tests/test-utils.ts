@@ -13,7 +13,6 @@ import { Umzug } from 'umzug';
 import { readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ReviewAgentService } from '../src/review-agent-service.js';
 import { CursorExecutionService } from '../src/cursor-execution-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -715,14 +714,11 @@ export function createMockServer(options: MockServerOptions = {}): MockServerRes
 
   // Override CursorCLI with mock
   server.cursorCLI = mockCLI as any;
-  // Recreate reviewAgent with mocked CursorCLI
-  server.reviewAgent = new ReviewAgentService(mockCLI as any);
   // Recreate cursorExecution with mocked CursorCLI
   server.cursorExecution = new CursorExecutionService(
     server.gitService,
     mockCLI as any,
     server.commandParser,
-    server.reviewAgent,
     server.filesystem,
     mockRedis as Redis
   );
