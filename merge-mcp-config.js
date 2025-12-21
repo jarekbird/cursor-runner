@@ -139,6 +139,15 @@ if (cursorRunner.mcpServers) {
       enableGmailMcp.toLowerCase().trim() === 'yes' ||
       enableGmailMcp.toLowerCase().trim() === 'on');
 
+  // Check if Atlassian MCP is enabled via feature flag
+  const enableAtlassianMcp = process.env.ENABLE_ATLASSIAN_MCP;
+  const atlassianMcpEnabled =
+    enableAtlassianMcp &&
+    (enableAtlassianMcp.toLowerCase().trim() === 'true' ||
+      enableAtlassianMcp.toLowerCase().trim() === '1' ||
+      enableAtlassianMcp.toLowerCase().trim() === 'yes' ||
+      enableAtlassianMcp.toLowerCase().trim() === 'on');
+
   // Merge servers, cursor-runner config takes precedence for conflicts
   const serversToMerge = { ...cursorRunner.mcpServers };
 
@@ -148,6 +157,14 @@ if (cursorRunner.mcpServers) {
     delete serversToMerge.gmail;
   } else if (gmailMcpEnabled && serversToMerge.gmail) {
     console.log('Gmail MCP is enabled (ENABLE_GMAIL_MCP=true) - including in config');
+  }
+
+  // Conditionally include Atlassian MCP based on feature flag
+  if (!atlassianMcpEnabled && serversToMerge.atlassian) {
+    console.log('Atlassian MCP is disabled (ENABLE_ATLASSIAN_MCP is not true) - excluding from config');
+    delete serversToMerge.atlassian;
+  } else if (atlassianMcpEnabled && serversToMerge.atlassian) {
+    console.log('Atlassian MCP is enabled (ENABLE_ATLASSIAN_MCP=true) - including in config');
   }
 
   existing.mcpServers = {

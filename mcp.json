@@ -31,6 +31,18 @@
         "GMAIL_USER_EMAIL": "${GMAIL_USER_EMAIL}",
         "GMAIL_ALLOWED_LABELS": "${GMAIL_ALLOWED_LABELS}"
       }
+    },
+    "atlassian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-atlassian"
+      ],
+      "env": {
+        "ATLASSIAN_EMAIL": "${ATLASSIAN_EMAIL}",
+        "ATLASSIAN_API_TOKEN": "${ATLASSIAN_API_TOKEN}",
+        "ATLASSIAN_CLOUD_ID": "${ATLASSIAN_CLOUD_ID}"
+      }
     }
   }
 }

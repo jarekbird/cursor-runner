@@ -64,6 +64,31 @@ export const AVAILABLE_MCP_CONNECTIONS: MCPConnection[] = [
       'thread',
     ],
   },
+  {
+    name: 'atlassian',
+    description: 'Jira access for creating, updating, and querying issues',
+    keywords: [
+      'jira',
+      'issue',
+      'issues',
+      'ticket',
+      'tickets',
+      'user story',
+      'story',
+      'bug',
+      'epic',
+      'subtask',
+      'atlassian',
+      'create issue',
+      'update issue',
+      'jira issue',
+      'jira ticket',
+      'create jira',
+      'update jira',
+      'jira query',
+      'jql',
+    ],
+  },
 ];
 
 /**

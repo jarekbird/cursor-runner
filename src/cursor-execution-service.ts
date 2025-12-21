@@ -260,6 +260,30 @@ CRITICAL: DO NOT create agents or agent tasks that process agent tasks from the 
 - cursor:last_conversation_id - Last conversation ID
 To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.`,
   gmail: `IMPORTANT: When working with Gmail (reading emails, sending emails, managing messages), you MUST use the gmail MCP connection. Use Gmail MCP tools like listMessages, getMessage, and sendReply.`,
+  atlassian: `IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection.
+
+CRITICAL: Issue Type Hierarchy - NEVER Create Standalone Tasks
+- ALWAYS create a User Story first (issue type: Historia / ID: 10007)
+- ALWAYS create Subtask(s) under the Story (issue type: Subtarea / ID: 10184)
+- NEVER create standalone Tasks - Tasks are only for ad-hoc work not tied to features
+
+Content Distribution:
+- Technical Notes (customfield_10356): Business context, scope, migration patterns, implementation steps
+- Acceptance Criteria (customfield_10256): Definition of done checklist, high-level story AC
+- QA Test Case (customfield_10462): QA test steps, test cases, expected results
+
+Subtask Field Inheritance:
+- Team (customfield_10001) - DO NOT set on Subtask, will error
+- Sprint (customfield_10020) - Inherited from parent
+- Set these only on the parent Story, not on Subtasks
+
+Pre-Submission Validation:
+- Summary: 255 chars max (plain text only)
+- Description/Custom Fields: 32,767 chars max (ADF JSON format)
+- Estimate ADF size: plain_text_chars × 4 = estimated_adf_chars
+- If estimated > 25,000 chars → STOP and summarize before submission
+
+Use Atlassian MCP tools like getJiraIssue, createJiraIssue, editJiraIssue, searchJiraIssuesUsingJql, transitionJiraIssue, etc.`,
 };
 
 /**

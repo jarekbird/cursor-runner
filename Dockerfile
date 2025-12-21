@@ -51,6 +51,7 @@ RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent v
 # Note: If command names don't match, verify with: npm list -g --depth=0
 # Note: Using @liangshanli/mcp-server-redis as the official @modelcontextprotocol/server-redis doesn't exist yet
 # Note: Gmail MCP server (@modelcontextprotocol/server-gmail) doesn't exist in npm registry yet, will use npx when needed
+# Note: Atlassian MCP server (@modelcontextprotocol/server-atlassian) uses npx -y, will download on demand
 RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
     echo "MCP server packages installed globally"
 

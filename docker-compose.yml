@@ -130,6 +130,12 @@ services:
       - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN:-}
       - GMAIL_USER_EMAIL=${GMAIL_USER_EMAIL:-}
       - GMAIL_ALLOWED_LABELS=${GMAIL_ALLOWED_LABELS:-}
+      # Atlassian MCP Configuration (optional - for Jira integration)
+      # Feature flag to enable/disable Atlassian MCP (default: false for safety)
+      - ENABLE_ATLASSIAN_MCP=${ENABLE_ATLASSIAN_MCP:-false}
+      - ATLASSIAN_EMAIL=${ATLASSIAN_EMAIL:-}
+      - ATLASSIAN_API_TOKEN=${ATLASSIAN_API_TOKEN:-}
+      - ATLASSIAN_CLOUD_ID=${ATLASSIAN_CLOUD_ID:-}
       # Alternative git credential environment variables (also supported)
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USERNAME=${GIT_USERNAME:-}
