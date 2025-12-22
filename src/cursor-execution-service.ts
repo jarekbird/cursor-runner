@@ -496,28 +496,63 @@ export class CursorExecutionService {
    */
   private async writeFilteredMcpConfig(selectedMcps: string[], requestId: string): Promise<void> {
     try {
-      // Read the base MCP config
-      const baseMcpPath = '/app/mcp.json';
+      // Read the base MCP config.
+      //
+      // In Docker/prod we typically have:
+      // - /cursor/mcp.json: persistent/merged config (may include user-provided MCP servers)
+      // - /app/mcp.json: image-bundled cursor-runner defaults
+      //
+      // cursor-cli reads /root/.cursor/mcp.json.
+      // We should prefer /cursor/mcp.json if it exists to avoid losing externally-managed servers.
+      const baseMcpCandidatePaths = ['/cursor/mcp.json', '/root/.cursor/mcp.json', '/app/mcp.json'];
+      const baseMcpPath = baseMcpCandidatePaths.find((p) => this.filesystem.exists(p));
       const cursorCliMcpPath = '/root/.cursor/mcp.json';
 
-      if (!this.filesystem.exists(baseMcpPath)) {
+      if (!baseMcpPath) {
         logger.warn('Base MCP config not found, skipping filtered config generation', {
           requestId,
-          path: baseMcpPath,
+          pathsTried: baseMcpCandidatePaths,
         });
         return;
       }
 
       const baseConfig = JSON.parse(readFileSync(baseMcpPath, 'utf8'));
-      const filteredConfig = {
-        mcpServers: {} as Record<string, unknown>,
+
+      // If no MCPs are selected, do NOT overwrite the MCP config with an empty file.
+      // This prevents "intermittent" tool availability where a non-MCP prompt wipes out tool config.
+      if (!selectedMcps || selectedMcps.length === 0) {
+        const cursorCliDir = path.dirname(cursorCliMcpPath);
+        if (!this.filesystem.exists(cursorCliDir)) {
+          mkdirSync(cursorCliDir, { recursive: true });
+        }
+        writeFileSync(cursorCliMcpPath, JSON.stringify(baseConfig, null, 2) + '\n', 'utf8');
+        logger.info('No MCPs selected; wrote full base MCP config to cursor-cli location', {
+          requestId,
+          basePathUsed: baseMcpPath,
+          path: cursorCliMcpPath,
+        });
+        return;
+      }
+
+      const filteredConfig = { mcpServers: {} as Record<string, unknown> };
+
+      // Some environments name Atlassian differently (e.g. hosted SSE config).
+      // Support a small alias set so selecting "atlassian" still includes these servers if present.
+      const MCP_NAME_ALIASES: Record<string, readonly string[]> = {
+        atlassian: ['atlassian', 'Atlassian-MCP-Server'],
+        gmail: ['gmail', 'Gmail-MCP-Server', 'gmail-mcp'],
+        'cursor-runner-shared-sqlite': ['cursor-runner-shared-sqlite'],
+        'cursor-runner-shared-redis': ['cursor-runner-shared-redis'],
       };
 
       // Only include selected MCPs
       if (baseConfig.mcpServers) {
         for (const mcpName of selectedMcps) {
-          if (baseConfig.mcpServers[mcpName]) {
-            filteredConfig.mcpServers[mcpName] = baseConfig.mcpServers[mcpName];
+          const aliasNames = MCP_NAME_ALIASES[mcpName] || [mcpName];
+          for (const candidateName of aliasNames) {
+            if (baseConfig.mcpServers[candidateName]) {
+              filteredConfig.mcpServers[candidateName] = baseConfig.mcpServers[candidateName];
+            }
           }
         }
       }
@@ -533,6 +568,7 @@ export class CursorExecutionService {
       logger.info('Wrote filtered MCP config', {
         requestId,
         selectedMcps,
+        basePathUsed: baseMcpPath,
         path: cursorCliMcpPath,
       });
     } catch (error) {

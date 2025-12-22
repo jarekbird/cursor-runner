@@ -129,17 +129,57 @@ class CursorRunner {
   async verifyMcpConfig(): Promise<void> {
     // eslint-disable-next-line node/no-unsupported-features/es-syntax
     const fs = await import('fs');
+    // eslint-disable-next-line node/no-unsupported-features/es-syntax
+    const childProcess = await import('child_process');
 
     const mcpConfigPath = '/root/.cursor/mcp.json';
     const cursorAgentsMcpPath = '/app/target/cursor-agents/dist/mcp/index.js';
+    const isDocker = fs.existsSync('/cursor');
+    const mergeScriptPath = '/app/merge-mcp-config.js';
 
     // Check if MCP config exists
     if (!fs.existsSync(mcpConfigPath)) {
       this.logger.warn('MCP config not found at /root/.cursor/mcp.json', {
         suggestion: 'Run merge-mcp-config.js to create the MCP configuration',
       });
+
+      // In Docker/prod, try to self-heal by running the merge script.
+      // This copies the merged MCP config into /root/.cursor/mcp.json (what cursor-cli reads).
+      if (isDocker && fs.existsSync(mergeScriptPath)) {
+        try {
+          this.logger.info('Attempting to generate MCP config by running merge-mcp-config.js', {
+            script: mergeScriptPath,
+          });
+          childProcess.execFileSync('node', [mergeScriptPath], {
+            env: process.env,
+            stdio: 'inherit',
+          });
+        } catch (error) {
+          const errorMessage = getErrorMessage(error);
+          this.logger.warn('Failed to run merge-mcp-config.js automatically', {
+            error: errorMessage,
+            script: mergeScriptPath,
+          });
+        }
+      }
     } else {
       this.logger.info('MCP config found', { path: mcpConfigPath });
+    }
+
+    // Re-check and log available MCP server keys for quick diagnostics
+    try {
+      if (fs.existsSync(mcpConfigPath)) {
+        const content = fs.readFileSync(mcpConfigPath, 'utf8');
+        const parsed = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
+        const keys = parsed?.mcpServers ? Object.keys(parsed.mcpServers) : [];
+        this.logger.info('MCP servers available to cursor-cli', { count: keys.length, keys });
+      }
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      this.logger.warn('Failed to read MCP config for diagnostics', {
+        error: errorMessage,
+        path: mcpConfigPath,
+      });
     }
 
     // Check if cursor-agents MCP server exists
