@@ -508,7 +508,14 @@ export class CursorExecutionService {
       // We should prefer /cursor/mcp.json if it exists to avoid losing externally-managed servers.
       const baseMcpCandidatePaths = ['/cursor/mcp.json', '/root/.cursor/mcp.json', '/app/mcp.json'];
       const baseMcpPath = baseMcpCandidatePaths.find((p) => this.filesystem.exists(p));
-      const cursorCliMcpPath = '/root/.cursor/mcp.json';
+      // cursor-cli typically reads from $HOME/.cursor/mcp.json, but in Docker we often assume /root.
+      // To avoid "config exists but tools missing" caused by HOME mismatch, write to BOTH:
+      // - /root/.cursor/mcp.json
+      // - ${HOME}/.cursor/mcp.json (when HOME is set and differs)
+      const homeDir = process.env.HOME || '/root';
+      const cursorCliMcpPaths = Array.from(
+        new Set(['/root/.cursor/mcp.json', path.join(homeDir, '.cursor', 'mcp.json')])
+      );
 
       if (!baseMcpPath) {
         logger.warn('Base MCP config not found, skipping filtered config generation', {
@@ -523,15 +530,18 @@ export class CursorExecutionService {
       // If no MCPs are selected, do NOT overwrite the MCP config with an empty file.
       // This prevents "intermittent" tool availability where a non-MCP prompt wipes out tool config.
       if (!selectedMcps || selectedMcps.length === 0) {
-        const cursorCliDir = path.dirname(cursorCliMcpPath);
-        if (!this.filesystem.exists(cursorCliDir)) {
-          mkdirSync(cursorCliDir, { recursive: true });
+        for (const targetPath of cursorCliMcpPaths) {
+          const cursorCliDir = path.dirname(targetPath);
+          if (!this.filesystem.exists(cursorCliDir)) {
+            mkdirSync(cursorCliDir, { recursive: true });
+          }
+          writeFileSync(targetPath, JSON.stringify(baseConfig, null, 2) + '\n', 'utf8');
         }
-        writeFileSync(cursorCliMcpPath, JSON.stringify(baseConfig, null, 2) + '\n', 'utf8');
-        logger.info('No MCPs selected; wrote full base MCP config to cursor-cli location', {
+        logger.info('No MCPs selected; wrote full base MCP config to cursor-cli location(s)', {
           requestId,
           basePathUsed: baseMcpPath,
-          path: cursorCliMcpPath,
+          paths: cursorCliMcpPaths,
+          homeDir,
         });
         return;
       }
@@ -559,13 +569,14 @@ export class CursorExecutionService {
         }
       }
 
-      // Write filtered config to cursor-cli location
-      const cursorCliDir = path.dirname(cursorCliMcpPath);
-      if (!this.filesystem.exists(cursorCliDir)) {
-        mkdirSync(cursorCliDir, { recursive: true });
+      // Write filtered config to cursor-cli location(s)
+      for (const targetPath of cursorCliMcpPaths) {
+        const cursorCliDir = path.dirname(targetPath);
+        if (!this.filesystem.exists(cursorCliDir)) {
+          mkdirSync(cursorCliDir, { recursive: true });
+        }
+        writeFileSync(targetPath, JSON.stringify(filteredConfig, null, 2) + '\n', 'utf8');
       }
-
-      writeFileSync(cursorCliMcpPath, JSON.stringify(filteredConfig, null, 2) + '\n', 'utf8');
 
       // Log what MCP servers are actually in the filtered config
       const filteredServerNames = Object.keys(filteredConfig.mcpServers || {});
@@ -575,7 +586,8 @@ export class CursorExecutionService {
         filteredServerNames,
         serverCount: filteredServerNames.length,
         basePathUsed: baseMcpPath,
-        path: cursorCliMcpPath,
+        paths: cursorCliMcpPaths,
+        homeDir,
       });
 
       // Warn if atlassian was selected but not included in filtered config
@@ -794,13 +806,29 @@ ${prompt}`;
     await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
 
     // Verify the config was written correctly (diagnostic)
-    const cursorCliMcpPath = '/root/.cursor/mcp.json';
+    const homeDir = process.env.HOME || '/root';
+    const cursorCliMcpPaths = Array.from(
+      new Set(['/root/.cursor/mcp.json', path.join(homeDir, '.cursor', 'mcp.json')])
+    );
     try {
-      if (this.filesystem.exists(cursorCliMcpPath)) {
-        const writtenConfig = JSON.parse(readFileSync(cursorCliMcpPath, 'utf8'));
-        const writtenServerNames = Object.keys(writtenConfig.mcpServers || {});
+      const readablePaths: string[] = [];
+      const missingPaths: string[] = [];
+      const perPathServerNames: Record<string, string[]> = {};
+      const perPathConfigSummary: Record<string, Record<string, unknown>> = {};
+      const perPathConfigSize: Record<string, number> = {};
 
-        // Log the full config structure for debugging
+      for (const p of cursorCliMcpPaths) {
+        if (!this.filesystem.exists(p)) {
+          missingPaths.push(p);
+          continue;
+        }
+
+        readablePaths.push(p);
+        const writtenConfig = JSON.parse(readFileSync(p, 'utf8'));
+        const writtenServerNames = Object.keys(writtenConfig.mcpServers || {});
+        perPathServerNames[p] = writtenServerNames;
+        perPathConfigSize[p] = JSON.stringify(writtenConfig).length;
+
         const configSummary: Record<string, unknown> = {};
         for (const serverName of writtenServerNames) {
           const serverConfig = writtenConfig.mcpServers[serverName];
@@ -810,15 +838,7 @@ ${prompt}`;
             hasEnv: typeof (serverConfig as { env?: unknown })?.env === 'object',
           };
         }
-
-        logger.info('Verified MCP config written for cursor-cli', {
-          requestId,
-          writtenServerNames,
-          serverCount: writtenServerNames.length,
-          path: cursorCliMcpPath,
-          configSummary,
-          fullConfigSize: JSON.stringify(writtenConfig).length,
-        });
+        perPathConfigSummary[p] = configSummary;
 
         // Additional check: verify atlassian MCP has required env vars if it's in the config
         if (writtenServerNames.includes('atlassian')) {
@@ -832,6 +852,7 @@ ${prompt}`;
           if (!hasEmail || !hasToken || !hasCloudId) {
             logger.warn('Atlassian MCP config missing required environment variables', {
               requestId,
+              path: p,
               hasEmail,
               hasToken,
               hasCloudId,
@@ -839,13 +860,29 @@ ${prompt}`;
           } else {
             logger.info('Atlassian MCP config has all required environment variables', {
               requestId,
+              path: p,
             });
           }
         }
-      } else {
+      }
+
+      if (readablePaths.length === 0) {
         logger.warn('MCP config not found after write attempt', {
           requestId,
-          path: cursorCliMcpPath,
+          paths: cursorCliMcpPaths,
+          missingPaths,
+          homeDir,
+        });
+      } else {
+        logger.info('Verified MCP config written for cursor-cli', {
+          requestId,
+          paths: cursorCliMcpPaths,
+          readablePaths,
+          missingPaths,
+          perPathServerNames,
+          perPathConfigSummary,
+          perPathConfigSize,
+          homeDir,
         });
       }
     } catch (error) {
@@ -867,7 +904,8 @@ ${prompt}`;
 
     // Execute cursor command
     // Log final MCP state before execution for debugging
-    const finalMcpConfigPath = '/root/.cursor/mcp.json';
+    const finalMcpConfigPath =
+      cursorCliMcpPaths.find((p) => this.filesystem.exists(p)) || '/root/.cursor/mcp.json';
     let finalMcpState = 'unknown';
     if (this.filesystem.exists(finalMcpConfigPath)) {
       try {
@@ -889,6 +927,7 @@ ${prompt}`;
       cwd: fullRepositoryPath,
       mcpConfigState: finalMcpState,
       selectedMcps: mcpSelection.selectedMcps,
+      cursorCliHomeDir: process.env.HOME || null,
     });
 
     // Store what we're sending to cursor in Redis (right before sending)
