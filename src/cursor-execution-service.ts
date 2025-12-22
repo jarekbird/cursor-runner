@@ -200,20 +200,22 @@ To clear all conversation history, use Redis commands to delete keys matching th
   atlassian: `CRITICAL: The atlassian MCP connection is AVAILABLE and CONFIGURED for this request. You HAVE ACCESS to all Atlassian/Jira MCP tools.
 
 BEFORE claiming you don't have access to Jira tools:
-1. Check your available tools - look for tools with names starting with "mcp_Atlassian-MCP-Server_" or similar
+1. Check your available tools - look for tools with names starting with "mcp_atlassian_" (MOST COMMON) or "mcp_Atlassian-MCP-Server_" (older naming)
 2. The atlassian MCP server is loaded and ready to use
 3. If you cannot see the tools, try listing all available tools first before concluding they're unavailable
 
 IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection. The following tools are available:
-- mcp_Atlassian-MCP-Server_getJiraIssue - Get a Jira issue by ID or key
-- mcp_Atlassian-MCP-Server_createJiraIssue - Create a new Jira issue
-- mcp_Atlassian-MCP-Server_editJiraIssue - Update an existing Jira issue
-- mcp_Atlassian-MCP-Server_searchJiraIssuesUsingJql - Search issues using JQL
-- mcp_Atlassian-MCP-Server_transitionJiraIssue - Transition an issue to a new status
-- mcp_Atlassian-MCP-Server_getAccessibleAtlassianResources - Get cloud ID for API calls
-- mcp_Atlassian-MCP-Server_getVisibleJiraProjects - Get visible Jira projects
-- mcp_Atlassian-MCP-Server_addCommentToJiraIssue - Add a comment to an issue
-- And other Atlassian MCP tools (check your tool inventory for the full list)
+- mcp_atlassian_getJiraIssue - Get a Jira issue by ID or key
+- mcp_atlassian_createJiraIssue - Create a new Jira issue
+- mcp_atlassian_editJiraIssue - Update an existing Jira issue
+- mcp_atlassian_searchJiraIssuesUsingJql - Search issues using JQL
+- mcp_atlassian_transitionJiraIssue - Transition an issue to a new status
+- mcp_atlassian_getAccessibleAtlassianResources - Get cloud ID for API calls
+- mcp_atlassian_getVisibleJiraProjects - Get visible Jira projects
+- mcp_atlassian_addCommentToJiraIssue - Add a comment to an issue
+-
+- If your tool inventory uses the older prefix, the same tools may appear as:
+- mcp_Atlassian-MCP-Server_getJiraIssue, mcp_Atlassian-MCP-Server_editJiraIssue, etc.
 
 CRITICAL: Issue Type Hierarchy - NEVER Create Standalone Tasks
 - ALWAYS create a User Story first (issue type: Historia / ID: 10007)
@@ -792,17 +794,54 @@ ${prompt}`;
     await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
 
     // Verify the config was written correctly (diagnostic)
+    const cursorCliMcpPath = '/root/.cursor/mcp.json';
     try {
-      const cursorCliMcpPath = '/root/.cursor/mcp.json';
       if (this.filesystem.exists(cursorCliMcpPath)) {
         const writtenConfig = JSON.parse(readFileSync(cursorCliMcpPath, 'utf8'));
         const writtenServerNames = Object.keys(writtenConfig.mcpServers || {});
+
+        // Log the full config structure for debugging
+        const configSummary: Record<string, unknown> = {};
+        for (const serverName of writtenServerNames) {
+          const serverConfig = writtenConfig.mcpServers[serverName];
+          configSummary[serverName] = {
+            command: (serverConfig as { command?: string })?.command || 'unknown',
+            hasArgs: Array.isArray((serverConfig as { args?: unknown[] })?.args),
+            hasEnv: typeof (serverConfig as { env?: unknown })?.env === 'object',
+          };
+        }
+
         logger.info('Verified MCP config written for cursor-cli', {
           requestId,
           writtenServerNames,
           serverCount: writtenServerNames.length,
           path: cursorCliMcpPath,
+          configSummary,
+          fullConfigSize: JSON.stringify(writtenConfig).length,
         });
+
+        // Additional check: verify atlassian MCP has required env vars if it's in the config
+        if (writtenServerNames.includes('atlassian')) {
+          const atlassianConfig = writtenConfig.mcpServers.atlassian as {
+            env?: Record<string, string>;
+          };
+          const hasEmail = !!atlassianConfig?.env?.ATLASSIAN_EMAIL;
+          const hasToken = !!atlassianConfig?.env?.ATLASSIAN_API_TOKEN;
+          const hasCloudId = !!atlassianConfig?.env?.ATLASSIAN_CLOUD_ID;
+
+          if (!hasEmail || !hasToken || !hasCloudId) {
+            logger.warn('Atlassian MCP config missing required environment variables', {
+              requestId,
+              hasEmail,
+              hasToken,
+              hasCloudId,
+            });
+          } else {
+            logger.info('Atlassian MCP config has all required environment variables', {
+              requestId,
+            });
+          }
+        }
       } else {
         logger.warn('MCP config not found after write attempt', {
           requestId,
