@@ -98,3 +98,4 @@ echo ""
 echo "Note: Timeouts are expected for stdio MCP servers."
 echo "Look for servers that exit immediately (exit code != 124) or show error messages."
 
+

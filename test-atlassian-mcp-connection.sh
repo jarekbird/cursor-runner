@@ -122,3 +122,4 @@ echo "  - Verify credentials are still valid in Atlassian"
 echo "  - Check network connectivity from the container"
 echo "  - Try manually running: npx -y @modelcontextprotocol/server-atlassian"
 
+

@@ -64,3 +64,4 @@ echo "If config is missing, run:"
 echo "  docker exec cursor-runner node /app/merge-mcp-config.js"
 echo ""
 
+

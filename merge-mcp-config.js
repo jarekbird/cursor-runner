@@ -150,6 +150,34 @@ function resolveEnvVars(obj, path = '') {
   return obj;
 }
 
+// Redact secrets from configs before logging to stdout/stderr.
+// This avoids leaking credentials into container logs while still allowing us to
+// inspect the shape of the merged MCP config.
+function redactForLogging(obj) {
+  const SENSITIVE_KEY_RE = /(token|secret|password|api[_-]?key|refresh[_-]?token)/i;
+
+  if (typeof obj === 'string' || typeof obj === 'number' || typeof obj === 'boolean' || obj == null) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((v) => redactForLogging(v));
+  }
+  if (typeof obj === 'object') {
+    const redacted = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (SENSITIVE_KEY_RE.test(key)) {
+        // Keep a tiny bit of signal (length) but never print the value
+        const len = typeof value === 'string' ? value.length : undefined;
+        redacted[key] = typeof len === 'number' ? `<redacted:${len}>` : '<redacted>';
+      } else {
+        redacted[key] = redactForLogging(value);
+      }
+    }
+    return redacted;
+  }
+  return obj;
+}
+
 // Read cursor-runner config
 let cursorRunner;
 try {
@@ -280,5 +308,5 @@ if (IS_DOCKER) {
 }
 console.log('');
 console.log('Merged configuration:');
-console.log(JSON.stringify(existing, null, 2));
+console.log(JSON.stringify(redactForLogging(existing), null, 2));
 

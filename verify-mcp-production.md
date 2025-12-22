@@ -216,3 +216,4 @@ If verification fails:
 3. **Feature flag not set**: Ensure `ENABLE_ATLASSIAN_MCP=true` in docker-compose.yml
 4. **Env vars missing**: Check that Atlassian credentials are set in environment
 
+

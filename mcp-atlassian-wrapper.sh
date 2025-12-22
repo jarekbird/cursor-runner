@@ -29,3 +29,4 @@ LOG_FILE="${MCP_ATLASSIAN_STDERR_LOG:-/tmp/mcp-atlassian-stderr.log}"
 exec npx -y @modelcontextprotocol/server-atlassian 2> >(tee -a "$LOG_FILE" >&2)
 
 
+
