@@ -23,10 +23,51 @@ LOG_FILE="${MCP_ATLASSIAN_STDERR_LOG:-/tmp/mcp-atlassian-stderr.log}"
   echo "=================================================="
 } >> "$LOG_FILE"
 
+# Try packages in order of preference (checking Node version compatibility)
+PRIMARY_PACKAGE="@modelcontextprotocol/server-atlassian"
+FALLBACK_PACKAGE1="atlassian-mcp"  # Works with Node 18
+FALLBACK_PACKAGE2="@xuandev/atlassian-mcp"  # Requires Node 20+
+
+# Check Node version
+NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+{
+  echo "Node version: $NODE_VERSION"
+} >> "$LOG_FILE" 2>&1
+
+# Check if primary package exists
+if npm view "$PRIMARY_PACKAGE" version >/dev/null 2>&1; then
+  PACKAGE_NAME="$PRIMARY_PACKAGE"
+  {
+    echo "Using primary package: $PACKAGE_NAME"
+  } >> "$LOG_FILE" 2>&1
+elif npm view "$FALLBACK_PACKAGE1" version >/dev/null 2>&1; then
+  PACKAGE_NAME="$FALLBACK_PACKAGE1"
+  {
+    echo "Primary package $PRIMARY_PACKAGE not found, using fallback: $PACKAGE_NAME (Node 18 compatible)"
+  } >> "$LOG_FILE" 2>&1
+elif [ "$NODE_VERSION" -ge 20 ] && npm view "$FALLBACK_PACKAGE2" version >/dev/null 2>&1; then
+  PACKAGE_NAME="$FALLBACK_PACKAGE2"
+  {
+    echo "Using fallback: $PACKAGE_NAME (requires Node 20+)"
+  } >> "$LOG_FILE" 2>&1
+else
+  {
+    echo "ERROR: No compatible Atlassian MCP package found"
+    echo "Tried: $PRIMARY_PACKAGE, $FALLBACK_PACKAGE1"
+    if [ "$NODE_VERSION" -ge 20 ]; then
+      echo "Also tried: $FALLBACK_PACKAGE2"
+    fi
+    echo "This will cause cursor-cli to hang. Exiting immediately."
+    echo "To fix: Install an Atlassian MCP package or remove Atlassian MCP from config"
+  } >> "$LOG_FILE" 2>&1
+  # Exit with code 1 so cursor-cli knows the MCP server failed
+  exit 1
+fi
+
 # Keep stdout/stderr semantics:
 # - stdout: MCP protocol stream (must NOT be modified)
 # - stderr: duplicated to both cursor-agent stderr and our log file
-exec npx -y @modelcontextprotocol/server-atlassian 2> >(tee -a "$LOG_FILE" >&2)
+exec npx -y "$PACKAGE_NAME" 2> >(tee -a "$LOG_FILE" >&2)
 
 
 

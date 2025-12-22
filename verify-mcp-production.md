@@ -217,3 +217,4 @@ If verification fails:
 4. **Env vars missing**: Check that Atlassian credentials are set in environment
 
 
+

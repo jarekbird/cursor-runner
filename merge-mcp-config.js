@@ -237,6 +237,14 @@ if (cursorRunner.mcpServers) {
     ...existing.mcpServers,
     ...serversToMerge,
   };
+
+  // Also remove disabled MCPs from existing config (in case they were already there)
+  if (!gmailMcpEnabled && existing.mcpServers.gmail) {
+    delete existing.mcpServers.gmail;
+  }
+  if (!atlassianMcpEnabled && existing.mcpServers.atlassian) {
+    delete existing.mcpServers.atlassian;
+  }
 }
 
 // Resolve environment variable placeholders in the merged config

@@ -230,7 +230,13 @@ describe('CursorExecutionService - System Instructions', () => {
     jest.spyOn(executionService as any, 'writeFilteredMcpConfig').mockResolvedValue(undefined);
   });
 
-  it('should append system instructions to non-review prompts', async () => {
+  it('should append system instructions to non-review prompts when MCPs are selected', async () => {
+    // Mock MCP selection to return at least one MCP so instructions are appended
+    jest.spyOn(executionService['mcpSelectionService'], 'selectMcps').mockResolvedValue({
+      selectedMcps: ['cursor-runner-shared-sqlite'],
+      reasoning: 'Test reasoning',
+    });
+
     await executionService.execute({
       prompt: 'Test prompt',
       requestId: 'test-request-1',
@@ -248,6 +254,31 @@ describe('CursorExecutionService - System Instructions', () => {
     expect(instructions).toContain('IMPORTANT: Before beginning any prompt');
     // Ensure we include the cursor-agents tooling guidance (part of BASE_SYSTEM_INSTRUCTIONS)
     expect(instructions).toContain('IMPORTANT: When working with cursor-agents');
+  });
+
+  it('should not append system instructions when no MCPs are selected', async () => {
+    // Mock MCP selection to return empty array
+    jest.spyOn(executionService['mcpSelectionService'], 'selectMcps').mockResolvedValue({
+      selectedMcps: [],
+      reasoning: 'No MCPs needed',
+    });
+
+    await executionService.execute({
+      prompt: 'Test prompt',
+      requestId: 'test-request-2',
+    });
+
+    // Verify appendInstructions was called
+    expect(mockAppendInstructions).toHaveBeenCalled();
+
+    // Get the last call to appendInstructions
+    const lastCall =
+      mockAppendInstructions.mock.calls[mockAppendInstructions.mock.calls.length - 1];
+    const instructions = lastCall[1] as string;
+
+    // Verify instructions do NOT contain base system instructions when no MCPs selected
+    expect(instructions).not.toContain('IMPORTANT: Before beginning any prompt');
+    expect(instructions).not.toContain('IMPORTANT: When working with cursor-agents');
   });
 
   it.skip('should not duplicate system instructions across iterations', async () => {

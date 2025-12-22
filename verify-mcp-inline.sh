@@ -65,3 +65,4 @@ echo "  docker exec cursor-runner node /app/merge-mcp-config.js"
 echo ""
 
 
+

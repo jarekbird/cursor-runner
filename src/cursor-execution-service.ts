@@ -254,8 +254,11 @@ function buildFilteredMcpInstructions(selectedMcps: string[]): string {
     }
   }
 
+  // If no MCPs are selected, do not append any system instructions.
+  // This keeps "basic prompts" fast and prevents accidental execution of heavy/unsafe
+  // operational instructions (e.g., git reset/pull) when the user just wants a simple response.
   if (mcpInstructions.length === 0) {
-    return BASE_SYSTEM_INSTRUCTIONS;
+    return '';
   }
 
   return BASE_SYSTEM_INSTRUCTIONS + '\n\n' + mcpInstructions.join('\n\n');
@@ -897,7 +900,14 @@ ${prompt}`;
     // --print runs in non-interactive mode (required for automation)
     // --force enables file modifications
     // --approve-mcps automatically approves all MCP servers (required for headless mode)
-    const commandArgs = ['--model', 'auto', '--print', '--force', '--approve-mcps', fullPrompt];
+    //
+    // IMPORTANT: `cursor --approve-mcps` causes cursor-agent to eagerly initialize MCP servers.
+    // We only include it when we actually intend to use MCP tools for this request.
+    const shouldApproveMcps = mcpSelection.selectedMcps.length > 0;
+
+    const commandArgs = shouldApproveMcps
+      ? (['--model', 'auto', '--print', '--force', '--approve-mcps', fullPrompt] as const)
+      : (['--model', 'auto', '--print', '--force', fullPrompt] as const);
 
     // Prepare command with filtered MCP instructions
     const modifiedArgs = this.prepareCommandArgsWithMcps(commandArgs, mcpSelection.selectedMcps);
@@ -927,6 +937,7 @@ ${prompt}`;
       cwd: fullRepositoryPath,
       mcpConfigState: finalMcpState,
       selectedMcps: mcpSelection.selectedMcps,
+      mcpConfigMode: { shouldApproveMcps },
       cursorCliHomeDir: process.env.HOME || null,
     });
 

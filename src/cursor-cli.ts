@@ -358,7 +358,9 @@ export class CursorCLI {
       if (!usePty) {
         child = spawn(this.cursorPath, [...args], {
           cwd,
-          stdio: ['pipe', 'pipe', 'pipe'],
+          // Important: leave stdin closed. cursor-agent runs headless via argv and can hang
+          // if stdin is left open as a pipe in some environments.
+          stdio: ['ignore', 'pipe', 'pipe'],
           shell: false,
           env,
         });
@@ -749,9 +751,8 @@ export class CursorCLI {
 
     // Build cursor command to generate tests
     // Use --model auto for consistent model selection (same as main execution)
-    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Generate test cases for: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -786,9 +787,8 @@ export class CursorCLI {
     logger.info('Generating implementation (TDD Green phase)', { targetPath });
 
     // Use --model auto for consistent model selection (same as main execution)
-    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Implement code to satisfy: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
@@ -823,9 +823,8 @@ export class CursorCLI {
     logger.info('Refactoring code (TDD Refactor phase)', { targetPath });
 
     // Use --model auto for consistent model selection (same as main execution)
-    // --approve-mcps automatically approves all MCP servers (required for headless mode)
     const prompt = `Refactor code: ${JSON.stringify(requirements)}`;
-    const args: string[] = ['--model', 'auto', '--print', '--force', '--approve-mcps', prompt];
+    const args: string[] = ['--model', 'auto', '--print', '--force', prompt];
 
     try {
       const result = await this.executeCommand(args, { cwd: targetPath });
