@@ -616,40 +616,6 @@ export class CursorExecutionService {
   }
 
   /**
-   * Write MCP config into the repository's local .cursor/mcp.json.
-   *
-   * cursor-cli may prioritize project-level config (./.cursor/mcp.json) over $HOME/.cursor/mcp.json.
-   * Writing here ensures tools are available even when a repo contains an outdated/incorrect config.
-   *
-   * NOTE: .cursor/ is typically gitignored, so this should not dirty git state.
-   */
-  private writeProjectMcpConfig(
-    fullRepositoryPath: string,
-    config: unknown,
-    requestId: string
-  ): void {
-    try {
-      const projectCursorDir = path.join(fullRepositoryPath, '.cursor');
-      const projectMcpPath = path.join(projectCursorDir, 'mcp.json');
-
-      if (!this.filesystem.exists(projectCursorDir)) {
-        mkdirSync(projectCursorDir, { recursive: true });
-      }
-
-      writeFileSync(projectMcpPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
-      logger.info('Wrote project MCP config for cursor-cli', {
-        requestId,
-        path: projectMcpPath,
-      });
-    } catch (error) {
-      logger.warn('Failed to write project MCP config for cursor-cli', {
-        requestId,
-        error: getErrorMessage(error),
-      });
-    }
-  }
-
-  /**
    * Prepare command with instructions
    * @param command - Original command string
    * @returns Prepared command arguments
@@ -838,31 +804,6 @@ ${prompt}`;
 
     // Write filtered MCP config with only selected MCPs (global/home locations)
     await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
-
-    // Also write project-level MCP config (./.cursor/mcp.json) because cursor-cli may prioritize it.
-    // We write the same filtered config we just wrote globally by re-reading the chosen path.
-    try {
-      const homeDir = process.env.HOME || '/root';
-      const cursorCliMcpPaths = Array.from(
-        new Set(['/root/.cursor/mcp.json', path.join(homeDir, '.cursor', 'mcp.json')])
-      );
-      const readablePath =
-        cursorCliMcpPaths.find((p) => this.filesystem.exists(p)) || '/root/.cursor/mcp.json';
-      if (this.filesystem.exists(readablePath)) {
-        const config = JSON.parse(readFileSync(readablePath, 'utf8'));
-        this.writeProjectMcpConfig(fullRepositoryPath, config, requestId);
-      } else {
-        logger.warn('Skipping project MCP config write; no global MCP config found', {
-          requestId,
-          attemptedPaths: cursorCliMcpPaths,
-        });
-      }
-    } catch (error) {
-      logger.warn('Failed while preparing project MCP config write', {
-        requestId,
-        error: getErrorMessage(error),
-      });
-    }
 
     // Verify the config was written correctly (diagnostic)
     const homeDir = process.env.HOME || '/root';

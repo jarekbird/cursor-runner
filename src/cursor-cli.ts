@@ -316,9 +316,12 @@ export class CursorCLI {
       let usePty = false;
 
       // Set environment with LOG_LEVEL=debug for verbose cursor-agent output
+      // Force HOME=/root to ensure cursor-cli reads from /root/.cursor/mcp.json
+      // instead of project-level .cursor/mcp.json (which may have outdated config)
       const env = {
         ...process.env,
         LOG_LEVEL: 'debug',
+        HOME: '/root',
       };
 
       if (this._ptyModule) {
