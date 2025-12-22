@@ -565,12 +565,33 @@ export class CursorExecutionService {
 
       writeFileSync(cursorCliMcpPath, JSON.stringify(filteredConfig, null, 2) + '\n', 'utf8');
 
+      // Log what MCP servers are actually in the filtered config
+      const filteredServerNames = Object.keys(filteredConfig.mcpServers || {});
       logger.info('Wrote filtered MCP config', {
         requestId,
         selectedMcps,
+        filteredServerNames,
+        serverCount: filteredServerNames.length,
         basePathUsed: baseMcpPath,
         path: cursorCliMcpPath,
       });
+
+      // Warn if atlassian was selected but not included in filtered config
+      if (
+        selectedMcps.includes('atlassian') &&
+        !filteredServerNames.includes('atlassian') &&
+        !filteredServerNames.includes('Atlassian-MCP-Server')
+      ) {
+        logger.warn(
+          'atlassian was selected but not found in filtered config - this may cause tool access issues',
+          {
+            requestId,
+            selectedMcps,
+            filteredServerNames,
+            baseConfigServers: Object.keys(baseConfig.mcpServers || {}),
+          }
+        );
+      }
     } catch (error) {
       logger.error('Failed to write filtered MCP config', {
         requestId,
@@ -734,10 +755,37 @@ ${prompt}`;
     // Select relevant MCP connections based on prompt analysis
     logger.info('Selecting MCP connections for request', { requestId });
     const mcpSelection = await this.mcpSelectionService.selectMcps(prompt, contextString);
+
+    // Safety net: If prompt explicitly mentions Jira/Atlassian terms, ensure atlassian MCP is included
+    // This prevents cases where MCP selection misses obvious Jira-related prompts
+    const promptLower = prompt.toLowerCase();
+    const contextLower = (contextString || '').toLowerCase();
+    const combinedText = `${promptLower} ${contextLower}`;
+    const jiraKeywords = [
+      'jira',
+      'user story',
+      'subtask',
+      'atlassian',
+      'wor-',
+      'jql',
+      'issue',
+      'ticket',
+    ];
+    const mentionsJira = jiraKeywords.some((keyword) => combinedText.includes(keyword));
+
+    if (mentionsJira && !mcpSelection.selectedMcps.includes('atlassian')) {
+      logger.warn('Prompt mentions Jira but atlassian MCP not selected - adding it as safety net', {
+        requestId,
+        originalSelectedMcps: mcpSelection.selectedMcps,
+      });
+      mcpSelection.selectedMcps.push('atlassian');
+    }
+
     logger.info('MCP selection completed', {
       requestId,
       selectedMcps: mcpSelection.selectedMcps,
       reasoning: mcpSelection.reasoning,
+      mentionsJira,
     });
 
     // Write filtered MCP config with only selected MCPs
