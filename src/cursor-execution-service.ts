@@ -197,7 +197,23 @@ CRITICAL: DO NOT create agents or agent tasks that process agent tasks from the 
 - cursor:last_conversation_id - Last conversation ID
 To clear all conversation history, use Redis commands to delete keys matching the pattern cursor:conversation:* and cursor:last_conversation_id.`,
   gmail: `IMPORTANT: When working with Gmail (reading emails, sending emails, managing messages), you MUST use the gmail MCP connection. Use Gmail MCP tools like listMessages, getMessage, and sendReply.`,
-  atlassian: `IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection.
+  atlassian: `CRITICAL: The atlassian MCP connection is AVAILABLE and CONFIGURED for this request. You HAVE ACCESS to all Atlassian/Jira MCP tools.
+
+BEFORE claiming you don't have access to Jira tools:
+1. Check your available tools - look for tools with names starting with "mcp_Atlassian-MCP-Server_" or similar
+2. The atlassian MCP server is loaded and ready to use
+3. If you cannot see the tools, try listing all available tools first before concluding they're unavailable
+
+IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection. The following tools are available:
+- mcp_Atlassian-MCP-Server_getJiraIssue - Get a Jira issue by ID or key
+- mcp_Atlassian-MCP-Server_createJiraIssue - Create a new Jira issue
+- mcp_Atlassian-MCP-Server_editJiraIssue - Update an existing Jira issue
+- mcp_Atlassian-MCP-Server_searchJiraIssuesUsingJql - Search issues using JQL
+- mcp_Atlassian-MCP-Server_transitionJiraIssue - Transition an issue to a new status
+- mcp_Atlassian-MCP-Server_getAccessibleAtlassianResources - Get cloud ID for API calls
+- mcp_Atlassian-MCP-Server_getVisibleJiraProjects - Get visible Jira projects
+- mcp_Atlassian-MCP-Server_addCommentToJiraIssue - Add a comment to an issue
+- And other Atlassian MCP tools (check your tool inventory for the full list)
 
 CRITICAL: Issue Type Hierarchy - NEVER Create Standalone Tasks
 - ALWAYS create a User Story first (issue type: Historia / ID: 10007)
@@ -218,9 +234,7 @@ Pre-Submission Validation:
 - Summary: 255 chars max (plain text only)
 - Description/Custom Fields: 32,767 chars max (ADF JSON format)
 - Estimate ADF size: plain_text_chars × 4 = estimated_adf_chars
-- If estimated > 25,000 chars → STOP and summarize before submission
-
-Use Atlassian MCP tools like getJiraIssue, createJiraIssue, editJiraIssue, searchJiraIssuesUsingJql, transitionJiraIssue, etc.`,
+- If estimated > 25,000 chars → STOP and summarize before submission`,
 };
 
 /**
