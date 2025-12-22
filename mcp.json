@@ -36,6 +36,8 @@
       "command": "/app/mcp-atlassian-wrapper.sh",
       "args": [],
       "env": {
+        "ATLASSIAN_BASE_URL": "${ATLASSIAN_BASE_URL}",
+        "ATLASSIAN_USERNAME": "${ATLASSIAN_USERNAME}",
         "ATLASSIAN_EMAIL": "${ATLASSIAN_EMAIL}",
         "ATLASSIAN_API_TOKEN": "${ATLASSIAN_API_TOKEN}",
         "ATLASSIAN_CLOUD_ID": "${ATLASSIAN_CLOUD_ID}"

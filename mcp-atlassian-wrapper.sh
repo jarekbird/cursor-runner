@@ -7,12 +7,25 @@ set -euo pipefail
 
 LOG_FILE="${MCP_ATLASSIAN_STDERR_LOG:-/tmp/mcp-atlassian-stderr.log}"
 
+# atlassian-mcp expects:
+# - ATLASSIAN_BASE_URL (e.g., https://your-company.atlassian.net)
+# - ATLASSIAN_API_TOKEN
+# - ATLASSIAN_USERNAME
+#
+# Our stack historically used ATLASSIAN_EMAIL / ATLASSIAN_CLOUD_ID. We keep them for
+# compatibility, but we map email -> username and require base URL explicitly.
+if [ -z "${ATLASSIAN_USERNAME:-}" ] && [ -n "${ATLASSIAN_EMAIL:-}" ]; then
+  export ATLASSIAN_USERNAME="$ATLASSIAN_EMAIL"
+fi
+
 {
   echo "=================================================="
   echo "atlassian MCP wrapper start: $(date -Is)"
   echo "pwd: $(pwd)"
   echo "node: $(node -v 2>/dev/null || echo 'missing')"
   echo "npx: $(npx --version 2>/dev/null || echo 'missing')"
+  echo "ATLASSIAN_BASE_URL: ${ATLASSIAN_BASE_URL:-<missing>}"
+  echo "ATLASSIAN_USERNAME: ${ATLASSIAN_USERNAME:-<missing>}"
   echo "ATLASSIAN_EMAIL: ${ATLASSIAN_EMAIL:-<missing>}"
   echo "ATLASSIAN_CLOUD_ID: ${ATLASSIAN_CLOUD_ID:-<missing>}"
   if [ -n "${ATLASSIAN_API_TOKEN:-}" ]; then
@@ -22,6 +35,16 @@ LOG_FILE="${MCP_ATLASSIAN_STDERR_LOG:-/tmp/mcp-atlassian-stderr.log}"
   fi
   echo "=================================================="
 } >> "$LOG_FILE"
+
+# Hard fail early if base URL is missing; otherwise downstream will emit "Invalid URL"
+if [ -z "${ATLASSIAN_BASE_URL:-}" ]; then
+  {
+    echo "ERROR: ATLASSIAN_BASE_URL is missing."
+    echo "atlassian-mcp requires a Jira/Confluence base URL like: https://your-company.atlassian.net"
+    echo "Set ATLASSIAN_BASE_URL in cursor-runner environment (docker-compose/.env) and retry."
+  } >> "$LOG_FILE" 2>&1
+  exit 1
+fi
 
 # Try packages in order of preference (checking Node version compatibility)
 PRIMARY_PACKAGE="@modelcontextprotocol/server-atlassian"

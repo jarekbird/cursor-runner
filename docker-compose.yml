@@ -133,6 +133,10 @@ services:
       # Atlassian MCP Configuration (optional - for Jira integration)
       # Feature flag to enable/disable Atlassian MCP (default: false for safety)
       - ENABLE_ATLASSIAN_MCP=${ENABLE_ATLASSIAN_MCP:-false}
+      # Base URL + username are required by the currently used Atlassian MCP implementation (atlassian-mcp)
+      # Example base URL: https://your-company.atlassian.net
+      - ATLASSIAN_BASE_URL=${ATLASSIAN_BASE_URL:-}
+      - ATLASSIAN_USERNAME=${ATLASSIAN_USERNAME:-}
       - ATLASSIAN_EMAIL=${ATLASSIAN_EMAIL:-}
       - ATLASSIAN_API_TOKEN=${ATLASSIAN_API_TOKEN:-}
       - ATLASSIAN_CLOUD_ID=${ATLASSIAN_CLOUD_ID:-}
