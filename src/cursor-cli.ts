@@ -324,7 +324,11 @@ export class CursorCLI {
         HOME: '/root',
       };
 
-      if (this._ptyModule) {
+      // PTY can introduce TTY-specific behavior that interferes with MCP/stdin-stdout workflows.
+      // Default to spawn unless explicitly enabled.
+      const allowPty = (process.env.CURSOR_RUNNER_USE_PTY || '').toLowerCase() === 'true';
+
+      if (allowPty && this._ptyModule) {
         try {
           child = this._ptyModule.spawn(this.cursorPath, [...args], {
             name: 'xterm-color',

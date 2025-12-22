@@ -33,11 +33,8 @@
       }
     },
     "atlassian": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-atlassian"
-      ],
+      "command": "/app/mcp-atlassian-wrapper.sh",
+      "args": [],
       "env": {
         "ATLASSIAN_EMAIL": "${ATLASSIAN_EMAIL}",
         "ATLASSIAN_API_TOKEN": "${ATLASSIAN_API_TOKEN}",

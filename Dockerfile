@@ -72,6 +72,9 @@ RUN if [ -f package-lock.json ]; then \
 # Copy application code
 COPY . .
 
+# Ensure wrapper scripts are executable
+RUN chmod +x /app/mcp-atlassian-wrapper.sh || true
+
 # Build TypeScript to JavaScript
 RUN npm run build
 
