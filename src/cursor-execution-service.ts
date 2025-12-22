@@ -791,6 +791,31 @@ ${prompt}`;
     // Write filtered MCP config with only selected MCPs
     await this.writeFilteredMcpConfig(mcpSelection.selectedMcps, requestId);
 
+    // Verify the config was written correctly (diagnostic)
+    try {
+      const cursorCliMcpPath = '/root/.cursor/mcp.json';
+      if (this.filesystem.exists(cursorCliMcpPath)) {
+        const writtenConfig = JSON.parse(readFileSync(cursorCliMcpPath, 'utf8'));
+        const writtenServerNames = Object.keys(writtenConfig.mcpServers || {});
+        logger.info('Verified MCP config written for cursor-cli', {
+          requestId,
+          writtenServerNames,
+          serverCount: writtenServerNames.length,
+          path: cursorCliMcpPath,
+        });
+      } else {
+        logger.warn('MCP config not found after write attempt', {
+          requestId,
+          path: cursorCliMcpPath,
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to verify written MCP config', {
+        requestId,
+        error: getErrorMessage(error),
+      });
+    }
+
     // Construct command as array to avoid parsing issues with newlines in prompt
     // --model auto uses automatic model selection (put first)
     // --print runs in non-interactive mode (required for automation)
@@ -802,12 +827,29 @@ ${prompt}`;
     const modifiedArgs = this.prepareCommandArgsWithMcps(commandArgs, mcpSelection.selectedMcps);
 
     // Execute cursor command
+    // Log final MCP state before execution for debugging
+    const finalMcpConfigPath = '/root/.cursor/mcp.json';
+    let finalMcpState = 'unknown';
+    if (this.filesystem.exists(finalMcpConfigPath)) {
+      try {
+        const finalConfig = JSON.parse(readFileSync(finalMcpConfigPath, 'utf8'));
+        const finalServers = Object.keys(finalConfig.mcpServers || {});
+        finalMcpState = `exists with ${finalServers.length} servers: ${finalServers.join(', ')}`;
+      } catch {
+        finalMcpState = 'exists but unreadable';
+      }
+    } else {
+      finalMcpState = 'missing';
+    }
+
     logger.info('Executing cursor command', {
       requestId,
       repository,
       branchName,
       command: modifiedArgs,
       cwd: fullRepositoryPath,
+      mcpConfigState: finalMcpState,
+      selectedMcps: mcpSelection.selectedMcps,
     });
 
     // Store what we're sending to cursor in Redis (right before sending)
