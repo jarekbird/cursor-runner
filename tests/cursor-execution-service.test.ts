@@ -230,8 +230,8 @@ describe('CursorExecutionService - System Instructions', () => {
     jest.spyOn(executionService as any, 'writeFilteredMcpConfig').mockResolvedValue(undefined);
   });
 
-  it('should append system instructions to non-review prompts when MCPs are selected', async () => {
-    // Mock MCP selection to return at least one MCP so instructions are appended
+  it('should NOT append system instructions to prompts when MCPs are selected (rules live in target dir)', async () => {
+    // Mock MCP selection to return at least one MCP (should still NOT append any instruction suffixes)
     jest.spyOn(executionService['mcpSelectionService'], 'selectMcps').mockResolvedValue({
       selectedMcps: ['cursor-runner-shared-sqlite'],
       reasoning: 'Test reasoning',
@@ -242,21 +242,17 @@ describe('CursorExecutionService - System Instructions', () => {
       requestId: 'test-request-1',
     });
 
-    // Verify appendInstructions was called
-    expect(mockAppendInstructions).toHaveBeenCalled();
+    // Verify we did NOT append any instruction suffix to the prompt
+    expect(mockAppendInstructions).not.toHaveBeenCalled();
 
-    // Get the last call to appendInstructions
-    const lastCall =
-      mockAppendInstructions.mock.calls[mockAppendInstructions.mock.calls.length - 1];
-    const instructions = lastCall[1] as string;
-
-    // Verify instructions contain base system instructions
-    expect(instructions).toContain('IMPORTANT: Before beginning any prompt');
-    // Ensure we include the cursor-agents tooling guidance (part of BASE_SYSTEM_INSTRUCTIONS)
-    expect(instructions).toContain('IMPORTANT: When working with cursor-agents');
+    // Verify the raw prompt text is what gets sent to cursor-cli
+    const executeSpy = jest.spyOn(cursorCLI, 'executeCommand');
+    expect(executeSpy).toHaveBeenCalled();
+    const lastArgs = executeSpy.mock.calls[executeSpy.mock.calls.length - 1]?.[0] as string[];
+    expect(lastArgs[lastArgs.length - 1]).toBe('Test prompt');
   });
 
-  it('should not append system instructions when no MCPs are selected', async () => {
+  it('should send the raw prompt to cursor-cli when no MCPs are selected', async () => {
     // Mock MCP selection to return empty array
     jest.spyOn(executionService['mcpSelectionService'], 'selectMcps').mockResolvedValue({
       selectedMcps: [],
@@ -268,17 +264,14 @@ describe('CursorExecutionService - System Instructions', () => {
       requestId: 'test-request-2',
     });
 
-    // Verify appendInstructions was called
-    expect(mockAppendInstructions).toHaveBeenCalled();
+    // Verify we did NOT append any instruction suffix to the prompt
+    expect(mockAppendInstructions).not.toHaveBeenCalled();
 
-    // Get the last call to appendInstructions
-    const lastCall =
-      mockAppendInstructions.mock.calls[mockAppendInstructions.mock.calls.length - 1];
-    const instructions = lastCall[1] as string;
-
-    // Verify instructions do NOT contain base system instructions when no MCPs selected
-    expect(instructions).not.toContain('IMPORTANT: Before beginning any prompt');
-    expect(instructions).not.toContain('IMPORTANT: When working with cursor-agents');
+    // Verify the raw prompt text is what gets sent to cursor-cli
+    const executeSpy = jest.spyOn(cursorCLI, 'executeCommand');
+    expect(executeSpy).toHaveBeenCalled();
+    const lastArgs = executeSpy.mock.calls[executeSpy.mock.calls.length - 1]?.[0] as string[];
+    expect(lastArgs[lastArgs.length - 1]).toBe('Test prompt');
   });
 
   it.skip('should not duplicate system instructions across iterations', async () => {

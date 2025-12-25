@@ -115,8 +115,9 @@ type CallbackWebhookPayload =
     };
 
 /**
- * System settings MCP instructions
- * These instructions are appended to all non-review agent prompts
+ * NOTE: Historically, cursor-runner appended "system instruction" suffixes to the prompt text
+ * (and also prepended a conversation-context wrapper). This behavior has been disabled so the
+ * Cursor agent can rely on `.cursor/rules/*` present in the target directory instead.
  */
 // Paths are resolved relative to TARGET_APP_PATH
 const SCRIPTS_PATH = getScriptsPath();
@@ -204,7 +205,11 @@ BEFORE claiming you don't have access to Jira tools:
 2. The atlassian MCP server is loaded and ready to use
 3. If you cannot see the tools, try listing all available tools first before concluding they're unavailable
 
-IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection. The following tools are available:
+IMPORTANT: When working with Jira (creating issues, updating issues, querying issues, managing tickets), you MUST use the atlassian MCP connection.
+
+CRITICAL: Use the Atlassian MCP REST-style tools only: mcp_atlassian_getJiraIssue, mcp_atlassian_editJiraIssue, mcp_atlassian_searchJiraIssuesUsingJql, mcp_atlassian_addCommentToJiraIssue, mcp_atlassian_transitionJiraIssue. Do NOT use any mcp_atlassian_jira_* tools or mcp_atlassian_update-jira-issue (those are legacy/WIP and will fail).
+
+The following REST-style tools are available:
 - mcp_atlassian_getJiraIssue - Get a Jira issue by ID or key
 - mcp_atlassian_createJiraIssue - Create a new Jira issue
 - mcp_atlassian_editJiraIssue - Update an existing Jira issue
@@ -213,9 +218,6 @@ IMPORTANT: When working with Jira (creating issues, updating issues, querying is
 - mcp_atlassian_getAccessibleAtlassianResources - Get cloud ID for API calls
 - mcp_atlassian_getVisibleJiraProjects - Get visible Jira projects
 - mcp_atlassian_addCommentToJiraIssue - Add a comment to an issue
--
-- If your tool inventory uses the older prefix, the same tools may appear as:
-- mcp_Atlassian-MCP-Server_getJiraIssue, mcp_Atlassian-MCP-Server_editJiraIssue, etc.
 
 CRITICAL: Issue Type Hierarchy - NEVER Create Standalone Tasks
 - ALWAYS create a User Story first (issue type: Historia / ID: 10007)
@@ -750,24 +752,15 @@ export class CursorExecutionService {
       queueType
     );
 
-    // Get conversation context and build context string
+    // Get conversation context and build context string (used for MCP selection only)
     const conversationMessages =
       await this.conversationService.getConversationContext(actualConversationId);
     const contextString = this.conversationService.buildContextString(conversationMessages);
 
-    // Build structured prompt that clearly separates context from current query
-    // This format helps the interpreting AI agent distinguish between historical context
-    // and the current request
-    let fullPrompt: string;
-    if (contextString) {
-      fullPrompt = `=== CONVERSATION CONTEXT ===
-${contextString}
-
-=== CURRENT REQUEST ===
-${prompt}`;
-    } else {
-      fullPrompt = prompt;
-    }
+    // IMPORTANT: Do not prepend conversation context to the prompt sent to Cursor.
+    // The Cursor agent should rely on `.cursor/rules/*` in the target directory for guidance.
+    // Conversation context is still stored in Redis and may be used for MCP selection logic.
+    const fullPrompt = prompt;
 
     // Select relevant MCP connections based on prompt analysis
     logger.info('Selecting MCP connections for request', { requestId });
@@ -909,8 +902,9 @@ ${prompt}`;
       ? (['--model', 'auto', '--print', '--force', '--approve-mcps', fullPrompt] as const)
       : (['--model', 'auto', '--print', '--force', fullPrompt] as const);
 
-    // Prepare command with filtered MCP instructions
-    const modifiedArgs = this.prepareCommandArgsWithMcps(commandArgs, mcpSelection.selectedMcps);
+    // IMPORTANT: Do not append any instruction suffixes to the prompt.
+    // (No BASE_SYSTEM_INSTRUCTIONS, no MCP_SPECIFIC_INSTRUCTIONS.)
+    const modifiedArgs = commandArgs;
 
     // Execute cursor command
     // Log final MCP state before execution for debugging
@@ -1055,18 +1049,13 @@ Provide a concise summary that captures the essential information:`;
 
       // Use cursor to generate the summary
       // --approve-mcps automatically approves all MCP servers (required for headless mode)
-      const summarizeCommandArgs = [
-        '--model',
-        'auto',
-        '--print',
-        '--force',
-        '--approve-mcps',
-        summarizePrompt,
-      ];
-      const summarizeArgs = this.prepareCommandArgsWithMcps(
-        summarizeCommandArgs,
-        summarizeMcpSelection.selectedMcps
-      );
+      const summarizeShouldApproveMcps = summarizeMcpSelection.selectedMcps.length > 0;
+      const summarizeCommandArgs = summarizeShouldApproveMcps
+        ? (['--model', 'auto', '--print', '--force', '--approve-mcps', summarizePrompt] as const)
+        : (['--model', 'auto', '--print', '--force', summarizePrompt] as const);
+
+      // IMPORTANT: Do not append any instruction suffixes to the summarization prompt.
+      const summarizeArgs = summarizeCommandArgs;
 
       logger.info('Summarizing conversation using cursor', {
         conversationId,
