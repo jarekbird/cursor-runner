@@ -170,7 +170,11 @@ describe('CursorCLI process-group termination', () => {
 
     await Promise.resolve();
 
+    // Emit one chunk of output so idle timeout becomes "armed", then go silent.
     // Heartbeat runs every 30s; after 30s with no output, idle timeout should fire.
+    expect(child.__handlers.stdoutData.length).toBeGreaterThan(0);
+    child.__handlers.stdoutData[0](Buffer.from('started'));
+
     jest.advanceTimersByTime(30_000);
 
     await expect(p).rejects.toThrow(/No output from cursor-cli/i);

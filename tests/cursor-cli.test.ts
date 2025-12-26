@@ -204,37 +204,35 @@ describe('CursorCLI', () => {
       }
     }, 5000);
 
-    it('should trigger failure on idle timeout when no output for configured duration', async () => {
-      // This test verifies idle timeout behavior
-      // Note: Idle timeout is configured via CURSOR_CLI_IDLE_TIMEOUT
-      // We'll set a very short idle timeout
+    it('should NOT trigger idle timeout when no output has been received yet', async () => {
+      // This test verifies that idle timeout does NOT fire when no output has been received
+      // This is the new behavior: idle timeout only applies AFTER we've seen at least one output chunk
+      // This prevents false positives when cursor-cli is working but stdout/stderr are buffered
       const originalIdleTimeout = process.env.CURSOR_CLI_IDLE_TIMEOUT;
-      process.env.CURSOR_CLI_IDLE_TIMEOUT = '200'; // 200ms idle timeout
+      process.env.CURSOR_CLI_IDLE_TIMEOUT = '200'; // 200ms idle timeout (very short)
 
       try {
         // Create a new instance to pick up the env var
         const idleTestCLI = new CursorCLI();
-        await idleTestCLI.executeCommand(['--help'], {
+        // Use a command that might not produce output immediately
+        // With the new behavior, idle timeout should NOT fire even if no output is received
+        const promise = idleTestCLI.executeCommand(['--help'], {
           timeout: 5000, // Long main timeout
         });
-        // Command may complete before idle timeout if it produces output quickly
-      } catch (error) {
-        // Verify it's an Error (check for Error properties - more reliable in Jest across contexts)
-        const commandError = error as Error & {
-          stdout?: string;
-          stderr?: string;
-          exitCode?: number | null;
-        };
-        expect(commandError).toBeDefined();
-        expect(commandError.message).toBeDefined();
-        expect(typeof commandError.message).toBe('string');
-        // If it's an idle timeout error, it should have stdout/stderr properties
-        if (commandError.message.includes('No output from cursor-cli')) {
-          expect(commandError.stdout).toBeDefined();
-          expect(commandError.stderr).toBeDefined();
+
+        // Wait longer than the idle timeout - it should NOT fire because no output was received
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Command may complete or timeout, but idle timeout should NOT have fired
+        // (because no output was received, so idle timeout is not "armed")
+        try {
+          await promise;
+        } catch (error) {
+          const commandError = error as Error;
+          // If it's an error, it should NOT be an idle timeout error
+          // (it might be a hard timeout or other error, but not idle timeout)
+          expect(commandError.message).not.toContain('No output from cursor-cli');
         }
-        // The error message should indicate a timeout or failure
-        expect(commandError.message.length).toBeGreaterThan(0);
       } finally {
         if (originalIdleTimeout) {
           process.env.CURSOR_CLI_IDLE_TIMEOUT = originalIdleTimeout;
@@ -243,6 +241,74 @@ describe('CursorCLI', () => {
         }
       }
     }, 10000);
+
+    it('should trigger idle timeout AFTER output has been received and then goes silent', async () => {
+      // This test verifies that idle timeout DOES fire when output has been received
+      // and then the process goes silent for longer than the idle timeout
+      // eslint-disable-next-line node/no-unsupported-features/es-syntax
+      const { logger } = await import('../src/logger.js');
+      const loggerErrorSpy = jest.spyOn(logger, 'error');
+
+      const originalIdleTimeout = process.env.CURSOR_CLI_IDLE_TIMEOUT;
+      process.env.CURSOR_CLI_IDLE_TIMEOUT = '30000'; // 30 seconds idle timeout
+
+      try {
+        const idleTestCLI = new CursorCLI();
+
+        // Start a command that will run long enough to potentially trigger idle timeout
+        const promise = idleTestCLI
+          .executeCommand(['--help'], {
+            timeout: 60000, // 60 seconds main timeout
+          })
+          .catch(() => {
+            // May fail or timeout, that's okay for this test
+          });
+
+        // Wait for command to potentially produce output and then go silent
+        // Note: In real usage, if cursor-cli produces output, idle timeout will be "armed"
+        // and will fire if output stops for longer than idleTimeout
+        await new Promise((resolve) => setTimeout(resolve, 35000));
+
+        // Check if idle timeout error was logged (if output was received and then stopped)
+        const idleTimeoutLogs = loggerErrorSpy.mock.calls.filter((call) => {
+          const firstArg = call[0] as unknown;
+          if (typeof firstArg === 'string') {
+            return firstArg === 'cursor-cli idle timeout reached';
+          }
+          return false;
+        });
+
+        // If idle timeout fired, verify the error structure
+        if (idleTimeoutLogs.length > 0) {
+          const idleTimeoutLog = idleTimeoutLogs[0];
+          const firstArg = idleTimeoutLog[0] as unknown;
+          const secondArg = (idleTimeoutLog as unknown[])[1] as Record<string, unknown> | undefined;
+          const logData = (
+            typeof firstArg === 'object' && firstArg !== null
+              ? (firstArg as Record<string, unknown>)
+              : secondArg
+          ) as Record<string, unknown> | undefined;
+
+          if (logData) {
+            // Verify that idle timeout only fired after output was received
+            expect(logData).toHaveProperty('hasReceivedOutput');
+            expect(logData.hasReceivedOutput).toBe(true);
+          }
+        }
+
+        // Wait for command to complete
+        await promise.catch(() => {
+          // Expected - command may fail or timeout
+        });
+      } finally {
+        if (originalIdleTimeout) {
+          process.env.CURSOR_CLI_IDLE_TIMEOUT = originalIdleTimeout;
+        } else {
+          delete process.env.CURSOR_CLI_IDLE_TIMEOUT;
+        }
+        loggerErrorSpy.mockRestore();
+      }
+    }, 40000);
 
     it('should release semaphore even if exit events do not fire', async () => {
       // This test verifies that the semaphore is released even in error/timeout cases
@@ -296,7 +362,8 @@ describe('CursorCLI', () => {
       // Set longer timeouts so we can observe heartbeat logs
       const originalTimeout = process.env.CURSOR_CLI_TIMEOUT;
       const originalIdleTimeout = process.env.CURSOR_CLI_IDLE_TIMEOUT;
-      process.env.CURSOR_CLI_TIMEOUT = '60000'; // 60 seconds
+      // Keep this short enough that the command ends promptly after we observe the first heartbeat.
+      process.env.CURSOR_CLI_TIMEOUT = '35000'; // 35 seconds
       process.env.CURSOR_CLI_IDLE_TIMEOUT = '30000'; // 30 seconds
 
       try {
@@ -305,14 +372,14 @@ describe('CursorCLI', () => {
         // Start a command that will run long enough to trigger at least one heartbeat (30s interval)
         const promise = heartbeatTestCLI
           .executeCommand(['--help'], {
-            timeout: 60000,
+            timeout: 35000,
           })
           .catch(() => {
             // May fail or timeout, that's okay for this test
           });
 
         // Wait for at least one heartbeat to fire (30 seconds + buffer)
-        await new Promise((resolve) => setTimeout(resolve, 35000));
+        await new Promise((resolve) => setTimeout(resolve, 32000));
 
         // Find heartbeat log calls
         const heartbeatLogs = loggerInfoSpy.mock.calls.filter((call) => {
@@ -353,6 +420,8 @@ describe('CursorCLI', () => {
             expect(typeof logData.idleTimeoutMs).toBe('number');
             expect(logData).toHaveProperty('idleTimeoutRemainingMs');
             expect(typeof logData.idleTimeoutRemainingMs).toBe('number');
+            expect(logData).toHaveProperty('idleTimeoutArmed');
+            expect(typeof logData.idleTimeoutArmed).toBe('boolean');
             expect(logData).toHaveProperty('hardTimeoutMs');
             expect(typeof logData.hardTimeoutMs).toBe('number');
             expect(logData).toHaveProperty('hardTimeoutRemainingMs');

@@ -591,6 +591,7 @@ export class CursorCLI {
         const idleTimeoutMs = idleTimeout;
         const hardTimeoutRemainingMs = Math.max(0, hardTimeoutMs - elapsed);
         const idleTimeoutRemainingMs = Math.max(0, idleTimeoutMs - timeSinceLastOutput);
+        const idleTimeoutArmed = currentHasReceivedOutput;
 
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
@@ -605,6 +606,7 @@ export class CursorCLI {
           elapsed: `${elapsed}ms`,
           idleTimeoutMs,
           idleTimeoutRemainingMs,
+          idleTimeoutArmed,
           hardTimeoutMs,
           hardTimeoutRemainingMs,
           timeSinceLastHeartbeat: `${timeSinceLastHeartbeat}ms`,
@@ -616,8 +618,12 @@ export class CursorCLI {
         lastHeartbeatStdoutLength = currentStdoutLength;
         lastHeartbeatStderrLength = currentStderrLength;
 
-        // If we've had no output for longer than idleTimeout, fail fast instead of waiting
-        if (!completed && timeSinceLastOutput > idleTimeout) {
+        // Idle timeout is only meaningful once we've actually observed output.
+        // In headless `cursor --print` mode, stdout/stderr may be buffered until exit, so "no output yet"
+        // does NOT necessarily mean the process is hung.
+        //
+        // If we've had no output for longer than idleTimeout AFTER output has started, fail fast.
+        if (!completed && currentHasReceivedOutput && timeSinceLastOutput > idleTimeout) {
           logger.error('cursor-cli idle timeout reached', {
             command: this.cursorPath,
             args: this.formatArgsForLogging(args),
