@@ -5,51 +5,35 @@ services:
     container_name: virtual-assistant-traefik
     restart: unless-stopped
     command:
-      # Enable Docker provider to auto-discover services
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=virtual-assistant-network"
-      # HTTP entrypoint (port 80) - redirects to HTTPS
       - "--entrypoints.web.address=:80"
-      # HTTPS entrypoint (port 443) - serves all traffic
       - "--entrypoints.websecure.address=:443"
-      # Let's Encrypt certificate resolver
-      # Note: ACME_EMAIL should be set to a valid email address for production
-      # For localhost, certificates won't work, but we still need a valid email format
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@${DOMAIN_NAME:-jarekva.com}}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      # Optional: Enable dashboard for debugging (disable in production or secure it)
       - "--api.dashboard=false"
-      # Logging
       - "--log.level=INFO"
       - "--accesslog=true"
     ports:
-      # HTTP port - redirects to HTTPS
       - "80:80"
-      # HTTPS port - serves all traffic
       - "443:443"
     volumes:
-      # Docker socket for service discovery
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Let's Encrypt certificate storage
       - traefik_letsencrypt:/letsencrypt
     networks:
       - virtual-assistant-network
     labels:
-      # Enable Traefik's own labels so it can host the global HTTP->HTTPS redirect router
       - "traefik.enable=true"
-      # HTTP to HTTPS redirect middleware (applied globally via default router)
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
-      # Default router for HTTP -> HTTPS redirect on port 80
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
       - "traefik.http.routers.http-catchall.priority=1"
 
-  # Redis service - shared by cursor-runner and other services
   redis:
     image: redis:7-alpine
     container_name: virtual-assistant-redis
@@ -65,11 +49,13 @@ services:
       timeout: 5s
       retries: 5
 
-  # cursor-runner Node.js application service
+  # cursor-runner Node.js application service (monorepo build; includes jira-api-mcp-wrapper bundle)
   cursor-runner:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # IMPORTANT: build context is the repository root so Docker can copy both
+      # `cursor-runner/` and `jira-api-mcp-wrapper/`.
+      context: ..
+      dockerfile: cursor-runner/Dockerfile.monorepo
     container_name: cursor-runner
     restart: unless-stopped
     ports:
@@ -77,7 +63,6 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3001
-      # Cursor CLI Configuration
       - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
       - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
       - CURSOR_CLI_ITERATE_TIMEOUT=${CURSOR_CLI_ITERATE_TIMEOUT:-1800000}
@@ -85,56 +70,26 @@ services:
       - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}
       - CURSOR_CLI_MAX_CONCURRENT=${CURSOR_CLI_MAX_CONCURRENT:-5}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
-      # Target Application (cursor) - mounted as volume
-      # REPOSITORIES_PATH, SCRIPTS_PATH, and CURSOR_AGENTS_TOOLS_PATH are now
-      # automatically resolved relative to TARGET_APP_PATH
-      # (e.g., TARGET_APP_PATH/repositories, TARGET_APP_PATH/scripts, etc.)
       - TARGET_APP_PATH=/cursor
       - TARGET_APP_TYPE=${TARGET_APP_TYPE:-rails}
-      # Git Service Configuration
-      # REPOSITORIES_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/repositories)
-      # Uncomment to override: - REPOSITORIES_PATH=/cursor/repositories
       - GIT_COMMAND_TIMEOUT=${GIT_COMMAND_TIMEOUT:-60000}
-      # Scripts directory for one-time scripts created by cursor-cli
-      # SCRIPTS_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/scripts)
-      # Uncomment to override: - SCRIPTS_PATH=/cursor/scripts
-      # Cursor-agents tools directory path
-      # CURSOR_AGENTS_TOOLS_PATH is now relative to TARGET_APP_PATH (automatically set to TARGET_APP_PATH/tools/cursor-agents)
-      # Uncomment to override: - CURSOR_AGENTS_TOOLS_PATH=/cursor/tools/cursor-agents
-      # Terminal Service Configuration
       - TERMINAL_COMMAND_TIMEOUT=${TERMINAL_COMMAND_TIMEOUT:-300000}
       - TERMINAL_MAX_OUTPUT_SIZE=${TERMINAL_MAX_OUTPUT_SIZE:-10485760}
-      # jarek-va Communication
-      # JAREK_VA_URL is optional - defaults to Docker network service name (http://app:3000)
-      # Override only if using a different URL or running outside Docker
       - JAREK_VA_URL=${JAREK_VA_URL:-http://app:3000}
       - JAREK_VA_API_KEY=${JAREK_VA_API_KEY:-}
-      # Webhook secret for callback authentication
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
-      # OpenAI API Key for GPT review agent (optional)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # ElevenLabs Agent Configuration
-      # Feature flag to enable/disable ElevenLabs agent integration
-      # When disabled, cursor completion callbacks will not attempt ElevenLabs integration
       - ELEVENLABS_AGENT_ENABLED=${ELEVENLABS_AGENT_ENABLED:-false}
-      # Redis Configuration - Use shared Redis instance for cursor-agents MCP server
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      # GitHub Authentication - Required for git operations
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USERNAME=${GITHUB_USERNAME:-}
-      # Gmail MCP Configuration (optional - for Gmail integration)
-      # Feature flag to enable/disable Gmail MCP (default: false for safety)
       - ENABLE_GMAIL_MCP=${ENABLE_GMAIL_MCP:-false}
       - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}
       - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}
       - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN:-}
       - GMAIL_USER_EMAIL=${GMAIL_USER_EMAIL:-}
       - GMAIL_ALLOWED_LABELS=${GMAIL_ALLOWED_LABELS:-}
-      # Atlassian MCP Configuration (optional - for Jira integration)
-      # Feature flag to enable/disable Atlassian MCP (default: false for safety)
       - ENABLE_ATLASSIAN_MCP=${ENABLE_ATLASSIAN_MCP:-false}
-      # Base URL + username are required by the currently used Atlassian MCP implementation (atlassian-mcp)
-      # Example base URL: https://your-company.atlassian.net
       - ATLASSIAN_BASE_URL=${ATLASSIAN_BASE_URL:-}
       - ATLASSIAN_USERNAME=${ATLASSIAN_USERNAME:-}
       - ATLASSIAN_EMAIL=${ATLASSIAN_EMAIL:-}
@@ -144,33 +99,17 @@ services:
       - JIRA_BASE_URL=${JIRA_BASE_URL:-}
       - JIRA_EMAIL=${JIRA_EMAIL:-}
       - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
-      # Alternative git credential environment variables (also supported)
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USERNAME=${GIT_USERNAME:-}
-      # Git user identity (optional, for commits)
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
     volumes:
-      # Mount cursor codebase so cursor-runner can access it
-      # Update this path to point to your cursor directory
       - ../cursor:/app/target/cursor
-      # Mount cursor-agents codebase so cursor-runner can run its MCP server
-      # Update this path to point to your cursor-agents directory
       - ../cursor-agents:/app/target/cursor-agents
-      # Mount jira-api-mcp-wrapper so cursor-runner can spawn it as a stdio MCP server
-      # NOTE: we run the bundled dist/bundle.cjs inside the container to avoid host node_modules incompatibilities.
-      - ../jira-api-mcp-wrapper:/app/target/jira-api-mcp-wrapper
-      # Mount shared cursor volume (contains repositories, tools, and scripts directories)
+      # NOTE: jira-api-mcp-wrapper is baked into the image; no host mount required in production.
       - cursor_runner_repositories:/cursor
-      # Mount shared SQLite database for cross-service access
       - shared_sqlite_db:/app/shared_db
-      # Mount logs for debugging
       - ./logs:/app/logs
-      # MCP configuration is created/merged by merge-mcp-config.js during deployment
-      # The script copies the merged config to /root/.cursor/mcp.json
-      # We don't mount ./mcp.json here to allow the merge script to write the final config
-      # Mount cursor-cli if available on host (optional)
-      # - /usr/local/bin/cursor:/usr/local/bin/cursor:ro
     networks:
       - virtual-assistant-network
     depends_on:
@@ -180,74 +119,46 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # Path-based routing - only route /conversations/api/* to cursor-runner (API endpoints)
-      # Higher priority ensures API routes are matched before jarek-va-ui routes
-      # HTTPS router (for production domains only - exclude localhost)
-      # Only create HTTPS router when DOMAIN_NAME is set and contains a dot (real domain, not localhost)
       - "traefik.http.routers.cursor-runner-conversations-api.priority=20"
       - "traefik.http.routers.cursor-runner-conversations-api.rule=HostRegexp(`.*\\..*`) && Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/conversations/api`)"
       - "traefik.http.routers.cursor-runner-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-conversations-api.service=cursor-runner-api"
-      # HTTP router for localhost (no TLS required)
       - "traefik.http.routers.cursor-runner-conversations-api-http.priority=20"
       - "traefik.http.routers.cursor-runner-conversations-api-http.rule=Host(`localhost`) && PathPrefix(`/conversations/api`)"
       - "traefik.http.routers.cursor-runner-conversations-api-http.entrypoints=web"
       - "traefik.http.routers.cursor-runner-conversations-api-http.service=cursor-runner-api"
-      # Strip /conversations prefix before forwarding to the service
-      # So /conversations/api/list becomes /api/list at cursor-runner
       - "traefik.http.middlewares.cursor-runner-conversations-api-stripprefix.stripprefix.prefixes=/conversations"
-      # Security headers middleware (only for HTTPS)
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.sslredirect=true"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsSeconds=31536000"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsIncludeSubdomains=true"
       - "traefik.http.middlewares.cursor-runner-conversations-api-headers.headers.stsPreload=true"
-      # Apply strip prefix and security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-conversations-api.middlewares=cursor-runner-conversations-api-stripprefix,cursor-runner-conversations-api-headers"
-      # Apply only strip prefix to HTTP router (no security headers for localhost)
       - "traefik.http.routers.cursor-runner-conversations-api-http.middlewares=cursor-runner-conversations-api-stripprefix"
-      # Shared service definition for both routers (same container, same port)
       - "traefik.http.services.cursor-runner-api.loadbalancer.server.port=3001"
-      # Path-based routing for agent conversation API endpoints
-      # Higher priority (25) ensures agent routes are matched before regular conversation routes
-      # HTTPS router (for production domains only - exclude localhost)
-      # Only create HTTPS router when DOMAIN_NAME is set and contains a dot (real domain, not localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api.priority=25"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/agent-conversations/api`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-agent-conversations-api.service=cursor-runner-api"
-      # HTTP router for localhost (no TLS required)
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.priority=25"
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.rule=Host(`localhost`) && PathPrefix(`/agent-conversations/api`)"
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.entrypoints=web"
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.service=cursor-runner-api"
-      # Strip /agent-conversations/api prefix, then rewrite to /api/agent/*
-      # So /agent-conversations/api/list becomes /api/agent/list
-      # Step 1: Strip /agent-conversations/api → /list
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-stripprefix.stripprefix.prefixes=/agent-conversations/api"
-      # Step 2: Rewrite /list to /api/agent/list
-      # Note: After strip prefix, path is /list, so we need to capture without the leading slash
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.regex=^/(.*)"
       - "traefik.http.middlewares.cursor-runner-agent-conversations-api-rewrite.replacepathregex.replacement=/api/agent/$$1"
-      # Apply strip prefix, rewrite, and security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-agent-conversations-api.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite,cursor-runner-conversations-api-headers"
-      # Apply strip prefix and rewrite to HTTP router (no security headers for localhost)
       - "traefik.http.routers.cursor-runner-agent-conversations-api-http.middlewares=cursor-runner-agent-conversations-api-stripprefix,cursor-runner-agent-conversations-api-rewrite"
-      # Path-based routing for cursor execution endpoints (for external ElevenLabs agent access)
-      # Higher priority (30) ensures cursor routes are matched before other routes
-      # HTTPS router (for production domains only - exclude localhost)
       - "traefik.http.routers.cursor-runner-cursor-execute.priority=30"
       - "traefik.http.routers.cursor-runner-cursor-execute.rule=Host(`${DOMAIN_NAME:-localhost}`) && PathPrefix(`/cursor/execute`)"
       - "traefik.http.routers.cursor-runner-cursor-execute.entrypoints=websecure"
       - "traefik.http.routers.cursor-runner-cursor-execute.tls.certresolver=letsencrypt"
       - "traefik.http.routers.cursor-runner-cursor-execute.service=cursor-runner-api"
-      # HTTP router for localhost (no TLS required)
       - "traefik.http.routers.cursor-runner-cursor-execute-http.priority=30"
       - "traefik.http.routers.cursor-runner-cursor-execute-http.rule=Host(`localhost`) && PathPrefix(`/cursor/execute`)"
       - "traefik.http.routers.cursor-runner-cursor-execute-http.entrypoints=web"
       - "traefik.http.routers.cursor-runner-cursor-execute-http.service=cursor-runner-api"
-      # Apply security headers to HTTPS router
       - "traefik.http.routers.cursor-runner-cursor-execute.middlewares=cursor-runner-conversations-api-headers"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -257,21 +168,15 @@ services:
       start_period: 10s
 
 volumes:
-  # Shared cursor volume (external - created by deployment scripts or manually)
   cursor_runner_repositories:
     external: true
     name: cursor_runner_repositories
-  # Shared SQLite database volume accessible by all services
-  # Note: This volume is defined here in cursor-runner and referenced as external by other services
   shared_sqlite_db:
     driver: local
     name: shared_sqlite_db
-  # Shared Redis data volume accessible by all services
-  # Note: This volume is defined here in cursor-runner and referenced as external by other services
   shared_redis_data:
     driver: local
     name: shared_redis_data
-  # Traefik Let's Encrypt certificate storage
   traefik_letsencrypt:
     driver: local
     name: traefik_letsencrypt
@@ -280,4 +185,5 @@ networks:
   virtual-assistant-network:
     external: true
     name: virtual-assistant-network
+
 

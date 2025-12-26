@@ -1,0 +1,139 @@
+# Dockerfile for cursor-runner (monorepo build context)
+#
+# This Dockerfile is intended to be built with the repository root as the build context:
+#   docker build -f cursor-runner/Dockerfile.monorepo .
+#
+# It bakes `jira-api-mcp-wrapper` into the image so cursor-runner can spawn it as a stdio MCP
+# server without relying on host volume mounts.
+
+FROM node:18-slim
+
+# Install system dependencies
+RUN apt-get update -qq && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    curl \
+    git \
+    ca-certificates \
+    procps \
+    psmisc \
+    netcat-traditional \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cursor-agent (Cursor CLI)
+# The official installer installs cursor-agent which provides the cursor command
+RUN curl -fsSL https://cursor.com/install | bash || true
+
+# Verify cursor-agent installation and create symlinks if needed
+# Also check common installation locations
+RUN if [ -f /usr/local/lib/cursor/cursor-agent ]; then \
+      mkdir -p /usr/local/bin && \
+      ln -sf /usr/local/lib/cursor/cursor-agent /usr/local/bin/cursor-agent && \
+      ln -sf /usr/local/lib/cursor/cursor-agent /usr/local/bin/cursor && \
+      echo "cursor-agent symlinks created in /usr/local/bin"; \
+    elif [ -f /root/.local/bin/cursor-agent ]; then \
+      mkdir -p /usr/local/bin && \
+      ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent && \
+      ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor && \
+      echo "cursor-agent symlinks created from /root/.local/bin"; \
+    elif command -v cursor-agent >/dev/null 2>&1; then \
+      CURSOR_PATH=$(command -v cursor-agent) && \
+      mkdir -p /usr/local/bin && \
+      ln -sf "$CURSOR_PATH" /usr/local/bin/cursor-agent && \
+      ln -sf "$CURSOR_PATH" /usr/local/bin/cursor && \
+      echo "cursor-agent symlinks created from found location: $CURSOR_PATH"; \
+    else \
+      echo "Warning: cursor-agent not found after installation - may need to be mounted or installed manually"; \
+    fi
+
+# Ensure /usr/local/bin is in PATH (should be by default, but make it explicit)
+ENV PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+
+# Verify cursor-agent is accessible (non-blocking - allows build to continue if not found)
+RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent verification skipped - ensure it's available at runtime"
+
+# Install MCP server packages globally to avoid npx download delays during cursor-cli startup
+RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
+    echo "MCP server packages installed globally"
+
+# ---------------------------------------------------------------------------
+# Build cursor-runner (copied into /app like the original Dockerfile expects)
+# ---------------------------------------------------------------------------
+WORKDIR /app
+
+COPY cursor-runner/package.json cursor-runner/package-lock.json* ./
+
+# Install dependencies (including dev dependencies for TypeScript build)
+RUN if [ -f package-lock.json ]; then \
+      npm ci; \
+    else \
+      npm install; \
+    fi
+
+COPY cursor-runner/. .
+
+# Ensure wrapper scripts are executable
+RUN chmod +x /app/mcp-atlassian-wrapper.sh || true
+
+# Build TypeScript to JavaScript
+RUN npm run build
+
+# Remove .d.ts files from migrations directory (they cause migration errors)
+RUN find dist/migrations/files -type f -name "*.d.ts" -delete
+
+# ---------------------------------------------------------------------------
+# Build jira-api-mcp-wrapper bundle and copy it into /app/target/jira-api-mcp-wrapper
+# ---------------------------------------------------------------------------
+WORKDIR /tmp/jira-api-mcp-wrapper
+
+COPY jira-api-mcp-wrapper/package.json jira-api-mcp-wrapper/package-lock.json* ./
+RUN if [ -f package-lock.json ]; then \
+      npm ci; \
+    else \
+      npm install; \
+    fi
+
+COPY jira-api-mcp-wrapper/. .
+RUN npm run build
+
+# Copy the bundled stdio server into the location referenced by /app/mcp.json
+RUN mkdir -p /app/target/jira-api-mcp-wrapper/dist && \
+    cp /tmp/jira-api-mcp-wrapper/dist/bundle.cjs /app/target/jira-api-mcp-wrapper/dist/bundle.cjs
+
+# Clean up the build dir (bundle is self-contained, we don't need node_modules at runtime)
+RUN rm -rf /tmp/jira-api-mcp-wrapper
+
+# ---------------------------------------------------------------------------
+# Runtime cleanup
+# ---------------------------------------------------------------------------
+
+# Remove dev dependencies to reduce image size (optional - comment out if you need them)
+WORKDIR /app
+RUN npm prune --omit=dev
+
+# Create necessary directories
+RUN mkdir -p logs repositories /root/.cursor
+
+# Copy and set up entrypoint script
+COPY cursor-runner/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Expose port
+EXPOSE 3001
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3001
+
+# Health check (using node since curl might not be available)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Use entrypoint script to merge MCP config before starting
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Start the server (using compiled JavaScript from dist/)
+CMD ["node", "dist/index.js"]
+
+
