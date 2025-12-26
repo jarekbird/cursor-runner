@@ -129,8 +129,10 @@ export class CursorCLI {
 
   constructor(cursorPath?: string) {
     this.cursorPath = cursorPath || process.env.CURSOR_CLI_PATH || 'cursor';
-    const timeoutValue = parseInt(process.env.CURSOR_CLI_TIMEOUT || '300000', 10);
-    this.timeout = isNaN(timeoutValue) || timeoutValue <= 0 ? 300000 : timeoutValue; // 5 minutes default
+    // Hard timeout (wall-clock). Must be >= idle timeout to make idle-timeout meaningful.
+    // Default: 30 minutes.
+    const timeoutValue = parseInt(process.env.CURSOR_CLI_TIMEOUT || '1800000', 10);
+    this.timeout = isNaN(timeoutValue) || timeoutValue <= 0 ? 1800000 : timeoutValue; // 30 minutes default
     const maxOutputSizeValue = parseInt(process.env.CURSOR_CLI_MAX_OUTPUT_SIZE || '10485760', 10);
     this.maxOutputSize =
       isNaN(maxOutputSizeValue) || maxOutputSizeValue <= 0 ? 10485760 : maxOutputSizeValue; // 10MB default
@@ -275,8 +277,14 @@ export class CursorCLI {
     const idleTimeout =
       isNaN(idleTimeoutValue) || idleTimeoutValue <= 0 ? 600000 : idleTimeoutValue; // 10 minutes default
 
-    // Lazy-load node-pty if available (before creating Promise)
-    if (this._ptyModule === null) {
+    // PTY can introduce TTY-specific behavior that interferes with MCP/stdin-stdout workflows.
+    // Default to spawn unless explicitly enabled.
+    const allowPty = (process.env.CURSOR_RUNNER_USE_PTY || '').toLowerCase() === 'true';
+
+    // Lazy-load node-pty only when PTY mode is enabled.
+    // This avoids native-module load failures in environments where node-pty isn't built (e.g., some CI runners)
+    // and avoids unnecessary overhead when PTY is disabled (default).
+    if (allowPty && this._ptyModule === null) {
       try {
         // eslint-disable-next-line node/no-unsupported-features/es-syntax
         const ptyModule = await import('node-pty').catch(() => null);
@@ -307,13 +315,96 @@ export class CursorCLI {
       const commandStartTime = Date.now();
       let lastOutputTime = commandStartTime;
       let hasReceivedOutput = false;
+      // Used to make heartbeat logs more intuitive by showing deltas since last heartbeat.
+      let lastHeartbeatTime = commandStartTime;
+      let lastHeartbeatStdoutLength = 0;
+      let lastHeartbeatStderrLength = 0;
       let completed = false;
       let heartbeatInterval: NodeJS.Timeout | null = null;
       let safetyTimeoutId: NodeJS.Timeout | null = null;
+      let killEscalationTimer: NodeJS.Timeout | null = null;
+      // Whether the spawned child is expected to be a process-group leader.
+      // We only attempt process-group kills when we know that is true (regular spawn + detached on POSIX).
+      let spawnedAsDetachedProcessGroupLeader = false;
 
       // Try to use a pseudo-TTY so cursor behaves like an interactive session
       let child: ChildProcess | IPtyProcess | undefined;
       let usePty = false;
+
+      const clearKillEscalationTimer = (): void => {
+        if (killEscalationTimer) {
+          clearTimeout(killEscalationTimer);
+          killEscalationTimer = null;
+        }
+      };
+
+      /**
+       * Best-effort termination of cursor-cli and any of its children.
+       *
+       * Why process-group kill?
+       * - `cursor` may spawn subprocesses. Killing only the direct child can leave descendants running (orphaned),
+       *   which can later spike CPU without any additional app-level logs.
+       * - On POSIX, if we spawn with `detached: true`, the child becomes a process-group leader. We can then
+       *   `process.kill(-pid, signal)` to signal the whole group.
+       *
+       * Notes:
+       * - We still call `child.kill(signal)` as a fallback.
+       * - For PTY mode, we do NOT assume the child is a process-group leader.
+       */
+      const terminateCursorCli = (reason: string): void => {
+        const targetChild = child;
+        if (!targetChild) return;
+
+        // Both ChildProcess and IPtyProcess expose a numeric pid.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pid = (targetChild as any).pid;
+        const safePid = typeof pid === 'number' && Number.isFinite(pid) ? pid : null;
+        logger.warn('Terminating cursor-cli process', {
+          reason,
+          pid: safePid,
+          usePty,
+          processGroupKillEnabled:
+            spawnedAsDetachedProcessGroupLeader && process.platform !== 'win32' && !usePty,
+        });
+
+        const trySignal = (signal: NodeJS.Signals): void => {
+          // 1) Try process-group kill when safe
+          if (
+            !usePty &&
+            spawnedAsDetachedProcessGroupLeader &&
+            process.platform !== 'win32' &&
+            safePid &&
+            safePid > 0
+          ) {
+            try {
+              // Negative PID targets the process group on POSIX.
+              process.kill(-safePid, signal);
+            } catch {
+              // Ignore (ESRCH, EPERM, etc.)
+            }
+          }
+
+          // 2) Always try to signal the direct child too
+          try {
+            if ('kill' in targetChild && typeof targetChild.kill === 'function') {
+              targetChild.kill(signal);
+            }
+          } catch {
+            // Ignore
+          }
+        };
+
+        // Clear any existing escalation timer (avoid stacking timers)
+        clearKillEscalationTimer();
+
+        // First attempt: graceful
+        trySignal('SIGTERM');
+
+        // Escalate to SIGKILL
+        killEscalationTimer = setTimeout(() => {
+          trySignal('SIGKILL');
+        }, 1000);
+      };
 
       // Set environment with LOG_LEVEL=debug for verbose cursor-agent output
       // Force HOME=/root to ensure cursor-cli reads from /root/.cursor/mcp.json
@@ -323,10 +414,6 @@ export class CursorCLI {
         LOG_LEVEL: 'debug',
         HOME: '/root',
       };
-
-      // PTY can introduce TTY-specific behavior that interferes with MCP/stdin-stdout workflows.
-      // Default to spawn unless explicitly enabled.
-      const allowPty = (process.env.CURSOR_RUNNER_USE_PTY || '').toLowerCase() === 'true';
 
       if (allowPty && this._ptyModule) {
         try {
@@ -363,7 +450,11 @@ export class CursorCLI {
           stdio: ['ignore', 'pipe', 'pipe'],
           shell: false,
           env,
+          // Spawn as a process-group leader on POSIX so we can reliably terminate the entire process group
+          // (cursor-cli + any subprocesses it spawns) on timeouts.
+          detached: process.platform !== 'win32',
         });
+        spawnedAsDetachedProcessGroupLeader = process.platform !== 'win32';
         logger.info('Using regular spawn for cursor-cli execution', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
@@ -390,6 +481,7 @@ export class CursorCLI {
             cwd,
             timeout: `${validTimeout + 5000}ms`,
           });
+          terminateCursorCli('safety timeout (no exit event observed)');
           completed = true;
           clearTimeout(timeoutId);
           if (heartbeatInterval) {
@@ -429,26 +521,7 @@ export class CursorCLI {
           lastOutputTime: lastOutputTime ? new Date(lastOutputTime).toISOString() : null,
         });
 
-        try {
-          if ('kill' in child && typeof child.kill === 'function') {
-            child.kill('SIGTERM');
-          }
-        } catch {
-          // Process may already be dead
-        }
-
-        // Try SIGKILL if SIGTERM doesn't work after a short delay (spawned processes only)
-        if ('pid' in child && child.pid && 'kill' in child && typeof child.kill === 'function') {
-          setTimeout(() => {
-            try {
-              if (child && 'kill' in child && typeof child.kill === 'function') {
-                child.kill('SIGKILL');
-              }
-            } catch {
-              // Ignore
-            }
-          }, 1000);
-        }
+        terminateCursorCli(`hard timeout (${validTimeout}ms)`);
 
         completed = true;
         clearTimeout(timeoutId);
@@ -485,6 +558,7 @@ export class CursorCLI {
         const now = Date.now();
         const timeSinceLastOutput = now - lastOutputTime;
         const elapsed = now - commandStartTime;
+        const timeSinceLastHeartbeat = now - lastHeartbeatTime;
 
         // Double-check completed flag right before logging to prevent
         // logging after handleExit has been called but before this callback returns
@@ -501,16 +575,46 @@ export class CursorCLI {
         const currentStdoutLength = stdout.length;
         const currentStderrLength = stderr.length;
 
+        const stdoutDeltaSinceHeartbeat = Math.max(
+          0,
+          currentStdoutLength - lastHeartbeatStdoutLength
+        );
+        const stderrDeltaSinceHeartbeat = Math.max(
+          0,
+          currentStderrLength - lastHeartbeatStderrLength
+        );
+        const outputSinceLastHeartbeat =
+          stdoutDeltaSinceHeartbeat > 0 || stderrDeltaSinceHeartbeat > 0;
+
+        // Hard timeout (wall-clock). Use the same validation logic as the timer.
+        const hardTimeoutMs = isNaN(timeout) || timeout <= 0 ? this.timeout : timeout;
+        const idleTimeoutMs = idleTimeout;
+        const hardTimeoutRemainingMs = Math.max(0, hardTimeoutMs - elapsed);
+        const idleTimeoutRemainingMs = Math.max(0, idleTimeoutMs - timeSinceLastOutput);
+
         logger.info('cursor-cli command heartbeat', {
           command: this.cursorPath,
           args: this.formatArgsForLogging(args),
           hasReceivedOutput: currentHasReceivedOutput,
           stdoutLength: currentStdoutLength,
           stderrLength: currentStderrLength,
+          outputSinceLastHeartbeat,
+          stdoutDeltaSinceHeartbeat,
+          stderrDeltaSinceHeartbeat,
           timeSinceLastOutput: `${timeSinceLastOutput}ms`,
           elapsed: `${elapsed}ms`,
+          idleTimeoutMs,
+          idleTimeoutRemainingMs,
+          hardTimeoutMs,
+          hardTimeoutRemainingMs,
+          timeSinceLastHeartbeat: `${timeSinceLastHeartbeat}ms`,
           usePty,
         });
+
+        // Update heartbeat baseline after logging so deltas are "since last heartbeat"
+        lastHeartbeatTime = now;
+        lastHeartbeatStdoutLength = currentStdoutLength;
+        lastHeartbeatStderrLength = currentStderrLength;
 
         // If we've had no output for longer than idleTimeout, fail fast instead of waiting
         if (!completed && timeSinceLastOutput > idleTimeout) {
@@ -523,14 +627,7 @@ export class CursorCLI {
             stdoutLength: stdout.length,
             stderrLength: stderr.length,
           });
-
-          try {
-            if ('kill' in child && typeof child.kill === 'function') {
-              child.kill('SIGTERM');
-            }
-          } catch {
-            // Ignore if already exited
-          }
+          terminateCursorCli(`idle timeout (no output for ${idleTimeout}ms)`);
 
           completed = true;
           clearTimeout(timeoutId);
@@ -559,6 +656,14 @@ export class CursorCLI {
         const chunk = typeof data === 'string' ? data : data.toString();
         outputSize += Buffer.byteLength(chunk);
         lastOutputTime = Date.now();
+        if (!hasReceivedOutput) {
+          logger.info('cursor-cli first output detected', {
+            command: this.cursorPath,
+            args: this.formatArgsForLogging(args),
+            cwd,
+            usePty,
+          });
+        }
         hasReceivedOutput = true;
 
         // Check for SSH host key verification prompt and auto-respond
@@ -599,13 +704,7 @@ export class CursorCLI {
         });
 
         if (outputSize > this.maxOutputSize) {
-          try {
-            if ('kill' in child && typeof child.kill === 'function') {
-              child.kill('SIGTERM');
-            }
-          } catch {
-            // Ignore
-          }
+          terminateCursorCli(`output size exceeded (${this.maxOutputSize} bytes)`);
           completed = true;
           clearTimeout(timeoutId);
           clearTimeout(safetyTimeoutId); // Clear safety timeout since we're handling it
@@ -659,6 +758,7 @@ export class CursorCLI {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null; // Clear reference to prevent memory leaks
         }
+        clearKillEscalationTimer();
 
         // For PTY processes, wait a short time to allow buffered output to flush
         // This ensures we capture all output before resolving

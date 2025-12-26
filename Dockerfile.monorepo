@@ -85,16 +85,18 @@ RUN find dist/migrations/files -type f -name "*.d.ts" -delete
 # ---------------------------------------------------------------------------
 # Build jira-api-mcp-wrapper bundle and copy it into /app/target/jira-api-mcp-wrapper
 # ---------------------------------------------------------------------------
+ARG JIRA_API_MCP_WRAPPER_REPO=https://github.com/jarekbird/jira-api-mcp-wrapper.git
+ARG JIRA_API_MCP_WRAPPER_REF=main
+
 WORKDIR /tmp/jira-api-mcp-wrapper
 
-COPY jira-api-mcp-wrapper/package.json jira-api-mcp-wrapper/package-lock.json* ./
+# Pull wrapper from its own repository (public) instead of copying from monorepo build context.
+RUN git clone --depth 1 --branch "${JIRA_API_MCP_WRAPPER_REF}" "${JIRA_API_MCP_WRAPPER_REPO}" .
 RUN if [ -f package-lock.json ]; then \
       npm ci; \
     else \
       npm install; \
     fi
-
-COPY jira-api-mcp-wrapper/. .
 RUN npm run build
 
 # Copy the bundled stdio server into the location referenced by /app/mcp.json

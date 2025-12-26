@@ -49,13 +49,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # cursor-runner Node.js application service (monorepo build; includes jira-api-mcp-wrapper bundle)
+  # cursor-runner Node.js application service (includes jira-api-mcp-wrapper bundle via git clone during Docker build)
   cursor-runner:
     build:
-      # IMPORTANT: build context is the repository root so Docker can copy both
-      # `cursor-runner/` and `jira-api-mcp-wrapper/`.
-      context: ..
-      dockerfile: cursor-runner/Dockerfile.monorepo
+      # Build context is cursor-runner; jira-api-mcp-wrapper is cloned during Docker build.
+      context: .
+      dockerfile: Dockerfile
     container_name: cursor-runner
     restart: unless-stopped
     ports:
@@ -64,7 +63,7 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3001
       - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
-      - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
+      - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-1800000}
       - CURSOR_CLI_ITERATE_TIMEOUT=${CURSOR_CLI_ITERATE_TIMEOUT:-1800000}
       - CURSOR_CLI_DIAGNOSTIC_TIMEOUT=${CURSOR_CLI_DIAGNOSTIC_TIMEOUT:-2400000}
       - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}

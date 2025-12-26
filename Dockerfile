@@ -81,6 +81,33 @@ RUN npm run build
 # Remove .d.ts files from migrations directory (they cause migration errors)
 RUN find dist/migrations/files -type f -name "*.d.ts" -delete
 
+# ---------------------------------------------------------------------------
+# Build jira-api-mcp-wrapper bundle and copy it into /app/target/jira-api-mcp-wrapper
+# ---------------------------------------------------------------------------
+ARG JIRA_API_MCP_WRAPPER_REPO=https://github.com/jarekbird/jira-api-mcp-wrapper.git
+ARG JIRA_API_MCP_WRAPPER_REF=main
+
+WORKDIR /tmp/jira-api-mcp-wrapper
+
+# Pull wrapper from its own repository (public) instead of relying on host volume mounts.
+RUN git clone --depth 1 --branch "${JIRA_API_MCP_WRAPPER_REF}" "${JIRA_API_MCP_WRAPPER_REPO}" .
+RUN if [ -f package-lock.json ]; then \
+      npm ci; \
+    else \
+      npm install; \
+    fi
+RUN npm run build
+
+# Copy the bundled stdio server into the location referenced by /app/mcp.json
+RUN mkdir -p /app/target/jira-api-mcp-wrapper/dist && \
+    cp /tmp/jira-api-mcp-wrapper/dist/bundle.cjs /app/target/jira-api-mcp-wrapper/dist/bundle.cjs
+
+# Clean up the build dir (bundle is self-contained, we don't need node_modules at runtime)
+RUN rm -rf /tmp/jira-api-mcp-wrapper
+
+# IMPORTANT: reset WORKDIR back to /app for subsequent commands and runtime CMD.
+WORKDIR /app
+
 # Remove dev dependencies to reduce image size (optional - comment out if you need them)
 RUN npm prune --omit=dev
 

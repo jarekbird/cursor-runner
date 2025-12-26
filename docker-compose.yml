@@ -79,7 +79,7 @@ services:
       - PORT=3001
       # Cursor CLI Configuration
       - CURSOR_CLI_PATH=${CURSOR_CLI_PATH:-cursor}
-      - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-300000}
+      - CURSOR_CLI_TIMEOUT=${CURSOR_CLI_TIMEOUT:-1800000}
       - CURSOR_CLI_ITERATE_TIMEOUT=${CURSOR_CLI_ITERATE_TIMEOUT:-1800000}
       - CURSOR_CLI_DIAGNOSTIC_TIMEOUT=${CURSOR_CLI_DIAGNOSTIC_TIMEOUT:-2400000}
       - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}
@@ -157,9 +157,7 @@ services:
       # Mount cursor-agents codebase so cursor-runner can run its MCP server
       # Update this path to point to your cursor-agents directory
       - ../cursor-agents:/app/target/cursor-agents
-      # Mount jira-api-mcp-wrapper so cursor-runner can spawn it as a stdio MCP server
-      # NOTE: we run the bundled dist/bundle.cjs inside the container to avoid host node_modules incompatibilities.
-      - ../jira-api-mcp-wrapper:/app/target/jira-api-mcp-wrapper
+      # jira-api-mcp-wrapper is baked into the image (cloned during Docker build); no host mount required.
       # Mount shared cursor volume (contains repositories, tools, and scripts directories)
       - cursor_runner_repositories:/cursor
       # Mount shared SQLite database for cross-service access

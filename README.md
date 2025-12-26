@@ -100,9 +100,10 @@ PORT=3001
 
 # Cursor CLI Configuration
 CURSOR_CLI_PATH=cursor
-CURSOR_CLI_TIMEOUT=300000
+CURSOR_CLI_TIMEOUT=1800000
 CURSOR_CLI_ITERATE_TIMEOUT=1800000
 CURSOR_CLI_DIAGNOSTIC_TIMEOUT=2400000
+CURSOR_CLI_IDLE_TIMEOUT=600000
 CURSOR_API_KEY=your-cursor-api-key-here
 
 # Target Application
@@ -342,19 +343,17 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed integration patterns.
 
 ### Bundling `jira-api-mcp-wrapper` into `cursor-runner` (production)
 
-In local development, `docker-compose.yml` mounts `../jira-api-mcp-wrapper` into the container so Cursor can spawn it as a stdio MCP server.
+`jira-api-mcp-wrapper` is baked into the `cursor-runner` image during Docker build by cloning the public repo and copying:
+- `/app/target/jira-api-mcp-wrapper/dist/bundle.cjs`
 
-In production you typically **don’t want host mounts**, so use the monorepo build which bakes the Jira MCP bundle into the image:
+That path matches the `jira-api-mcp-wrapper` entry in `mcp.json`.
+
+To build/run (production compose file):
 
 ```bash
 # from the cursor-runner directory
 docker compose -f docker-compose.prod.yml up -d --build
 ```
-
-This uses `Dockerfile.monorepo` with the repository root as build context and copies the bundled file to:
-- `/app/target/jira-api-mcp-wrapper/dist/bundle.cjs`
-
-That path matches the `jira-api-mcp-wrapper` entry in `mcp.json`.
 
 ### More Docker docs
 
