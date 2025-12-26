@@ -766,36 +766,10 @@ export class CursorExecutionService {
     logger.info('Selecting MCP connections for request', { requestId });
     const mcpSelection = await this.mcpSelectionService.selectMcps(prompt, contextString);
 
-    // Safety net: If prompt explicitly mentions Jira/Atlassian terms, ensure atlassian MCP is included
-    // This prevents cases where MCP selection misses obvious Jira-related prompts
-    const promptLower = prompt.toLowerCase();
-    const contextLower = (contextString || '').toLowerCase();
-    const combinedText = `${promptLower} ${contextLower}`;
-    const jiraKeywords = [
-      'jira',
-      'user story',
-      'subtask',
-      'atlassian',
-      'wor-',
-      'jql',
-      'issue',
-      'ticket',
-    ];
-    const mentionsJira = jiraKeywords.some((keyword) => combinedText.includes(keyword));
-
-    if (mentionsJira && !mcpSelection.selectedMcps.includes('atlassian')) {
-      logger.warn('Prompt mentions Jira but atlassian MCP not selected - adding it as safety net', {
-        requestId,
-        originalSelectedMcps: mcpSelection.selectedMcps,
-      });
-      mcpSelection.selectedMcps.push('atlassian');
-    }
-
     logger.info('MCP selection completed', {
       requestId,
       selectedMcps: mcpSelection.selectedMcps,
       reasoning: mcpSelection.reasoning,
-      mentionsJira,
     });
 
     // Write filtered MCP config with only selected MCPs (global/home locations)

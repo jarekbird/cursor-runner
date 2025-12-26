@@ -140,6 +140,10 @@ services:
       - ATLASSIAN_EMAIL=${ATLASSIAN_EMAIL:-}
       - ATLASSIAN_API_TOKEN=${ATLASSIAN_API_TOKEN:-}
       - ATLASSIAN_CLOUD_ID=${ATLASSIAN_CLOUD_ID:-}
+      # jira-mcp-wrapper (direct Jira REST, no OAuth)
+      - JIRA_BASE_URL=${JIRA_BASE_URL:-}
+      - JIRA_EMAIL=${JIRA_EMAIL:-}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
       # Alternative git credential environment variables (also supported)
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USERNAME=${GIT_USERNAME:-}
@@ -153,6 +157,9 @@ services:
       # Mount cursor-agents codebase so cursor-runner can run its MCP server
       # Update this path to point to your cursor-agents directory
       - ../cursor-agents:/app/target/cursor-agents
+      # Mount jira-mcp-wrapper so cursor-runner can spawn it as a stdio MCP server
+      # NOTE: we run the bundled dist/bundle.js inside the container to avoid host node_modules incompatibilities.
+      - ../jira-mcp-wrapper:/app/target/jira-mcp-wrapper
       # Mount shared cursor volume (contains repositories, tools, and scripts directories)
       - cursor_runner_repositories:/cursor
       # Mount shared SQLite database for cross-service access

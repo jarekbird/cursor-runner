@@ -42,6 +42,17 @@
         "ATLASSIAN_API_TOKEN": "${ATLASSIAN_API_TOKEN}",
         "ATLASSIAN_CLOUD_ID": "${ATLASSIAN_CLOUD_ID}"
       }
+    },
+    "jira-mcp-wrapper": {
+      "command": "node",
+      "args": [
+        "/app/target/jira-mcp-wrapper/dist/bundle.cjs"
+      ],
+      "env": {
+        "JIRA_BASE_URL": "${JIRA_BASE_URL}",
+        "JIRA_EMAIL": "${JIRA_EMAIL}",
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
+      }
     }
   }
 }

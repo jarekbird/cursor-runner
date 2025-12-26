@@ -65,8 +65,8 @@ export const AVAILABLE_MCP_CONNECTIONS: MCPConnection[] = [
     ],
   },
   {
-    name: 'atlassian',
-    description: 'Jira access for creating, updating, and querying issues',
+    name: 'jira-mcp-wrapper',
+    description: 'Jira access (direct REST v3) for creating, updating, and querying issues',
     keywords: [
       'jira',
       'issue',
@@ -78,7 +78,6 @@ export const AVAILABLE_MCP_CONNECTIONS: MCPConnection[] = [
       'bug',
       'epic',
       'subtask',
-      'atlassian',
       'create issue',
       'update issue',
       'jira issue',
@@ -88,13 +87,22 @@ export const AVAILABLE_MCP_CONNECTIONS: MCPConnection[] = [
       'jira query',
       'jql',
       'wor-',
-      'getjiraissue',
-      'editjiraissue',
-      'createjiraissue',
-      'transitionjiraissue',
       'jira mcp',
-      'atlassian mcp',
-      'mcp_Atlassian',
+    ],
+  },
+  {
+    name: 'atlassian',
+    description: 'Atlassian access (non-Jira) such as Confluence pages/spaces (when configured)',
+    keywords: [
+      'atlassian',
+      'confluence',
+      'space',
+      'spaces',
+      'page',
+      'pages',
+      'live doc',
+      'live docs',
+      'cql',
     ],
   },
 ];
@@ -186,6 +194,10 @@ User prompt:
 ${fullContext}
 
 Based on the prompt, select which MCP connections are likely to be needed. Be conservative - only select MCPs that are clearly needed based on the prompt content.
+
+IMPORTANT selection guidance:
+- For Jira (issues, JQL, WOR-* keys, stories/subtasks/epics/bugs, updating fields): prefer \`jira-mcp-wrapper\`.
+- Use \`atlassian\` for Confluence (pages/spaces/CQL) or other non-Jira Atlassian tools.
 
 Respond with a JSON object in this exact format:
 {
