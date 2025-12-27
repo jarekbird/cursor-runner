@@ -157,7 +157,7 @@ export class MCPSelectionService {
     }
 
     // Fall back to keyword-based matching
-    return this.selectMcpsWithKeywords(prompt, conversationContext);
+    return this.selectMcpsWithKeywords(prompt);
   }
 
   /**
@@ -261,10 +261,9 @@ Only include MCP names that are in the available list. If no MCPs are needed, re
   /**
    * Select MCPs using keyword matching (fallback method)
    * @param prompt - The prompt to analyze
-   * @param conversationContext - Optional conversation context
    * @returns Selected MCP connection names
    */
-  private selectMcpsWithKeywords(prompt: string, _conversationContext?: string): MCPSelectionResult {
+  private selectMcpsWithKeywords(prompt: string): MCPSelectionResult {
     // IMPORTANT: Keyword matching should be based on the *current user prompt only*.
     //
     // Including conversation context here creates false positives because the context wrapper
