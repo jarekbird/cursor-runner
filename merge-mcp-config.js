@@ -233,10 +233,26 @@ if (cursorRunner.mcpServers) {
     console.log('Atlassian MCP is enabled (ENABLE_ATLASSIAN_MCP=true) - including in config');
   }
 
-  existing.mcpServers = {
-    ...existing.mcpServers,
-    ...serversToMerge,
-  };
+  // Deep merge: cursor-runner config takes precedence, but we merge nested properties
+  // This allows updates to command/args/env without losing user-provided additions
+  for (const [serverName, serverConfig] of Object.entries(serversToMerge)) {
+    if (existing.mcpServers[serverName] && typeof existing.mcpServers[serverName] === 'object' && typeof serverConfig === 'object') {
+      // Deep merge: cursor-runner config overwrites nested properties
+      existing.mcpServers[serverName] = {
+        ...existing.mcpServers[serverName],
+        ...serverConfig,
+        // Deep merge env vars if both exist
+        env: existing.mcpServers[serverName].env && serverConfig.env
+          ? { ...existing.mcpServers[serverName].env, ...serverConfig.env }
+          : serverConfig.env || existing.mcpServers[serverName].env,
+        // Deep merge args if both exist (cursor-runner takes precedence)
+        args: serverConfig.args || existing.mcpServers[serverName].args,
+      };
+    } else {
+      // New server or non-object config - just replace
+      existing.mcpServers[serverName] = serverConfig;
+    }
+  }
 
   // Also remove disabled MCPs from existing config (in case they were already there)
   if (!gmailMcpEnabled && existing.mcpServers.gmail) {

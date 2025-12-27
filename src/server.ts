@@ -126,7 +126,10 @@ export class Server {
 
     this.wsUnsubscribers.push(
       this.agentConversationService.onConversationUpdated((event) => {
-        if (event.type === 'agent_conversation.created' || event.type === 'agent_conversation.updated') {
+        if (
+          event.type === 'agent_conversation.created' ||
+          event.type === 'agent_conversation.updated'
+        ) {
           this.broadcastWs(`agent_conversation:${event.conversationId}`, {
             type: event.type,
             conversationId: event.conversationId,
@@ -1620,10 +1623,7 @@ export class Server {
         let topic: string | null = null;
         if (pathname === '/api/ws' || pathname === '/conversations/api/ws') {
           topic = `conversation:${conversationId}`;
-        } else if (
-          pathname === '/api/agent/ws' ||
-          pathname === '/agent-conversations/api/ws'
-        ) {
+        } else if (pathname === '/api/agent/ws' || pathname === '/agent-conversations/api/ws') {
           topic = `agent_conversation:${conversationId}`;
         }
 

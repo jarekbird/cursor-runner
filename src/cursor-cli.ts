@@ -149,7 +149,9 @@ export class CursorCLI {
     const rawMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
     const maxConcurrentValue = parseInt(rawMaxConcurrent || String(defaultMaxConcurrent), 10);
     const maxConcurrent =
-      isNaN(maxConcurrentValue) || maxConcurrentValue <= 0 ? defaultMaxConcurrent : maxConcurrentValue;
+      isNaN(maxConcurrentValue) || maxConcurrentValue <= 0
+        ? defaultMaxConcurrent
+        : maxConcurrentValue;
     this.maxConcurrent = maxConcurrent;
     this.semaphore = new Semaphore(this.maxConcurrent);
 

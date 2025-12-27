@@ -33,7 +33,8 @@ describe('MCPSelectionService', () => {
 
     it('should NOT select Redis MCP when conversation context contains "conversation" but prompt does not', async () => {
       // This tests the critical fix: conversation context should be ignored in keyword matching
-      const conversationContext = 'Previous conversation about system settings and conversation history';
+      const conversationContext =
+        'Previous conversation about system settings and conversation history';
       const prompt = 'Write a function to parse JSON';
       const result = await service.selectMcps(prompt, conversationContext);
       expect(result.selectedMcps).not.toContain('cursor-runner-shared-redis');
@@ -98,4 +99,3 @@ describe('MCPSelectionService', () => {
     });
   });
 });
-
