@@ -264,7 +264,7 @@ Only include MCP names that are in the available list. If no MCPs are needed, re
    * @param conversationContext - Optional conversation context
    * @returns Selected MCP connection names
    */
-  private selectMcpsWithKeywords(prompt: string, conversationContext?: string): MCPSelectionResult {
+  private selectMcpsWithKeywords(prompt: string, _conversationContext?: string): MCPSelectionResult {
     // IMPORTANT: Keyword matching should be based on the *current user prompt only*.
     //
     // Including conversation context here creates false positives because the context wrapper
