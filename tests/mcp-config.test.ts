@@ -34,13 +34,12 @@ describe('MCP Configuration', () => {
     expect(typeof gmailEntry.env).toBe('object');
   });
 
-  it('should have gmail command using npx with @modelcontextprotocol/server-gmail', () => {
+  it('should have gmail command using mcp-server-gmail', () => {
     const configContent = readFileSync(mcpConfigPath, 'utf-8');
     const config = JSON.parse(configContent);
 
-    expect(config.mcpServers.gmail.command).toBe('npx');
-    expect(config.mcpServers.gmail.args).toContain('@modelcontextprotocol/server-gmail');
-    expect(config.mcpServers.gmail.args).toContain('-y');
+    expect(config.mcpServers.gmail.command).toBe('mcp-server-gmail');
+    expect(Array.isArray(config.mcpServers.gmail.args)).toBe(true);
   });
 
   it('should have gmail env vars referencing GMAIL_* variables', () => {
@@ -71,5 +70,17 @@ describe('MCP Configuration', () => {
     expect(
       clientSecret.includes('${') || clientSecret === '' || clientSecret.includes('GMAIL')
     ).toBe(true);
+  });
+
+  it('should have redis command using mcp-server-redis (not npx)', () => {
+    const configContent = readFileSync(mcpConfigPath, 'utf-8');
+    const config = JSON.parse(configContent);
+
+    expect(config.mcpServers).toHaveProperty('cursor-runner-shared-redis');
+    const redisEntry = config.mcpServers['cursor-runner-shared-redis'];
+    expect(redisEntry.command).toBe('mcp-server-redis');
+    expect(redisEntry.command).not.toBe('npx');
+    expect(Array.isArray(redisEntry.args)).toBe(true);
+    expect(redisEntry.args).toContain('--url');
   });
 });

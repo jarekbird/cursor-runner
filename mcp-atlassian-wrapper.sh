@@ -46,50 +46,32 @@ if [ -z "${ATLASSIAN_BASE_URL:-}" ]; then
   exit 1
 fi
 
-# Try packages in order of preference (checking Node version compatibility)
-PRIMARY_PACKAGE="@modelcontextprotocol/server-atlassian"
-FALLBACK_PACKAGE1="atlassian-mcp"  # Works with Node 18
-FALLBACK_PACKAGE2="@xuandev/atlassian-mcp"  # Requires Node 20+
-
-# Check Node version
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+# Prefer already-installed binaries to avoid repeated `npx` downloads and registry checks,
+# which can cause heavy disk I/O on small VPS instances.
+#
+# Fall back to npx ONLY if no binary is available.
 {
-  echo "Node version: $NODE_VERSION"
+  echo "Binary availability:"
+  echo "  - mcp-server-atlassian: $(command -v mcp-server-atlassian 2>/dev/null || echo '<missing>')"
+  echo "  - atlassian-mcp: $(command -v atlassian-mcp 2>/dev/null || echo '<missing>')"
 } >> "$LOG_FILE" 2>&1
 
-# Check if primary package exists
-if npm view "$PRIMARY_PACKAGE" version >/dev/null 2>&1; then
-  PACKAGE_NAME="$PRIMARY_PACKAGE"
-  {
-    echo "Using primary package: $PACKAGE_NAME"
-  } >> "$LOG_FILE" 2>&1
-elif npm view "$FALLBACK_PACKAGE1" version >/dev/null 2>&1; then
-  PACKAGE_NAME="$FALLBACK_PACKAGE1"
-  {
-    echo "Primary package $PRIMARY_PACKAGE not found, using fallback: $PACKAGE_NAME (Node 18 compatible)"
-  } >> "$LOG_FILE" 2>&1
-elif [ "$NODE_VERSION" -ge 20 ] && npm view "$FALLBACK_PACKAGE2" version >/dev/null 2>&1; then
-  PACKAGE_NAME="$FALLBACK_PACKAGE2"
-  {
-    echo "Using fallback: $PACKAGE_NAME (requires Node 20+)"
-  } >> "$LOG_FILE" 2>&1
-else
-  {
-    echo "ERROR: No compatible Atlassian MCP package found"
-    echo "Tried: $PRIMARY_PACKAGE, $FALLBACK_PACKAGE1"
-    if [ "$NODE_VERSION" -ge 20 ]; then
-      echo "Also tried: $FALLBACK_PACKAGE2"
-    fi
-    echo "This will cause cursor-cli to hang. Exiting immediately."
-    echo "To fix: Install an Atlassian MCP package or remove Atlassian MCP from config"
-  } >> "$LOG_FILE" 2>&1
-  # Exit with code 1 so cursor-cli knows the MCP server failed
-  exit 1
+if command -v mcp-server-atlassian >/dev/null 2>&1; then
+  exec mcp-server-atlassian 2> >(tee -a "$LOG_FILE" >&2)
 fi
 
-# Keep stdout/stderr semantics:
-# - stdout: MCP protocol stream (must NOT be modified)
-# - stderr: duplicated to both cursor-agent stderr and our log file
+if command -v atlassian-mcp >/dev/null 2>&1; then
+  exec atlassian-mcp 2> >(tee -a "$LOG_FILE" >&2)
+fi
+
+# Fallback: try known packages without doing `npm view` (which is extra I/O + network).
+# Note: This still requires network access the first time (npx install), but avoids the
+# preflight registry calls and will use the local npx cache thereafter.
+PACKAGE_NAME="${ATLASSIAN_MCP_NPX_PACKAGE:-atlassian-mcp}"
+{
+  echo "No Atlassian MCP binary found; falling back to npx package: $PACKAGE_NAME"
+} >> "$LOG_FILE" 2>&1
+
 exec npx -y "$PACKAGE_NAME" 2> >(tee -a "$LOG_FILE" >&2)
 
 

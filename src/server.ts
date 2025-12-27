@@ -6,6 +6,7 @@ import express, {
   type Router,
 } from 'express';
 import type { Server as HttpServer } from 'http';
+import type { IncomingMessage } from 'http';
 import path from 'path';
 import { logger } from './logger.js';
 import { GitService } from './git-service.js';
@@ -19,6 +20,7 @@ import { AgentConversationService } from './agent-conversation-service.js';
 import { TaskService } from './task-service.js';
 import type Redis from 'ioredis';
 import { getRepositoriesPath, getTargetAppPath } from './utils/path-resolver.js';
+import { WebSocketServer, type WebSocket } from 'ws';
 
 /**
  * Request body for cursor execution endpoints
@@ -83,6 +85,9 @@ export class Server {
   public taskService: TaskService;
   public server?: HttpServer;
   private readonly disableBackgroundWorkers: boolean;
+  private wsServer?: WebSocketServer;
+  private readonly wsClientsByTopic = new Map<string, Set<WebSocket>>();
+  private readonly wsUnsubscribers: Array<() => void> = [];
 
   constructor(redisClient?: Redis, options: ServerOptions = {}) {
     this.disableBackgroundWorkers = options.disableBackgroundWorkers ?? false;
@@ -104,6 +109,33 @@ export class Server {
     // Allow dependency injection of Redis for testing
     this.agentConversationService = new AgentConversationService(redisClient);
     this.taskService = new TaskService();
+
+    // Hook realtime broadcasts to Redis-backed updates (no-op until websocket clients subscribe)
+    this.wsUnsubscribers.push(
+      this.cursorExecution.conversationService.onConversationUpdated((event) => {
+        if (event.type === 'conversation.created' || event.type === 'conversation.updated') {
+          this.broadcastWs(`conversation:${event.conversationId}`, {
+            type: event.type,
+            conversationId: event.conversationId,
+            conversation: event.conversation,
+            ...(event.type === 'conversation.updated' ? { reason: event.reason } : {}),
+          });
+        }
+      })
+    );
+
+    this.wsUnsubscribers.push(
+      this.agentConversationService.onConversationUpdated((event) => {
+        if (event.type === 'agent_conversation.created' || event.type === 'agent_conversation.updated') {
+          this.broadcastWs(`agent_conversation:${event.conversationId}`, {
+            type: event.type,
+            conversationId: event.conversationId,
+            conversation: event.conversation,
+            ...(event.type === 'agent_conversation.updated' ? { reason: event.reason } : {}),
+          });
+        }
+      })
+    );
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -1468,6 +1500,165 @@ export class Server {
     res.status(statusCode).json(errorResponse);
   }
 
+  private addWsClient(topic: string, ws: WebSocket): void {
+    const set = this.wsClientsByTopic.get(topic) ?? new Set<WebSocket>();
+    set.add(ws);
+    this.wsClientsByTopic.set(topic, set);
+  }
+
+  private removeWsClient(topic: string, ws: WebSocket): void {
+    const set = this.wsClientsByTopic.get(topic);
+    if (!set) return;
+    set.delete(ws);
+    if (set.size === 0) {
+      this.wsClientsByTopic.delete(topic);
+    }
+  }
+
+  private broadcastWs(topic: string, payload: unknown): void {
+    const clients = this.wsClientsByTopic.get(topic);
+    if (!clients || clients.size === 0) return;
+
+    const message = JSON.stringify(payload);
+    for (const ws of clients) {
+      if (ws.readyState === ws.OPEN) {
+        try {
+          ws.send(message);
+        } catch (error) {
+          logger.warn('Failed to send websocket message', {
+            error: error instanceof Error ? error.message : String(error),
+            topic,
+          });
+        }
+      }
+    }
+  }
+
+  private async sendWsSnapshot(topic: string, ws: WebSocket): Promise<void> {
+    try {
+      if (topic.startsWith('conversation:')) {
+        const conversationId = topic.substring('conversation:'.length);
+        const conversation =
+          await this.cursorExecution.conversationService.getConversationById(conversationId);
+        if (conversation) {
+          ws.send(
+            JSON.stringify({
+              type: 'conversation.snapshot',
+              conversationId,
+              conversation,
+            })
+          );
+        } else {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              error: 'Conversation not found or conversation storage unavailable',
+              conversationId,
+            })
+          );
+        }
+      } else if (topic.startsWith('agent_conversation:')) {
+        const conversationId = topic.substring('agent_conversation:'.length);
+        const conversation = await this.agentConversationService.getConversation(conversationId);
+        if (conversation) {
+          ws.send(
+            JSON.stringify({
+              type: 'agent_conversation.snapshot',
+              conversationId,
+              conversation,
+            })
+          );
+        } else {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              error: 'Agent conversation not found or conversation storage unavailable',
+              conversationId,
+            })
+          );
+        }
+      }
+    } catch (error) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+
+  private setupWebSockets(): void {
+    if (!this.server) {
+      logger.warn('Cannot setup websockets before HTTP server is started');
+      return;
+    }
+
+    if (this.wsServer) {
+      return;
+    }
+
+    this.wsServer = new WebSocketServer({ noServer: true });
+    const wsServer = this.wsServer; // Store in local variable for TypeScript
+
+    this.server.on('upgrade', (request: IncomingMessage, socket, head) => {
+      try {
+        const host = request.headers.host || 'localhost';
+        const url = new URL(request.url || '/', `http://${host}`);
+
+        const pathname = url.pathname;
+        const conversationId = url.searchParams.get('conversationId') || url.searchParams.get('id');
+        if (!conversationId) {
+          socket.write('HTTP/1.1 400 Bad Request\r\n\r\nMissing conversationId');
+          socket.destroy();
+          return;
+        }
+
+        // Supported websocket endpoints:
+        // - Note-taking conversations: /conversations/api/ws (Traefik -> /api/ws) and /api/ws (direct)
+        // - Agent conversations: /agent-conversations/api/ws (Traefik -> /api/agent/ws) and /api/agent/ws (direct)
+        let topic: string | null = null;
+        if (pathname === '/api/ws' || pathname === '/conversations/api/ws') {
+          topic = `conversation:${conversationId}`;
+        } else if (
+          pathname === '/api/agent/ws' ||
+          pathname === '/agent-conversations/api/ws'
+        ) {
+          topic = `agent_conversation:${conversationId}`;
+        }
+
+        if (!topic) {
+          socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        wsServer.handleUpgrade(request, socket, head, (ws) => {
+          this.addWsClient(topic!, ws);
+
+          void this.sendWsSnapshot(topic!, ws);
+
+          ws.on('close', () => {
+            this.removeWsClient(topic!, ws);
+          });
+
+          ws.on('error', () => {
+            this.removeWsClient(topic!, ws);
+          });
+        });
+      } catch (error) {
+        logger.warn('Websocket upgrade failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        socket.destroy();
+      }
+    });
+
+    logger.info('WebSocket server ready', {
+      endpoints: ['/api/ws', '/api/agent/ws'],
+    });
+  }
+
   /**
    * Start the server
    */
@@ -1478,6 +1669,7 @@ export class Server {
           port: this.port,
           environment: process.env.NODE_ENV || 'development',
         });
+        this.setupWebSockets();
         resolve();
       });
     });
@@ -1506,6 +1698,28 @@ export class Server {
   async shutdown(): Promise<void> {
     // Stop HTTP server if running
     await this.stop();
+
+    // Stop websocket server
+    if (this.wsServer) {
+      try {
+        this.wsServer.close();
+      } catch (error) {
+        logger.warn('Failed to close websocket server', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      this.wsServer = undefined;
+    }
+
+    // Unsubscribe realtime listeners
+    for (const unsub of this.wsUnsubscribers) {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    }
+    this.wsUnsubscribers.length = 0;
 
     // Close Redis connections in services
     // Both AgentConversationService and ConversationService (via CursorExecutionService)

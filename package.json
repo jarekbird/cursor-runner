@@ -30,7 +30,7 @@
     "format": "prettier --write \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check": "prettier --check \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\"",
     "format:check:changed": "tsx scripts/format-check-changed.ts",
-    "mcp:gmail:version": "npx -y @modelcontextprotocol/server-gmail --version || echo 'Gmail MCP server not found (package may not be published yet)'",
+    "mcp:gmail:version": "mcp-server-gmail --version 2>/dev/null || npx -y @modelcontextprotocol/server-gmail --version || echo 'Gmail MCP server not found'",
     "test:gmail:smoke": "ENABLE_GMAIL_SMOKE_TEST=1 tsx scripts/gmail_smoke_test.ts",
     "migrate": "tsx src/migrations/cli.ts migrate",
     "migrate:rollback": "tsx src/migrations/cli.ts rollback",
@@ -54,6 +54,7 @@
     "node-pty": "^1.0.0",
     "openai": "^6.9.1",
     "umzug": "^3.8.2",
+    "ws": "^8.18.0",
     "winston": "^3.11.0"
   },
   "devDependencies": {
@@ -63,6 +64,7 @@
     "@types/jest": "^29.5.11",
     "@types/node": "^24.10.1",
     "@types/supertest": "^6.0.3",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.46.4",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^8.56.0",

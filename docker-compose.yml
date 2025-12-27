@@ -84,6 +84,9 @@ services:
       - CURSOR_CLI_DIAGNOSTIC_TIMEOUT=${CURSOR_CLI_DIAGNOSTIC_TIMEOUT:-2400000}
       - CURSOR_CLI_IDLE_TIMEOUT=${CURSOR_CLI_IDLE_TIMEOUT:-600000}
       - CURSOR_CLI_MAX_CONCURRENT=${CURSOR_CLI_MAX_CONCURRENT:-5}
+      # If true, cursor-runner will default to CURSOR_CLI_MAX_CONCURRENT=1 unless explicitly overridden.
+      # This helps prevent disk I/O saturation on small VPS instances.
+      - CURSOR_RUNNER_LOW_RESOURCE=${CURSOR_RUNNER_LOW_RESOURCE:-false}
       - CURSOR_API_KEY=${CURSOR_API_KEY:-}
       # Target Application (cursor) - mounted as volume
       # REPOSITORIES_PATH, SCRIPTS_PATH, and CURSOR_AGENTS_TOOLS_PATH are now

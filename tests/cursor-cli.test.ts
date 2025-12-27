@@ -68,6 +68,48 @@ describe('CursorCLI', () => {
       expect(initialStatus.maxConcurrent).toBe(2);
     });
 
+    it('should default to concurrency 1 when CURSOR_RUNNER_LOW_RESOURCE is true', () => {
+      const originalLowResource = process.env.CURSOR_RUNNER_LOW_RESOURCE;
+      const originalMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+      delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+      process.env.CURSOR_RUNNER_LOW_RESOURCE = 'true';
+      const lowResourceCLI = new CursorCLI();
+      const status = lowResourceCLI.getQueueStatus();
+      expect(status.maxConcurrent).toBe(1);
+      expect(status.available).toBe(1);
+      // Restore
+      if (originalLowResource) {
+        process.env.CURSOR_RUNNER_LOW_RESOURCE = originalLowResource;
+      } else {
+        delete process.env.CURSOR_RUNNER_LOW_RESOURCE;
+      }
+      if (originalMaxConcurrent) {
+        process.env.CURSOR_CLI_MAX_CONCURRENT = originalMaxConcurrent;
+      }
+    });
+
+    it('should respect CURSOR_CLI_MAX_CONCURRENT even when CURSOR_RUNNER_LOW_RESOURCE is true', () => {
+      const originalLowResource = process.env.CURSOR_RUNNER_LOW_RESOURCE;
+      const originalMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+      process.env.CURSOR_RUNNER_LOW_RESOURCE = 'true';
+      process.env.CURSOR_CLI_MAX_CONCURRENT = '3';
+      const explicitCLI = new CursorCLI();
+      const status = explicitCLI.getQueueStatus();
+      expect(status.maxConcurrent).toBe(3);
+      expect(status.available).toBe(3);
+      // Restore
+      if (originalLowResource) {
+        process.env.CURSOR_RUNNER_LOW_RESOURCE = originalLowResource;
+      } else {
+        delete process.env.CURSOR_RUNNER_LOW_RESOURCE;
+      }
+      if (originalMaxConcurrent) {
+        process.env.CURSOR_CLI_MAX_CONCURRENT = originalMaxConcurrent;
+      } else {
+        delete process.env.CURSOR_CLI_MAX_CONCURRENT;
+      }
+    });
+
     it.skip('should log waiting when all slots are busy', async () => {
       // eslint-disable-next-line node/no-unsupported-features/es-syntax
       const { logger } = await import('../src/logger.js');

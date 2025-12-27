@@ -29,6 +29,19 @@ export interface AgentConversation {
   status?: 'active' | 'completed' | 'archived' | 'failed';
 }
 
+export type AgentConversationUpdateEvent =
+  | {
+      type: 'agent_conversation.created';
+      conversationId: string;
+      conversation: AgentConversation;
+    }
+  | {
+      type: 'agent_conversation.updated';
+      conversationId: string;
+      conversation: AgentConversation;
+      reason: 'message_added' | 'updated';
+    };
+
 /**
  * Service for managing agent conversation context in Redis
  */
@@ -39,6 +52,7 @@ export class AgentConversationService {
   private readonly LIST_KEY = 'agent:conversations:list';
 
   private redisAvailable: boolean = false;
+  private readonly updateListeners = new Set<(event: AgentConversationUpdateEvent) => void>();
 
   constructor(redisClient?: Redis) {
     if (redisClient) {
@@ -81,6 +95,31 @@ export class AgentConversationService {
   }
 
   /**
+   * Subscribe to agent conversation updates (created / message added / updated).
+   * Returns an unsubscribe function.
+   */
+  onConversationUpdated(listener: (event: AgentConversationUpdateEvent) => void): () => void {
+    this.updateListeners.add(listener);
+    return () => {
+      this.updateListeners.delete(listener);
+    };
+  }
+
+  private emitUpdate(event: AgentConversationUpdateEvent): void {
+    for (const listener of this.updateListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        logger.warn('Agent conversation update listener threw', {
+          error: getErrorMessage(error),
+          conversationId: event.conversationId,
+          eventType: event.type,
+        });
+      }
+    }
+  }
+
+  /**
    * Create a new agent conversation
    */
   async createConversation(agentId?: string): Promise<AgentConversation> {
@@ -99,6 +138,11 @@ export class AgentConversationService {
 
     await this.saveConversation(conversation);
     await this.addToList(conversationId);
+    this.emitUpdate({
+      type: 'agent_conversation.created',
+      conversationId,
+      conversation,
+    });
 
     return conversation;
   }
@@ -229,6 +273,12 @@ export class AgentConversationService {
     conversation.messages.push(message);
     conversation.lastAccessedAt = new Date().toISOString();
     await this.saveConversation(conversation);
+    this.emitUpdate({
+      type: 'agent_conversation.updated',
+      conversationId,
+      conversation,
+      reason: 'message_added',
+    });
   }
 
   /**
@@ -236,6 +286,12 @@ export class AgentConversationService {
    */
   async updateConversation(conversation: AgentConversation): Promise<void> {
     await this.saveConversation(conversation);
+    this.emitUpdate({
+      type: 'agent_conversation.updated',
+      conversationId: conversation.conversationId,
+      conversation,
+      reason: 'updated',
+    });
   }
 
   /**

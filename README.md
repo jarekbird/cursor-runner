@@ -45,22 +45,31 @@ cp .env.example .env
 
 ### Gmail MCP Server Installation
 
-The Gmail MCP server is automatically installed as a dev dependency when you run `npm install`. 
+cursor-runner’s `mcp.json` is configured to run Gmail via the `mcp-server-gmail` binary (preferred over `npx` to avoid repeated downloads / cache churn).
 
 **Local Development**:
-- Gmail MCP server is installed via `package.json` devDependencies
+- Install: `npm install -g @modelcontextprotocol/server-gmail` (or ensure it’s available on PATH)
 - Verify installation: `npm run mcp:gmail:version`
 - Or use verification script: `./scripts/check-gmail-mcp.sh`
 
 **Docker**:
-- Gmail MCP server is automatically installed during Docker image build
+- Gmail MCP server is installed during Docker image build (best-effort)
 - No additional steps required
 - Verify in container: `docker run --rm cursor-runner mcp-server-gmail --version`
 
 **Troubleshooting**:
 - If `mcp-server-gmail` command not found, ensure `npm install` completed successfully
-- Check that `@modelcontextprotocol/server-gmail` is in `package.json` devDependencies
+- Check that `@modelcontextprotocol/server-gmail` is installed and on PATH
 - In Docker, verify the package is installed in the Dockerfile
+
+### Performance Notes (Disk I/O / “Frozen box” symptoms)
+
+If you see high iowait / disk saturation on small VPS instances, the most common cause is repeatedly spawning MCP servers via `npx` (package downloads + cache + Node startup).
+
+- **Prefer binaries over `npx`**: this repo’s defaults now use `mcp-server-redis` and `mcp-server-gmail` in `mcp.json`.
+- **Avoid eager MCP init when not needed**: cursor-runner only adds `--approve-mcps` when MCPs are selected for the request.
+- **Conservative MCP selection**: keyword-based MCP selection is prompt-only (it does not scan the conversation context) to avoid accidentally selecting Redis MCP for every request.
+- **Limit concurrent Cursor runs**: set `CURSOR_RUNNER_LOW_RESOURCE=true` (defaults to 1 execution slot) or explicitly set `CURSOR_CLI_MAX_CONCURRENT=1`.
 
 ### Gmail MCP Smoke Test
 

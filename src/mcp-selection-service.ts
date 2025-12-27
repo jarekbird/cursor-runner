@@ -36,13 +36,12 @@ export const AVAILABLE_MCP_CONNECTIONS: MCPConnection[] = [
     name: 'cursor-runner-shared-redis',
     description: 'Redis access for conversation history and caching',
     keywords: [
-      'conversation history',
-      'conversation',
       'redis',
       'clear conversation',
-      'conversation context',
       'cache',
       'key-value',
+      'cursor:conversation:',
+      'cursor:last_conversation_id',
     ],
   },
   {
@@ -266,9 +265,15 @@ Only include MCP names that are in the available list. If no MCPs are needed, re
    * @returns Selected MCP connection names
    */
   private selectMcpsWithKeywords(prompt: string, conversationContext?: string): MCPSelectionResult {
-    const fullText = conversationContext
-      ? `${conversationContext} ${prompt}`.toLowerCase()
-      : prompt.toLowerCase();
+    // IMPORTANT: Keyword matching should be based on the *current user prompt only*.
+    //
+    // Including conversation context here creates false positives because the context wrapper
+    // often contains generic words like "conversation", which would select the Redis MCP
+    // for nearly every request and trigger costly `--approve-mcps` eager initialization.
+    //
+    // If you need more intelligent selection that considers prior context, use the GPT-based
+    // selection path (OPENAI_API_KEY) which is explicitly instructed to be conservative.
+    const fullText = prompt.toLowerCase();
 
     const selectedMcps: string[] = [];
 

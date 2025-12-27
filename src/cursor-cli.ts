@@ -126,6 +126,7 @@ export class CursorCLI {
   private readonly maxOutputSize: number;
   private _ptyModule: IPty | null = null; // Lazy-loaded
   private readonly semaphore: Semaphore;
+  private readonly maxConcurrent: number;
 
   constructor(cursorPath?: string) {
     this.cursorPath = cursorPath || process.env.CURSOR_CLI_PATH || 'cursor';
@@ -137,16 +138,26 @@ export class CursorCLI {
     this.maxOutputSize =
       isNaN(maxOutputSizeValue) || maxOutputSizeValue <= 0 ? 10485760 : maxOutputSizeValue; // 10MB default
 
-    // Concurrency limit - default to 5, configurable via CURSOR_CLI_MAX_CONCURRENT
-    const maxConcurrentValue = parseInt(process.env.CURSOR_CLI_MAX_CONCURRENT || '5', 10);
+    // Concurrency limit:
+    // - If CURSOR_CLI_MAX_CONCURRENT is set, honor it.
+    // - Otherwise default to 5, or 1 when running on a small/IO-constrained box
+    //   (set CURSOR_RUNNER_LOW_RESOURCE=true).
+    const lowResource =
+      (process.env.CURSOR_RUNNER_LOW_RESOURCE || '').toLowerCase() === 'true' ||
+      process.env.CURSOR_RUNNER_LOW_RESOURCE === '1';
+    const defaultMaxConcurrent = lowResource ? 1 : 5;
+    const rawMaxConcurrent = process.env.CURSOR_CLI_MAX_CONCURRENT;
+    const maxConcurrentValue = parseInt(rawMaxConcurrent || String(defaultMaxConcurrent), 10);
     const maxConcurrent =
-      isNaN(maxConcurrentValue) || maxConcurrentValue <= 0 ? 5 : maxConcurrentValue;
-    this.semaphore = new Semaphore(maxConcurrent);
+      isNaN(maxConcurrentValue) || maxConcurrentValue <= 0 ? defaultMaxConcurrent : maxConcurrentValue;
+    this.maxConcurrent = maxConcurrent;
+    this.semaphore = new Semaphore(this.maxConcurrent);
 
     logger.info('CursorCLI initialized', {
       maxConcurrent,
       timeout: this.timeout,
       maxOutputSize: this.maxOutputSize,
+      lowResourceMode: lowResource,
     });
   }
 
@@ -158,7 +169,7 @@ export class CursorCLI {
     return {
       available: this.semaphore.getAvailable(),
       waiting: this.semaphore.getWaiting(),
-      maxConcurrent: parseInt(process.env.CURSOR_CLI_MAX_CONCURRENT || '5', 10),
+      maxConcurrent: this.maxConcurrent,
     };
   }
 

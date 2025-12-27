@@ -7,10 +7,8 @@
       ]
     },
     "cursor-runner-shared-redis": {
-      "command": "npx",
+      "command": "mcp-server-redis",
       "args": [
-        "-y",
-        "@liangshanli/mcp-server-redis",
         "--url",
         "redis://redis:6379/0"
       ],
@@ -19,11 +17,8 @@
       }
     },
     "gmail": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-gmail"
-      ],
+      "command": "mcp-server-gmail",
+      "args": [],
       "env": {
         "GMAIL_CLIENT_ID": "${GMAIL_CLIENT_ID}",
         "GMAIL_CLIENT_SECRET": "${GMAIL_CLIENT_SECRET}",

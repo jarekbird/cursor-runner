@@ -4,13 +4,13 @@ import { logger } from './logger.js';
 import { getErrorMessage } from './error-utils.js';
 import { isSystemSettingEnabled } from './system-settings.js';
 
-interface ConversationMessage {
+export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
 }
 
-interface ConversationContext {
+export interface ConversationContext {
   conversationId: string;
   messages: ConversationMessage[];
   summarizedMessages?: ConversationMessage[];
@@ -19,6 +19,19 @@ interface ConversationContext {
 }
 
 export type QueueType = 'default' | 'telegram' | 'api';
+
+export type ConversationUpdateEvent =
+  | {
+      type: 'conversation.created';
+      conversationId: string;
+      conversation: ConversationContext;
+    }
+  | {
+      type: 'conversation.updated';
+      conversationId: string;
+      conversation: ConversationContext;
+      reason: 'message_added' | 'summarized';
+    };
 
 /**
  * Service for managing conversation context in Redis
@@ -32,6 +45,7 @@ export class ConversationService {
   private readonly API_LAST_CONVERSATION_KEY = 'cursor:api:last_conversation_id';
 
   private redisAvailable: boolean = false;
+  private readonly updateListeners = new Set<(event: ConversationUpdateEvent) => void>();
 
   constructor(redisClient?: Redis) {
     if (redisClient) {
@@ -69,6 +83,31 @@ export class ConversationService {
         });
         this.redisAvailable = false;
       });
+    }
+  }
+
+  /**
+   * Subscribe to conversation updates (created / message added / summarized).
+   * Returns an unsubscribe function.
+   */
+  onConversationUpdated(listener: (event: ConversationUpdateEvent) => void): () => void {
+    this.updateListeners.add(listener);
+    return () => {
+      this.updateListeners.delete(listener);
+    };
+  }
+
+  private emitUpdate(event: ConversationUpdateEvent): void {
+    for (const listener of this.updateListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        logger.warn('Conversation update listener threw', {
+          error: getErrorMessage(error),
+          conversationId: event.conversationId,
+          eventType: event.type,
+        });
+      }
     }
   }
 
@@ -168,6 +207,11 @@ export class ConversationService {
       await this.redis.set(lastConversationKey, conversationId);
 
       logger.info('Created new conversation', { conversationId, queueType });
+      this.emitUpdate({
+        type: 'conversation.created',
+        conversationId,
+        conversation: context,
+      });
     } catch (error) {
       logger.warn('Failed to create conversation in Redis', {
         conversationId,
@@ -244,6 +288,12 @@ export class ConversationService {
       context.lastAccessedAt = new Date().toISOString();
 
       await this.saveConversation(conversationId, context);
+      this.emitUpdate({
+        type: 'conversation.updated',
+        conversationId,
+        conversation: context,
+        reason: 'message_added',
+      });
     } catch (error) {
       logger.warn('Failed to add message to conversation', {
         conversationId,
@@ -332,6 +382,12 @@ export class ConversationService {
       context.lastAccessedAt = new Date().toISOString();
 
       await this.saveConversation(conversationId, context);
+      this.emitUpdate({
+        type: 'conversation.updated',
+        conversationId,
+        conversation: context,
+        reason: 'summarized',
+      });
 
       logger.info('Conversation summarized', {
         conversationId,

@@ -54,7 +54,9 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
 RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent verification skipped - ensure it's available at runtime"
 
 # Install MCP server packages globally to avoid npx download delays during cursor-cli startup
-RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
+# Optional packages are best-effort; if unavailable, we still proceed with core MCP servers.
+RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis @modelcontextprotocol/server-gmail atlassian-mcp 2>/dev/null || \
+    (echo "Optional MCP servers not available; installing core MCP servers only" && npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis) && \
     echo "MCP server packages installed globally"
 
 # ---------------------------------------------------------------------------

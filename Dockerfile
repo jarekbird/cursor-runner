@@ -50,9 +50,10 @@ RUN (which cursor-agent && cursor-agent --version) || echo "Note: cursor-agent v
 # This prevents cursor-cli from hanging while waiting for npx to download packages
 # Note: If command names don't match, verify with: npm list -g --depth=0
 # Note: Using @liangshanli/mcp-server-redis as the official @modelcontextprotocol/server-redis doesn't exist yet
-# Note: Gmail MCP server (@modelcontextprotocol/server-gmail) doesn't exist in npm registry yet, will use npx when needed
-# Note: Atlassian MCP server (@modelcontextprotocol/server-atlassian) doesn't exist in npm registry yet, will use npx when needed
-RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis && \
+# We try to install optional MCP servers here so runtime doesn't have to use `npx` (high disk I/O).
+# If an optional package isn't available, we continue with the core set.
+RUN npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis @modelcontextprotocol/server-gmail atlassian-mcp 2>/dev/null || \
+    (echo "Optional MCP servers not available; installing core MCP servers only" && npm install -g mcp-server-sqlite-npx @liangshanli/mcp-server-redis) && \
     echo "MCP server packages installed globally"
 
 # Set working directory
