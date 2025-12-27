@@ -152,7 +152,7 @@ export class MCPSelectionService {
           error: getErrorMessage(error),
         });
         // Fall back to keyword matching
-        return this.selectMcpsWithKeywords(prompt, conversationContext);
+        return this.selectMcpsWithKeywords(prompt);
       }
     }
 
